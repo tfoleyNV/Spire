@@ -55,7 +55,7 @@ int wmain(int argc, wchar_t* argv[])
 					options.SymbolToCompile = tryReadCommandLineArgument(arg, &argCursor, argEnd);
 				else if (argStr == "-schedule")
 					options.ScheduleFileName = tryReadCommandLineArgument(arg, &argCursor, argEnd);
-				else if (argStr == "-backend")
+				else if (argStr == "-backend" || argStr == "-target")
 				{
 					String name = tryReadCommandLineArgument(arg, &argCursor, argEnd);
 					if (name == "glsl")
@@ -78,10 +78,48 @@ int wmain(int argc, wchar_t* argv[])
 					{
 						options.Target = CodeGenTarget::SPIRV;
 					}
+					else if (name == "dxbc")
+					{
+						options.Target = CodeGenTarget::DXBytecode;
+					}
+					else if (name == "dxbc-assembly")
+					{
+						options.Target = CodeGenTarget::DXBytecodeAssembly;
+					}
 					else
 					{
 						fprintf(stderr, "unknown code generation target '%S'\n", name.ToWString());
 					}
+				}
+				else if (argStr == "-entry")
+				{
+					String name = tryReadCommandLineArgument(arg, &argCursor, argEnd);
+					EntryPointOption entry;
+					entry.name = name;
+
+					// If a target or stage has been specified already, then use it for this entry point
+					entry.target = options.Target;
+					entry.stage = options.stage;
+
+					// TODO(tfoley): Allow user to fold a specification of a target into the entry-point name,
+					// for the case where they might be compiling multiple entry points in one invocation...
+
+					options.entryPoints.Add(entry);
+				}
+				else if (argStr == "-stage")
+				{
+					String name = tryReadCommandLineArgument(arg, &argCursor, argEnd);
+					StageTarget stage = StageTarget::Unknown;
+					if (name == "vertex") { stage = StageTarget::VertexShader; }
+					else if (name == "fragment") { stage = StageTarget::FragmentShader; }
+					else if (name == "hull") { stage = StageTarget::HullShader; }
+					else if (name == "domain") { stage = StageTarget::DomainShader; }
+					else if (name == "compute") { stage = StageTarget::ComputeShader; }
+					else
+					{
+						fprintf(stderr, "unknown stage '%S'\n", name.ToWString());
+					}
+					options.stage = stage;
 				}
 				else if (argStr == "-genchoice")
 					options.Mode = CompilerMode::GenerateChoice;

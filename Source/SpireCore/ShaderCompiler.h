@@ -21,22 +21,50 @@ namespace Spire
 			GenerateChoice
 		};
 
+		enum class StageTarget
+		{
+			Unknown,
+			VertexShader,
+			HullShader,
+			DomainShader,
+			GeometryShader,
+			FragmentShader,
+			ComputeShader,
+		};
+
 		enum class CodeGenTarget
 		{
-			GLSL, GLSL_Vulkan, GLSL_Vulkan_OneDesc, HLSL, SPIRV
+			Unknown,
+
+			GLSL, GLSL_Vulkan, GLSL_Vulkan_OneDesc, HLSL, SPIRV,
+
+			DXBytecode,
+			DXBytecodeAssembly,
+		};
+
+		// Describes an entry point that we've been requested to compile
+		struct EntryPointOption
+		{
+			String name;
+			CodeGenTarget target = CodeGenTarget::Unknown;
+			StageTarget stage = StageTarget::Unknown;
 		};
 
 		class CompileOptions
 		{
 		public:
 			CompilerMode Mode = CompilerMode::ProduceShader;
-			CodeGenTarget Target = CodeGenTarget::GLSL;
+			CodeGenTarget Target = CodeGenTarget::Unknown;
+			StageTarget stage = StageTarget::Unknown;
 			EnumerableDictionary<String, String> BackendArguments;
 			String ScheduleSource, ScheduleFileName;
 			String SymbolToCompile;
 			List<String> TemplateShaderArguments;
 			List<String> SearchDirectories;
             Dictionary<String, String> PreprocessorDefinitions;
+
+			// All entry points we've been asked to compile
+			List<EntryPointOption> entryPoints;
 		};
 
 		class CompileUnit

@@ -106,6 +106,84 @@ TestResult runTestImpl(
 	return result;
 }
 
+TestResult runHLSLTestImpl(
+	String	filePath)
+{
+	// need to execute the stand-alone Spire compiler on the file, and compare its output to what we expect
+
+	OSProcessSpawner spawner;
+
+	spawner.pushExecutableName("Source/Debug/SpireCompiler.exe");
+	spawner.pushArgument(filePath);
+
+	spawner.pushArgument("-target");
+	spawner.pushArgument("dxbc-assembly");
+
+	if (spawner.spawnAndWaitForCompletion() != kOSError_None)
+	{
+		error("failed to run test '%S'", filePath.ToWString());
+		return kTestResult_Fail;
+	}
+
+	// We ignore output to stdout, and only worry about what the compiler
+	// wrote to stderr.
+
+	OSProcessSpawner::ResultCode resultCode = spawner.getResultCode();
+
+	String standardOuptut = spawner.getStandardOutput();
+	String standardError = spawner.getStandardError();
+
+	// We construct a single output string that captures the results
+	StringBuilder actualOutputBuilder;
+	actualOutputBuilder.Append("result code = ");
+	actualOutputBuilder.Append(resultCode);
+	actualOutputBuilder.Append("\nstandard error = {\n");
+	actualOutputBuilder.Append(standardError);
+	actualOutputBuilder.Append("}\nstandard output = {\n");
+	actualOutputBuilder.Append(standardOuptut);
+	actualOutputBuilder.Append("}\n");
+
+	String actualOutput = actualOutputBuilder.ProduceString();
+
+	String expectedOutputPath = filePath + ".expected";
+	String expectedOutput;
+	try
+	{
+		expectedOutput = CoreLib::IO::File::ReadAllText(expectedOutputPath);
+	}
+	catch (CoreLib::IO::IOException)
+	{
+	}
+
+	TestResult result = kTestResult_Pass;
+
+	// If no expected output file was found, then we
+	// expect everything to be empty
+	if (expectedOutput.Length() == 0)
+	{
+		if (resultCode != 0)				result = kTestResult_Fail;
+		if (standardError.Length() != 0)	result = kTestResult_Fail;
+		if (standardOuptut.Length() != 0)	result = kTestResult_Fail;
+	}
+	// Otherwise we compare to the expected output
+	else if (actualOutput != expectedOutput)
+	{
+		result = kTestResult_Fail;
+	}
+
+	// If the test failed, then we write the actual output to a file
+	// so that we can easily diff it from the command line and
+	// diagnose the problem.
+	if (result == kTestResult_Fail)
+	{
+		String actualOutputPath = filePath + ".actual";
+		CoreLib::IO::File::WriteAllText(actualOutputPath, actualOutput);
+	}
+
+	return result;
+}
+
+
 struct TestContext
 {
 	int totalTestCount;
@@ -115,11 +193,12 @@ struct TestContext
 
 void runTest(
 	TestContext*	context,
-	String			filePath)
+	String			filePath,
+	TestResult		(*runFunc)(String))
 {
 
 	context->totalTestCount++;
-	TestResult result = runTestImpl(filePath);
+	TestResult result = runFunc(filePath);
 	if (result == kTestResult_Pass)
 	{
 		printf("passed");
@@ -140,7 +219,17 @@ void runTestsInDirectory(
 {
 	for (auto file : osFindFilesInDirectoryMatchingPattern(directoryPath, "*.spire"))
 	{
-		runTest(context, file);
+		runTest(context, file, runTestImpl);
+	}
+}
+
+void runHLSLTestsInDirectory(
+	TestContext*		context,
+	String				directoryPath)
+{
+	for (auto file : osFindFilesInDirectoryMatchingPattern(directoryPath, "*.hlsl"))
+	{
+		runTest(context, file, runHLSLTestImpl);
 	}
 }
 
@@ -155,9 +244,13 @@ int main(
 	// Enumerate test files according to policy
 	// TODO: add more directories to this list
 	// TODO: allow for a command-line argument to select a particular directory
+#if o
 	runTestsInDirectory(&context, "Tests/FrontEnd/");
 	runTestsInDirectory(&context, "Tests/Diagnostics/");
 	runTestsInDirectory(&context, "Tests/Preprocessor/");
+#endif
+
+	runHLSLTestsInDirectory(&context, "Tests/HLSL/DXSDK/");
 
 	if (!context.totalTestCount)
 	{
