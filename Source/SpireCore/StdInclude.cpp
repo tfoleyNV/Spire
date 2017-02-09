@@ -112,8 +112,8 @@ __intrinsic int asint(float x);
 __intrinsic int asint(uint x);
 __generic<let N : int> __intrinsic vector<int,N> asint(vector<float,N> x);
 __generic<let N : int> __intrinsic vector<int,N> asint(vector<uint,N> x);
-__generic<let N : int, let M : int> __intrinsic int<float,N,M> asint(matrix<float,N,M> x);
-__generic<let N : int, let M : int> __intrinsic int<float,N,M> asint(matrix<uint,N,M> x);
+__generic<let N : int, let M : int> __intrinsic matrix<int,N,M> asint(matrix<float,N,M> x);
+__generic<let N : int, let M : int> __intrinsic matrix<int,N,M> asint(matrix<uint,N,M> x);
 
 
 

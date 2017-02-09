@@ -3255,6 +3255,7 @@ namespace Spire
 					case OverloadCandidate::Flavor::Func:
 						context.appExpr->FunctionExpr = baseExpr;
 						context.appExpr->Type = candidate.resultType;
+						return context.appExpr;
 						break;
 
 					case OverloadCandidate::Flavor::Generic:
