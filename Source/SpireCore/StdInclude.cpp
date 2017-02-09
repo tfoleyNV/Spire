@@ -1,8 +1,15 @@
 #include "StdInclude.h"
 #include "Syntax.h"
 
-const char * LibIncludeString = R"(
+#define STRINGIZE(x) STRINGIZE2(x)
+#define STRINGIZE2(x) #x
+#define LINE_STRING STRINGIZE(__LINE__)
 
+const char * LibIncludeStringChunks[] = {
+
+"#line " LINE_STRING  "\"" __FILE__ "\"\n"
+
+R"(
 __generic<T> __magic_type(HLSLAppendStructuredBufferType) struct AppendStructuredBuffer
 {
 };
@@ -115,6 +122,64 @@ __generic<let N : int> __intrinsic vector<int,N> asint(vector<uint,N> x);
 __generic<let N : int, let M : int> __intrinsic matrix<int,N,M> asint(matrix<float,N,M> x);
 __generic<let N : int, let M : int> __intrinsic matrix<int,N,M> asint(matrix<uint,N,M> x);
 
+// Reinterpret bits of double as a uint (HLSL SM 5.0)
+__intrinsic void asuint(double value, out uint lowbits, out uint highbits);
+
+// Reinterpret bits as a uint (HLSL SM 4.0)
+__intrinsic uint asuint(float x);
+__intrinsic uint asuint(int x);
+__generic<let N : int> __intrinsic vector<uint,N> asuint(vector<float,N> x);
+__generic<let N : int> __intrinsic vector<uint,N> asuint(vector<int,N> x);
+__generic<let N : int, let M : int> __intrinsic matrix<uint,N,M> asuint(matrix<float,N,M> x);
+__generic<let N : int, let M : int> __intrinsic matrix<uint,N,M> asuint(matrix<int,N,M> x);
+
+// Inverse tangent (HLSL SM 1.0)
+__generic<T : __BuiltinFloatingPointType> __intrinsic T atan(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> atan(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> atan(matrix<T,N,M> x);
+
+__generic<T : __BuiltinFloatingPointType> __intrinsic T atan2(T y, T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> atan2(vector<T,N> y, vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> atan2(matrix<T,N,M> y, matrix<T,N,M> x);
+
+// Ceiling (HLSL SM 1.0)
+__generic<T : __BuiltinFloatingPointType> __intrinsic T ceil(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> ceil(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> ceil(matrix<T,N,M> x);
+
+// Check access status to tiled resource
+__intrinsic bool CheckAccessFullyMapped(uint status);
+
+// Clamp (HLSL SM 1.0)
+__generic<T : __BuiltinArithmeticType> __intrinsic T clamp(T x, T min, T max);
+__generic<T : __BuiltinArithmeticType, let N : int> __intrinsic vector<T,N> clamp(vector<T,N> x, vector<T,N> min, vector<T,N> max);
+__generic<T : __BuiltinArithmeticType, let N : int, let M : int> __intrinsic matrix<T,N,M> clamp(matrix<T,N,M> x, matrix<T,N,M> min, matrix<T,N,M> max);
+
+// Clip (discard) fragment conditionally
+__generic<T : __BuiltinFloatingPointType> __intrinsic void clip(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic void clip(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic void clip(matrix<T,N,M> x);
+
+// Cosine
+__generic<T : __BuiltinFloatingPointType> __intrinsic T cos(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> cos(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> cos(matrix<T,N,M> x);
+
+// Hyperbolic cosine
+__generic<T : __BuiltinFloatingPointType> __intrinsic T cosh(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> cosh(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> cosh(matrix<T,N,M> x);
+
+// Population count
+__intrinsic uint countbits(uint value);
+
+// Cross product
+__generic<T : __BuiltinArithmeticType> __intrinsic vector<T,3> cross(vector<T,3> x, vector<T,3> y);
+
+
+)",
+
+R"(
 
 
 __intrinsic float dFdx(float v);
@@ -384,7 +449,7 @@ __intrinsic trait IsTriviallyPassable(uvec3);
 __intrinsic trait IsTriviallyPassable(uvec4);
 __intrinsic trait IsTriviallyPassable(bool);
 #line default
-)";
+)" };
 
 using namespace CoreLib::Basic;
 
@@ -752,7 +817,12 @@ namespace Spire
 				}
 			}
 
-			sb << LibIncludeString;
+			int chunkCount = sizeof(LibIncludeStringChunks) / sizeof(LibIncludeStringChunks[0]);
+			for (int cc = 0; cc < chunkCount; ++cc)
+			{
+				sb << LibIncludeStringChunks[cc];
+			}
+
 			code = sb.ProduceString();
 			return code;
 		}
