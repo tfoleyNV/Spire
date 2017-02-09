@@ -176,6 +176,51 @@ __intrinsic uint countbits(uint value);
 // Cross product
 __generic<T : __BuiltinArithmeticType> __intrinsic vector<T,3> cross(vector<T,3> x, vector<T,3> y);
 
+// Convert encoded color
+__intrinsic int4 D3DCOLORtoUBYTE4(float4 x);
+
+// Partial-difference derivatives
+__generic<T : __BuiltinFloatingPointType> __intrinsic T ddx(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> ddx(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> ddx(matrix<T,N,M> x);
+
+__generic<T : __BuiltinFloatingPointType> __intrinsic T ddx_coarse(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> ddx_coarse(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> ddx_coarse(matrix<T,N,M> x);
+
+__generic<T : __BuiltinFloatingPointType> __intrinsic T ddx_fine(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> ddx_fine(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> ddx_fine(matrix<T,N,M> x);
+
+__generic<T : __BuiltinFloatingPointType> __intrinsic T ddy(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> ddy(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> ddy(matrix<T,N,M> x);
+
+__generic<T : __BuiltinFloatingPointType> __intrinsic T ddy_coarse(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> ddy_coarse(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> ddy_coarse(matrix<T,N,M> x);
+
+__generic<T : __BuiltinFloatingPointType> __intrinsic T ddy_fine(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> ddy_fine(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> ddy_fine(matrix<T,N,M> x);
+
+
+// Radians to degrees
+__generic<T : __BuiltinFloatingPointType> __intrinsic T degrees(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> degrees(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> degrees(matrix<T,N,M> x);
+
+// Matrix determinant
+
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic T determinant(matrix<T,N,N> m);
+
+// Barrier for device memory
+__intrinsic void DeviceMemoryBarrier();
+__intrinsic void DeviceMemoryBarrierWithGroupSync();
+
+// Vector distance
+
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic T distance(vector<T,N> x, vector<T,N> y);
 
 )",
 
