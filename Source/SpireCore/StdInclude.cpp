@@ -222,9 +222,138 @@ __intrinsic void DeviceMemoryBarrierWithGroupSync();
 
 __generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic T distance(vector<T,N> x, vector<T,N> y);
 
-)",
+// Vector dot product
 
-R"(
+__generic<T : __BuiltinArithmeticType, let N : int> __intrinsic T dot(vector<T,N> x, vector<T,N> y);
+
+// Helper for computing distance terms for lighting (obsolete)
+
+__generic<T : __BuiltinFloatingPointType> __intrinsic vector<T,4> dst(vector<T,4> x, vector<T,4> y);
+
+// Error message
+
+// __intrinsic void errorf( string format, ... );
+
+// Attribute evaluation
+
+__generic<T : __BuiltinArithmeticType> __intrinsic T EvaluateAttributeAtCentroid(T x);
+__generic<T : __BuiltinArithmeticType, let N : int> __intrinsic vector<T,N> EvaluateAttributeAtCentroid(vector<T,N> x);
+__generic<T : __BuiltinArithmeticType, let N : int, let M : int> __intrinsic matrix<T,N,M> EvaluateAttributeAtCentroid(matrix<T,N,M> x);
+
+__generic<T : __BuiltinArithmeticType> __intrinsic T EvaluateAttributeAtSample(T x, uint sampleindex);
+__generic<T : __BuiltinArithmeticType, let N : int> __intrinsic vector<T,N> EvaluateAttributeAtSample(vector<T,N> x, uint sampleindex);
+__generic<T : __BuiltinArithmeticType, let N : int, let M : int> __intrinsic matrix<T,N,M> EvaluateAttributeAtSample(matrix<T,N,M> x, uint sampleindex);
+
+__generic<T : __BuiltinArithmeticType> __intrinsic T EvaluateAttributeSnapped(T x, int2 offset);
+__generic<T : __BuiltinArithmeticType, let N : int> __intrinsic vector<T,N> EvaluateAttributeSnapped(vector<T,N> x, int2 offset);
+__generic<T : __BuiltinArithmeticType, let N : int, let M : int> __intrinsic matrix<T,N,M> EvaluateAttributeSnapped(matrix<T,N,M> x, int2 offset);
+
+// Base-e exponent
+__generic<T : __BuiltinFloatingPointType> __intrinsic T exp(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> exp(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> exp(matrix<T,N,M> x);
+
+// Base-2 exponent
+__generic<T : __BuiltinFloatingPointType> __intrinsic T exp2(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> exp2(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> exp2(matrix<T,N,M> x);
+
+// Convert 16-bit float stored in low bits of integer
+__intrinsic float f16tof32(uint value);
+__generic<let N : int> __intrinsic vector<float,N> f16tof32(vector<uint,N> value);
+
+// Convert to 16-bit float stored in low bits of integer
+__intrinsic uint f32tof16(float value);
+__generic<let N : int> __intrinsic vector<uint,N> f32tof16(vector<float,N> value);
+
+// Flip surface normal to face forward, if needed
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> faceforward(vector<T,N> n, vector<T,N> i, vector<T,N> ng);
+
+// Find first set bit starting at high bit and working down
+__intrinsic int firstbithigh(int value);
+__generic<let N : int> __intrinsic vector<int,N> firstbithigh(vector<int,N> value);
+
+__intrinsic uint firstbithigh(uint value);
+__generic<let N : int> __intrinsic vector<uint,N> firstbithigh(vector<uint,N> value);
+
+// Find first set bit starting at low bit and working up
+__intrinsic int firstbitlow(int value);
+__generic<let N : int> __intrinsic vector<int,N> firstbitlow(vector<int,N> value);
+
+__intrinsic uint firstbitlow(uint value);
+__generic<let N : int> __intrinsic vector<uint,N> firstbitlow(vector<uint,N> value);
+
+// Floor (HLSL SM 1.0)
+__generic<T : __BuiltinFloatingPointType> __intrinsic T floor(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> floor(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> floor(matrix<T,N,M> x);
+
+// Fused multiply-add for doubles
+__intrinsic double fma(double a, double b, double c);
+__generic<let N : int> __intrinsic vector<double, N> fma(vector<double, N> a, vector<double, N> b, vector<double, N> c);
+__generic<let N : int, let M : int> __intrinsic matrix<double,N,M> fma(matrix<double,N,M> a, matrix<double,N,M> b, matrix<double,N,M> c);
+
+// Floating point remainder of x/y
+__generic<T : __BuiltinFloatingPointType> __intrinsic T fmod(T x, T y);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> fmod(vector<T,N> x, vector<T,N> y);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> fmod(matrix<T,N,M> x, matrix<T,N,M> y);
+
+// Fractional part
+__generic<T : __BuiltinFloatingPointType> __intrinsic T frac(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> frac(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> frac(matrix<T,N,M> x);
+
+// Split float into mantissa and exponent
+__generic<T : __BuiltinFloatingPointType> __intrinsic T frexp(T x, out T exp);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> frexp(vector<T,N> x, out vector<T,N> exp);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> frexp(matrix<T,N,M> x, out matrix<T,N,M> exp);
+
+// Texture filter width
+__generic<T : __BuiltinFloatingPointType> __intrinsic T fwidth(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> fwidth(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> fwidth(matrix<T,N,M> x);
+
+)", R"(
+
+// Get number of samples in render target
+__intrinsic uint GetRenderTargetSampleCount();
+
+// Get position of given sample
+__intrinsic float2 GetRenderTargetSamplePosition(int Index);
+
+// Group memory barrier
+__intrinsic void GroupMemoryBarrier();
+__intrinsic void GroupMemoryBarrierWithGroupSync();
+
+// Atomics
+__intrinsic void InterlockedAdd(in out  int dest,  int value, out  int original_value);
+__intrinsic void InterlockedAdd(in out uint dest, uint value, out uint original_value);
+
+__intrinsic void InterlockedAnd(in out  int dest,  int value, out  int original_value);
+__intrinsic void InterlockedAnd(in out uint dest, uint value, out uint original_value);
+
+__intrinsic void InterlockedCompareExchange(in out  int dest,  int compare_value,  int value, out  int original_value);
+__intrinsic void InterlockedCompareExchange(in out uint dest, uint compare_value, uint value, out uint original_value);
+
+__intrinsic void InterlockedCompareStore(in out  int dest,  int compare_value,  int value);
+__intrinsic void InterlockedCompareStore(in out uint dest, uint compare_value, uint value);
+
+__intrinsic void InterlockedExchange(in out  int dest,  int value, out  int original_value);
+__intrinsic void InterlockedExchange(in out uint dest, uint value, out uint original_value);
+
+__intrinsic void InterlockedMax(in out  int dest,  int value, out  int original_value);
+__intrinsic void InterlockedMax(in out uint dest, uint value, out uint original_value);
+
+__intrinsic void InterlockedMin(in out  int dest,  int value, out  int original_value);
+__intrinsic void InterlockedMin(in out uint dest, uint value, out uint original_value);
+
+__intrinsic void InterlockedOr(in out  int dest,  int value, out  int original_value);
+__intrinsic void InterlockedOr(in out uint dest, uint value, out uint original_value);
+
+__intrinsic void InterlockedXor(in out  int dest,  int value, out  int original_value);
+__intrinsic void InterlockedXor(in out uint dest, uint value, out uint original_value);
+
+)", R"(
 
 
 __intrinsic float dFdx(float v);
