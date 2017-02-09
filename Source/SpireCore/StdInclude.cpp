@@ -353,6 +353,27 @@ __intrinsic void InterlockedOr(in out uint dest, uint value, out uint original_v
 __intrinsic void InterlockedXor(in out  int dest,  int value, out  int original_value);
 __intrinsic void InterlockedXor(in out uint dest, uint value, out uint original_value);
 
+// Is floating-point value finite?
+__generic<T : __BuiltinFloatingPointType> __intrinsic bool isfinite(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<bool,N> isfinite(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<bool,N,M> isfinite(matrix<T,N,M> x);
+
+// Is floating-point value infinite?
+__generic<T : __BuiltinFloatingPointType> __intrinsic bool isinf(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<bool,N> isinf(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<bool,N,M> isinf(matrix<T,N,M> x);
+
+// Is floating-point value not-a-number?
+__generic<T : __BuiltinFloatingPointType> __intrinsic bool isnan(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<bool,N> isnan(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<bool,N,M> isnan(matrix<T,N,M> x);
+
+// Construct float from mantissa and exponent
+__generic<T : __BuiltinFloatingPointType> __intrinsic T ldexp(T x, T exp);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> ldexp(vector<T,N> x, vector<T,N> exp);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> ldexp(matrix<T,N,M> x, matrix<T,N,M> exp);
+
+
 )", R"(
 
 
