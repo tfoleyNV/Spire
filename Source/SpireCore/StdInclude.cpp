@@ -43,6 +43,80 @@ __generic<T> __magic_type(HLSLRWStructuredBufferType) struct RWStructuredBuffer
 {
 };
 
+// Note(tfoley): Trying to systematically add all the HLSL builtins
+
+// A type that can be used as an operand for builtins
+__trait __BuiltinType {}
+
+// A type that can be used for arithmetic operations
+__trait __BuiltinArithmeticType : __BuiltinType {}
+
+// A type that logically has a sign (positive/negative/zero)
+__trait __BuiltinSignedArithmeticType : __BuiltinArithmeticType {}
+
+// A type that can represent non-integers
+__trait __BuiltinRealType : __BuiltinArithmeticType {}
+
+// A type that uses a floating-point representation
+__trait __BuiltinFloatingPointType : __BuiltinRealType, __BuiltinSignedType {}
+
+// Try to terminate the current draw or dispatch call (HLSL SM 4.0)
+__intrinsic void abort();
+
+// Absolute value (HLSL SM 1.0)
+__generic<T : __BuiltinSignedArithmeticType> __intrinsic T abs(T x);
+__generic<T : __BuiltinSignedArithmeticType, let N : int> __intrinsic vector<T,N> abs(vector<T,N> x);
+__generic<T : __BuiltinSignedArithmeticType, let N : int, let M : int> __intrinsic matrix<T,N,M> abs(matrix<T,N,M> x);
+
+// Inverse cosine (HLSL SM 1.0)
+__generic<T : __BuiltinFloatingPointType> __intrinsic T abs(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> acos(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> acos(matrix<T,N,M> x);
+
+// Test if all components are non-zero (HLSL SM 1.0)
+__generic<T : __BuiltinType> __intrinsic T all(T x);
+__generic<T : __BuiltinType, let N : int> __intrinsic vector<T,N> all(vector<T,N> x);
+__generic<T : __BuiltinType, let N : int, let M : int> __intrinsic matrix<T,N,M> all(matrix<T,N,M> x);
+
+// Barrier for writes to all memory spaces (HLSL SM 5.0)
+__intrinsic void AllMemoryBarrier();
+
+// Thread-group sync and barrier for writes to all memory spaces (HLSL SM 5.0)
+__intrinsic void AllMemoryBarrierWithGroupSync();
+
+// Test if any components is non-zero (HLSL SM 1.0)
+__generic<T : __BuiltinType> __intrinsic T any(T x);
+__generic<T : __BuiltinType, let N : int> __intrinsic vector<T,N> any(vector<T,N> x);
+__generic<T : __BuiltinType, let N : int, let M : int> __intrinsic matrix<T,N,M> any(matrix<T,N,M> x);
+
+
+// Reinterpret bits as a double (HLSL SM 5.0)
+__intrinsic double asdouble(uint lowbits, uint highbits);
+
+// Reinterpret bits as a float (HLSL SM 4.0)
+__intrinsic float asfloat( int x);
+__intrinsic float asfloat(uint x);
+__generic<let N : int> __intrinsic vector<float,N> asfloat(vector< int,N> x);
+__generic<let N : int> __intrinsic vector<float,N> asfloat(vector<uint,N> x);
+__generic<let N : int, let M : int> __intrinsic matrix<float,N,M> asfloat(matrix< int,N,M> x);
+__generic<let N : int, let M : int> __intrinsic matrix<float,N,M> asfloat(matrix<uint,N,M> x);
+
+
+// Inverse sine (HLSL SM 1.0)
+__generic<T : __BuiltinFloatingPointType> __intrinsic T asin(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> asin(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> asin(matrix<T,N,M> x);
+
+// Reinterpret bits as an int (HLSL SM 4.0)
+__intrinsic int asint(float x);
+__intrinsic int asint(uint x);
+__generic<let N : int> __intrinsic vector<int,N> asint(vector<float,N> x);
+__generic<let N : int> __intrinsic vector<int,N> asint(vector<uint,N> x);
+__generic<let N : int, let M : int> __intrinsic int<float,N,M> asint(matrix<float,N,M> x);
+__generic<let N : int, let M : int> __intrinsic int<float,N,M> asint(matrix<uint,N,M> x);
+
+
+
 __intrinsic float dFdx(float v);
 __intrinsic float dFdy(float v);
 __intrinsic float fwidth(float v);
@@ -677,6 +751,7 @@ namespace Spire
 					}
 				}
 			}
+
 			sb << LibIncludeString;
 			code = sb.ProduceString();
 			return code;

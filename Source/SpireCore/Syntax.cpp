@@ -1603,5 +1603,19 @@ namespace Spire
 			throw "unimplemented";
 		}
 
+		// TraitDecl
+
+		RefPtr<SyntaxNode> TraitDecl::Accept(SyntaxVisitor * visitor)
+		{
+			visitor->VisitTraitDecl(this);
+			return this;
+		}
+
+		ExtensionDecl* TraitDecl::Clone(CloneContext & ctx)
+		{
+			throw "unimplemented";
+		}
+
+
 	}
 }
