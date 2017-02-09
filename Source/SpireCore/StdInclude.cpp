@@ -373,6 +373,80 @@ __generic<T : __BuiltinFloatingPointType> __intrinsic T ldexp(T x, T exp);
 __generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> ldexp(vector<T,N> x, vector<T,N> exp);
 __generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> ldexp(matrix<T,N,M> x, matrix<T,N,M> exp);
 
+// Vector length
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic T length(vector<T,N> x);
+
+// Linear interpolation
+__generic<T : __BuiltinFloatingPointType> __intrinsic T lerp(T x, T y, T s);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> lerp(vector<T,N> x, vector<T,N> y, vector<T,N> s);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> lerp(matrix<T,N,M> x, matrix<T,N,M> y, matrix<T,N,M> s);
+
+// Legacy lighting function (obsolete)
+__intrinsic float4 lit(float n_dot_l, float n_dot_h, float m);
+
+// Base-e logarithm
+__generic<T : __BuiltinFloatingPointType> __intrinsic T log(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> log(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> log(matrix<T,N,M> x);
+
+// Base-10 logarithm
+__generic<T : __BuiltinFloatingPointType> __intrinsic T log10(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> log10(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> log10(matrix<T,N,M> x);
+
+// Base-2 logarithm
+__generic<T : __BuiltinFloatingPointType> __intrinsic T log2(T x);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> log2(vector<T,N> x);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> log2(matrix<T,N,M> x);
+
+// multiply-add
+__generic<T : __BuiltinArithmeticType> __intrinsic T mad(T mvalue, T avalue, T bvalue);
+__generic<T : __BuiltinArithmeticType, let N : int> __intrinsic vector<T,N> mad(vector<T,N> mvalue, vector<T,N> avalue, vector<T,N> bvalue);
+__generic<T : __BuiltinArithmeticType, let N : int, let M : int> __intrinsic matrix<T,N,M> mad(matrix<T,N,M> mvalue, matrix<T,N,M> avalue, matrix<T,N,M> bvalue);
+
+// maximum
+__generic<T : __BuiltinArithmeticType> __intrinsic T max(T x, T y);
+__generic<T : __BuiltinArithmeticType, let N : int> __intrinsic vector<T,N> max(vector<T,N> x, vector<T,N> y);
+__generic<T : __BuiltinArithmeticType, let N : int, let M : int> __intrinsic matrix<T,N,M> max(matrix<T,N,M> x, matrix<T,N,M> y);
+
+// minimum
+__generic<T : __BuiltinArithmeticType> __intrinsic T min(T x, T y);
+__generic<T : __BuiltinArithmeticType, let N : int> __intrinsic vector<T,N> min(vector<T,N> x, vector<T,N> y);
+__generic<T : __BuiltinArithmeticType, let N : int, let M : int> __intrinsic matrix<T,N,M> min(matrix<T,N,M> x, matrix<T,N,M> y);
+
+// split into integer and fractional parts (both with same sign)
+__generic<T : __BuiltinFloatingPointType> __intrinsic T modf(T x, out T ip);
+__generic<T : __BuiltinFloatingPointType, let N : int> __intrinsic vector<T,N> modf(vector<T,N> x, out vector<T,N> ip);
+__generic<T : __BuiltinFloatingPointType, let N : int, let M : int> __intrinsic matrix<T,N,M> modf(matrix<T,N,M> x, out matrix<T,N,M> ip);
+
+// msad4 (whatever that is)
+__intrinsic uint4 msad4(uint reference, uint2 source, uint4 accum);
+
+// General inner products
+
+// scalar-scalar
+__generic<T : __BuiltinArithmeticType> __intrinsic T mul(T x, T y);
+
+// scalar-vector and vector-scalar
+__generic<T : __BuiltinArithmeticType, let N : int> __intrinsic vector<T,N> mul(vector<T,N> x, T y);
+__generic<T : __BuiltinArithmeticType, let N : int> __intrinsic vector<T,N> mul(T x, vector<T,N> y);
+
+// scalar-matrix and matrix-scalar
+__generic<T : __BuiltinArithmeticType, let N : int, let M :int> __intrinsic matrix<T,N,M> mul(matrix<T,N,M> x, T y);
+__generic<T : __BuiltinArithmeticType, let N : int, let M :int> __intrinsic matrix<T,N,M> mul(T x, matrix<T,N,M> y);
+
+// vector-vector (dot product)
+__generic<T : __BuiltinArithmeticType, let N : int> __intrinsic T mul(vector<T,N> x, vector<T,N> y);
+
+// vector-matrix
+__generic<T : __BuiltinArithmeticType, let N : int, let M : int> __intrinsic vector<T,M> mul(vector<T,N> x, matrix<T,N,M> y);
+
+// matrix-vector
+__generic<T : __BuiltinArithmeticType, let N : int, let M : int> __intrinsic vector<T,N> mul(matrix<T,N,M> x, vector<T,M> y);
+
+// matrix-matrix
+__generic<T : __BuiltinArithmeticType, let R : int, let N : int, let C : int> __intrinsic matrix<T,R,C> mul(matrix<T,R,N> x, matrix<T,N,C> y);
+
 
 )", R"(
 
