@@ -995,17 +995,6 @@ namespace Spire
 			}
 		}
 
-        static RefPtr<Decl> ParseVarDecl(
-            Parser*                 parser,
-            ContainerDecl*          containerDecl,
-            DeclaratorInfo const&   declaratorInfo)
-        {
-			RefPtr<VarDeclBase> decl = CreateVarDeclForContext(containerDecl);
-			ParseVarDeclCommon(parser, decl, declaratorInfo);
-			parser->ReadToken(TokenType::Semicolon);
-			return decl;
-        }
-
 		static RefPtr<Declarator> ParseDeclarator(Parser* parser);
 
 		static RefPtr<Declarator> ParseDirectAbstractDeclarator(
@@ -1071,6 +1060,9 @@ namespace Spire
 						declarator = arrayDeclarator;
 						continue;
 					}
+
+				case TokenType::LParent:
+					break;
 
 				default:
 					break;
@@ -1159,32 +1151,74 @@ namespace Spire
             Parser*         parser,
             ContainerDecl*  containerDecl)
         {
-            DeclaratorInfo declaratorInfo;
-
+			RefPtr<RateSyntaxNode> rate;
             if (parser->tokenReader.PeekTokenType() == TokenType::At)
             {
-                declaratorInfo.rate = parser->ParseRate();
+                rate = parser->ParseRate();
             }
-            declaratorInfo.typeSpec = parser->ParseType();
+			auto typeSpec = parser->ParseType();
+            
 
 			RefPtr<Declarator> declarator = ParseDeclarator(parser);
+
+			DeclaratorInfo declaratorInfo;
+			declaratorInfo.rate = rate;
+			declaratorInfo.typeSpec = typeSpec;
 			UnwrapDeclarator(declarator, &declaratorInfo);
 
-            // Look at the token after the declarator to disambiguate
+			// Rather than parse function declarators properly for now,
+			// we'll just do a quick disambiguation here. This won't
+			// matter unless we actually decide to support function-type parameters,
+			// using C syntax.
 			//
-			// Note(tfoley): the correct approach would be to parse function parameters
-			// as part of a function declarator, and then disambiguate on that result.
-            switch (parser->tokenReader.PeekTokenType())
-            {
-            case TokenType::LParent:
-                // It must be a function
-                return ParseFuncDecl(parser, containerDecl, declaratorInfo);
+			if( parser->tokenReader.PeekTokenType() == TokenType::LParent )
+			{
+				// Looks like a function, so parse it like one.
+				return ParseFuncDecl(parser, containerDecl, declaratorInfo);
+			}
 
-            default:
-                // Assume it is a variable-like declaration
-                return ParseVarDecl(parser, containerDecl, declaratorInfo);
-            }
-        }
+			// Otherwise we are looking at the first declaration in a sequence
+			// of variable declarations.
+			for(;;)
+			{
+				RefPtr<VarDeclBase> decl = CreateVarDeclForContext(containerDecl);
+				ParseVarDeclCommon(parser, decl, declaratorInfo);
+
+				// TODO(tfoley): need to figure out how to attach modifiers to
+				// the whole lot of the declarations... :(
+				AddMember(containerDecl, decl);
+
+				// end of the sequence?
+				if( AdvanceIf(parser, TokenType::Semicolon) )
+				{
+					return nullptr;
+				}
+
+				// ad-hoc recovery
+				switch(parser->tokenReader.PeekTokenType())
+				{
+				case TokenType::EndOfFile:
+				case TokenType::RBrace:
+					return nullptr;
+
+				default:
+					break;
+				}
+
+				parser->ReadToken(TokenType::Comma);
+
+				// expect another variable declaration...
+				RefPtr<Declarator> declarator = ParseDeclarator(parser);
+
+				// Note(tfoley): right here we are re-using existing AST
+				// nodes for the rate and type specifier, and just blindly
+				// applying them toa new declaration. That probably
+				// won't end well for anybody...
+				declaratorInfo.rate = rate;
+				declaratorInfo.typeSpec = typeSpec;
+				UnwrapDeclarator(declarator, &declaratorInfo);
+			}
+		}
 
 		//
 		// layout-semantic ::= (register | packoffset) '(' register-name component-mask? ')'
