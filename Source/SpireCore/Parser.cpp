@@ -176,7 +176,11 @@ namespace Spire
 			Parser* parser,
 			Decl*	decl);
 
-		static RefPtr<Decl> ParseDecl(
+		static RefPtr<DeclBase> ParseDecl(
+			Parser*			parser,
+			ContainerDecl*	containerDecl);
+
+		static RefPtr<Decl> ParseSingleDecl(
 			Parser*			parser,
 			ContainerDecl*	containerDecl);
 
@@ -1425,7 +1429,7 @@ namespace Spire
 			parser->genericDepth--;
 			parser->ReadToken(TokenType::OpGreater);
 
-			decl->inner = ParseDecl(parser, decl.Ptr());
+			decl->inner = ParseSingleDecl(parser, decl.Ptr());
 
 			// A generic decl hijacks the name of the declaration
 			// it wraps, so that lookup can find it.
@@ -1493,7 +1497,7 @@ namespace Spire
 			return decl;
 		}
 
-        static RefPtr<Decl> ParseDeclWithModifiers(
+        static RefPtr<DeclBase> ParseDeclWithModifiers(
             Parser*             parser,
             ContainerDecl*      containerDecl,
             Modifiers			modifiers )
@@ -1560,13 +1564,37 @@ namespace Spire
             return decl;
         }
 
-        static RefPtr<Decl> ParseDecl(
+        static RefPtr<DeclBase> ParseDecl(
             Parser*         parser,
             ContainerDecl*  containerDecl)
         {
             Modifiers modifiers = ParseModifiers(parser);
             return ParseDeclWithModifiers(parser, containerDecl, modifiers);
         }
+
+		static RefPtr<Decl> ParseSingleDecl(
+			Parser*			parser,
+			ContainerDecl*	containerDecl)
+		{
+			auto declBase = ParseDecl(parser, containerDecl);
+			if(!declBase)
+				return nullptr;
+			if( auto decl = declBase.As<Decl>() )
+			{
+				return decl;
+			}
+			else if( auto declGroup = declBase.As<DeclGroup>() )
+			{
+				if( declGroup->decls.Count() == 1 )
+				{
+					return declGroup->decls[0];
+				}
+			}
+
+			parser->sink->diagnose(declBase->Position, Diagnostics::unimplemented, "didn't expect multiple declarations here");
+			return nullptr;
+		}
+
 
         // Parse a body consisting of declarations
         static void ParseDeclBody(
@@ -1576,12 +1604,7 @@ namespace Spire
         {
             while(!AdvanceIfMatch(parser, closingToken))
             {
-                RefPtr<Decl> decl = ParseDecl(parser, containerDecl);
-                if (decl)
-                {
-                    decl->ParentDecl = containerDecl;
-                    //containerDecl->Members.Add(decl);
-                }
+                ParseDecl(parser, containerDecl);
                 TryRecover(parser);
             }
         }

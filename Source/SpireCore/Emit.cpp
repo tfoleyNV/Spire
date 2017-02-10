@@ -20,6 +20,7 @@ struct EmitContext
 //
 
 static void EmitDecl(EmitContext* context, RefPtr<Decl> decl);
+static void EmitDecl(EmitContext* context, RefPtr<DeclBase> declBase);
 static void EmitType(EmitContext* context, RefPtr<ExpressionType> type, String const& name);
 static void EmitType(EmitContext* context, RefPtr<ExpressionType> type);
 static void EmitExpr(EmitContext* context, RefPtr<ExpressionSyntaxNode> expr);
@@ -1078,6 +1079,23 @@ static void EmitDecl(EmitContext* context, RefPtr<Decl> decl)
 	}
 
 	throw "unimplemented";
+}
+
+static void EmitDecl(EmitContext* context, RefPtr<DeclBase> declBase)
+{
+	if( auto decl = declBase.As<Decl>() )
+	{
+		EmitDecl(context, decl);
+	}
+	else if(auto declGroup = declBase.As<DeclGroup>())
+	{
+		for(auto d : declGroup->decls)
+			EmitDecl(context, d);
+	}
+	else
+	{
+		throw "unimplemented";
+	}
 }
 
 String EmitProgram(ProgramSyntaxNode* program)

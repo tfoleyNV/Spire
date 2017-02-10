@@ -858,7 +858,14 @@ namespace Spire
 			}
 		};
 
-		class Decl : public ModifiableSyntaxNode
+		// An intermediate type to represent either a single declaration, or a group of declarations
+		class DeclBase : public ModifiableSyntaxNode
+		{
+		public:
+			virtual DeclBase * Clone(CloneContext & ctx) = 0;
+		};
+
+		class Decl : public DeclBase
 		{
 		public:
 			ContainerDecl*  ParentDecl;
@@ -884,6 +891,13 @@ namespace Spire
 			}
 
 			virtual Decl * Clone(CloneContext & ctx) = 0;
+		};
+
+		// A group of declarations that should be treated as a unit
+		class DeclGroup : public DeclBase
+		{
+		public:
+			List<RefPtr<Decl>> decls;
 		};
 
 		template<typename T>
@@ -1821,7 +1835,7 @@ namespace Spire
 		class VarDeclrStatementSyntaxNode : public StatementSyntaxNode
 		{
 		public:
-			RefPtr<Decl> decl;
+			RefPtr<DeclBase> decl;
 			virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
 			virtual VarDeclrStatementSyntaxNode * Clone(CloneContext & ctx) override;
 		};
