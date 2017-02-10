@@ -1147,7 +1147,7 @@ namespace Spire
 		}
 
 
-        static RefPtr<Decl> ParseDeclaratorDecl(
+        static RefPtr<DeclBase> ParseDeclaratorDecl(
             Parser*         parser,
             ContainerDecl*  containerDecl)
         {
@@ -1177,38 +1177,27 @@ namespace Spire
 				return ParseFuncDecl(parser, containerDecl, declaratorInfo);
 			}
 
-			// Otherwise we are looking at the first declaration in a sequence
-			// of variable declarations.
+			// Otherwise we are looking at a variable declaration, which could be one in a sequence...
+			RefPtr<VarDeclBase> firstDecl = CreateVarDeclForContext(containerDecl);
+			ParseVarDeclCommon(parser, firstDecl, declaratorInfo);
+
+			if( AdvanceIf(parser, TokenType::Semicolon) )
+			{
+				// easy case: we only had a single declaration!
+				return firstDecl;
+			}
+
+			// Otherwise we are looking at a sequence of declarations.
+			RefPtr<DeclGroup> declGroup = new DeclGroup();
+			declGroup->Position = firstDecl->Position;
+			declGroup->decls.Add(firstDecl);
+
 			for(;;)
 			{
-				RefPtr<VarDeclBase> decl = CreateVarDeclForContext(containerDecl);
-				ParseVarDeclCommon(parser, decl, declaratorInfo);
-
-				// TODO(tfoley): need to figure out how to attach modifiers to
-				// the whole lot of the declarations... :(
-				AddMember(containerDecl, decl);
-
-				// end of the sequence?
-				if( AdvanceIf(parser, TokenType::Semicolon) )
-				{
-					return nullptr;
-				}
-
-				// ad-hoc recovery
-				switch(parser->tokenReader.PeekTokenType())
-				{
-				case TokenType::EndOfFile:
-				case TokenType::RBrace:
-					return nullptr;
-
-				default:
-					break;
-				}
-
 				parser->ReadToken(TokenType::Comma);
 
 				// expect another variable declaration...
-				RefPtr<Declarator> declarator = ParseDeclarator(parser);
+				declarator = ParseDeclarator(parser);
 
 				// Note(tfoley): right here we are re-using existing AST
 				// nodes for the rate and type specifier, and just blindly
@@ -1217,6 +1206,22 @@ namespace Spire
 				declaratorInfo.rate = rate;
 				declaratorInfo.typeSpec = typeSpec;
 				UnwrapDeclarator(declarator, &declaratorInfo);
+
+				RefPtr<VarDeclBase> nextDecl = CreateVarDeclForContext(containerDecl);
+				ParseVarDeclCommon(parser, nextDecl, declaratorInfo);
+
+				declGroup->decls.Add(nextDecl);
+
+				// end of the sequence?
+				if(AdvanceIf(parser, TokenType::Semicolon))
+					return declGroup;
+
+				// ad-hoc recovery, to avoid infinite loops
+				if( parser->isRecovering )
+				{
+					parser->ReadToken(TokenType::Semicolon);
+					return declGroup;
+				}
 			}
 		}
 
@@ -1536,7 +1541,7 @@ namespace Spire
             ContainerDecl*      containerDecl,
             Modifiers			modifiers )
         {
-            RefPtr<Decl> decl;
+            RefPtr<DeclBase> decl;
 
             // TODO: actual dispatch!
 			if (parser->LookAheadToken("shader") || parser->LookAheadToken("module"))
@@ -1592,7 +1597,17 @@ namespace Spire
 
 				if (containerDecl)
                 {
-					AddMember(containerDecl, decl);
+					if( auto dd = decl.As<Decl>() )
+					{
+						AddMember(containerDecl, dd);
+					}
+					else if(auto declGroup = decl.As<DeclGroup>())
+					{
+						for( auto dd : declGroup->decls )
+						{
+							AddMember(containerDecl, dd);
+						}
+					}
                 }
             }
             return decl;

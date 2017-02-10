@@ -898,6 +898,9 @@ namespace Spire
 		{
 		public:
 			List<RefPtr<Decl>> decls;
+
+			virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override { throw "unimplemented"; }
+			virtual DeclGroup * Clone(CloneContext & ctx) override { throw "unimplemented"; }
 		};
 
 		template<typename T>
