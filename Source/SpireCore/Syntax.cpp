@@ -1318,6 +1318,8 @@ namespace Spire
                 return "&&";
             case Operator::Or:
                 return "||";
+            case Operator::Sequence:
+                return ",";
             default:
                 return "";
             }
