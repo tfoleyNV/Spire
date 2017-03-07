@@ -599,7 +599,7 @@ namespace Spire
 
                 if(auto leftConst = left.As<ConstantIntVal>())
                 {
-                    if(auto rightConst = left.As<ConstantIntVal>())
+                    if(auto rightConst = right.As<ConstantIntVal>())
                     {
                         return leftConst->value == rightConst->value;
                     }
