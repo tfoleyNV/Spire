@@ -554,6 +554,7 @@ namespace Spire
                 codeWriter.Insert(new ContinueInstruction());
                 return stmt;
             }
+#if TIMREMOVED
             virtual RefPtr<ExpressionSyntaxNode> VisitSelectExpression(SelectExpressionSyntaxNode * expr) override
             {
                 expr->SelectorExpr->Accept(this);
@@ -565,6 +566,7 @@ namespace Spire
                 PushStack(codeWriter.Select(predOp, v0, v1));
                 return expr;
             }
+#endif
             ILOperand * EnsureBoolType(ILOperand * op, RefPtr<ExpressionType> type)
             {
                 if (!type->Equals(ExpressionType::GetBool()))
