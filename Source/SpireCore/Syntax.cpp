@@ -948,8 +948,10 @@ namespace Spire
             return "error";
         }
 
-        bool ErrorType::EqualsImpl(const ExpressionType * /*type*/) const
+        bool ErrorType::EqualsImpl(const ExpressionType* type) const
         {
+            if (auto errorType = type->As<ErrorType>())
+                return true;
             return false;
         }
 
