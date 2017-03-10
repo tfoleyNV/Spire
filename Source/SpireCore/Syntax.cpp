@@ -1467,6 +1467,19 @@ namespace Spire
             throw "unimplemented";
         }
 
+        // GenericTypeConstraintDecl
+
+        RefPtr<SyntaxNode> GenericTypeConstraintDecl::Accept(SyntaxVisitor * visitor)
+        {
+            return this;
+        }
+
+        GenericTypeConstraintDecl * GenericTypeConstraintDecl::Clone(CloneContext & ctx)
+        {
+            throw "unimplemented";
+        }
+
+
         // GenericValueParamDecl
 
         RefPtr<SyntaxNode> GenericValueParamDecl::Accept(SyntaxVisitor * /*visitor*/) {
@@ -1622,6 +1635,15 @@ namespace Spire
             // and apply substitutions where it makes sense
 
             return type->Substitute(substitutions.Ptr()).As<ExpressionType>();
+        }
+
+        DeclRef DeclRef::Substitute(DeclRef declRef) const
+        {
+            if(!substitutions)
+                return declRef;
+
+            int diff = 0;
+            return declRef.SubstituteImpl(substitutions.Ptr(), &diff);
         }
 
         DeclRef DeclRef::SubstituteImpl(Substitutions* subst, int* /*ioDiff*/)
