@@ -268,6 +268,9 @@ DIAGNOSTIC(39999, Note, genericSignatureTried, "see declaration of $0")
 
 DIAGNOSTIC(39999, Error, expectedATraitGot, "expected a trait, got '$0'")
 
+DIAGNOSTIC(39999, Error, toManyArgumentsExpectedNGotM, "too many argument for call, expected $0, got $1")
+DIAGNOSTIC(39999, Error, notEnoughArgumentsExpectedNGotM, "not enough argument for call, expected $0, got $1")
+
 
 //
 // 4xxxx - IL code generation.

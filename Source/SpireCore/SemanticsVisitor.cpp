@@ -1969,37 +1969,101 @@ namespace Spire
 
             //
 
-            struct Constraint
+            enum class ConstraintDirection : int
             {
-                Decl*		decl; // the declaration of the thing being constraints
-                RefPtr<Val>	val; // the value to which we are constraining it
-                bool satisfied = false; // Has this constraint been met?
+                Sub = -1,
+                Equal = 0,
+                Sup = 1,
+            };
+            ConstraintDirection Reverse(ConstraintDirection dir)
+            {
+                return ConstraintDirection(-int(dir));
+            }
+
+            struct ConstraintVar
+            {
+                // The declaration of the variable that we are trying to solve for
+                Decl*   decl;
+
+                // lower and upper bounds, if any
+                RefPtr<Val>     lower;
+                RefPtr<Val>     upper;
+
+                // TODO(tfoley): also need to track bounds related to traits...
+
+                // TODO(tfoley): also track whether we've already failed...
             };
 
             // A collection of constraints that will need to be satisified (solved)
             // in order for checking to suceed.
             struct ConstraintSystem
             {
-                List<Constraint> constraints;
+                // The declaration for which we are trying to solve things
+                RefPtr<GenericDecl> genericDecl;
+
+                // A variable for each generic parameter, which needs to have a solved value
+                List<ConstraintVar> vars;
             };
 
-            RefPtr<ExpressionType> TryJoinVectorAndScalarType(
-                RefPtr<VectorExpressionType> vectorType,
-                RefPtr<BasicExpressionType>  scalarType)
+            void InitializeConstraintSystem(
+                ConstraintSystem*   system,
+                GenericDecl*        genericDecl)
+            {
+                system->genericDecl = genericDecl;
+
+                // Add constraint-solver variables for each of the parameters
+                for(auto mm : genericDecl->Members)
+                {
+                    if(auto typeParam = mm.As<GenericTypeParamDecl>())
+                    {
+                        ConstraintVar var;
+                        var.decl = typeParam.Ptr();
+                        system->vars.Add(var);
+                    }
+                    else if(auto valParam = mm.As<GenericValueParamDecl>())
+                    {
+                        ConstraintVar var;
+                        var.decl = valParam.Ptr();
+                        system->vars.Add(var);
+                    }
+                }
+            }
+
+            enum class MeetOrJoin
+            {
+                Meet,
+                Join,
+            };
+
+            RefPtr<ExpressionType> TryMeetOrJoinVectorAndScalarType(
+                RefPtr<VectorExpressionType>    vectorType,
+                RefPtr<BasicExpressionType>     scalarType,
+                MeetOrJoin                      meetOrJoin)
             {
                 // Join( vector<T,N>, S ) -> vetor<Join(T,S), N>
                 //
                 // That is, the join of a vector and a scalar type is
                 // a vector type with a joined element type.
-                auto joinElementType = TryJoinTypes(
+                auto joinElementType = TryMeetOrJoinTypes(
                     vectorType->elementType,
-                    scalarType);
+                    scalarType,
+                    meetOrJoin);
                 if(!joinElementType)
                     return nullptr;
 
-                return new VectorExpressionType(
-                    joinElementType,
-                    vectorType->elementCount);
+                switch(meetOrJoin)
+                {
+                case MeetOrJoin::Join:
+                    return new VectorExpressionType(
+                        joinElementType,
+                        vectorType->elementCount);
+
+                case MeetOrJoin::Meet:
+                    return joinElementType;
+                }
+
+                assert(!"unreachable");
+                return nullptr;
             }
 
             bool DoesTypeConformToTrait(
@@ -2025,9 +2089,10 @@ namespace Spire
                 return false;
             }
 
-            RefPtr<ExpressionType> TryJoinTypeWithTrait(
+            RefPtr<ExpressionType> TryMeetOrJoinTypeWithTrait(
                 RefPtr<ExpressionType>  type,
-                TraitDeclRef            traitDeclRef)
+                TraitDeclRef            traitDeclRef,
+                MeetOrJoin              meetOrJoin)
             {
                 // The most basic test here should be: does the type declare conformance to the trait.
                 if(DoesTypeConformToTrait(type, traitDeclRef))
@@ -2044,10 +2109,14 @@ namespace Spire
             }
 
             // Try to compute the "join" between two types
-            RefPtr<ExpressionType> TryJoinTypes(
+            RefPtr<ExpressionType> TryMeetOrJoinTypes(
                 RefPtr<ExpressionType>  left,
-                RefPtr<ExpressionType>  right)
+                RefPtr<ExpressionType>  right,
+                MeetOrJoin              meetOrJoin)
             {
+                if(!left) return right;
+                if(!right) return left;
+
                 // Easy case: they are the same type!
                 if (left->Equals(right))
                     return left;
@@ -2064,20 +2133,20 @@ namespace Spire
                         // either operand is of type `half`, then we promote
                         // to at least `float`
 
-                        // Return the one that had higher rank...
-                        if (leftFlavor > rightFlavor)
-                            return left;
-                        else
+                        switch(meetOrJoin)
                         {
-                            assert(rightFlavor > leftFlavor);
-                            return right;
+                        case MeetOrJoin::Join:
+                                return leftFlavor > rightFlavor ? left : right;
+
+                        case MeetOrJoin::Meet:
+                                return leftFlavor > rightFlavor ? right : left;
                         }
                     }
 
                     // We can also join a vector and a scalar
                     if(auto rightVector = right->As<VectorExpressionType>())
                     {
-                        return TryJoinVectorAndScalarType(rightVector, leftBasic);
+                        return TryMeetOrJoinVectorAndScalarType(rightVector, leftBasic, meetOrJoin);
                     }
                 }
 
@@ -2092,9 +2161,10 @@ namespace Spire
                             return nullptr;
 
                         // Try to join the element types
-                        auto joinElementType = TryJoinTypes(
+                        auto joinElementType = TryMeetOrJoinTypes(
                             leftVector->elementType,
-                            rightVector->elementType);
+                            rightVector->elementType,
+                            meetOrJoin);
                         if(!joinElementType)
                             return nullptr;
 
@@ -2106,7 +2176,7 @@ namespace Spire
                     // We can also join a vector and a scalar
                     if(auto rightBasic = right->As<BasicExpressionType>())
                     {
-                        return TryJoinVectorAndScalarType(leftVector, rightBasic);
+                        return TryMeetOrJoinVectorAndScalarType(leftVector, rightBasic, meetOrJoin);
                     }
                 }
 
@@ -2116,7 +2186,7 @@ namespace Spire
                     if( auto leftTraitRef = leftDeclRefType->declRef.As<TraitDeclRef>() )
                     {
                         // 
-                        return TryJoinTypeWithTrait(right, leftTraitRef);
+                        return TryMeetOrJoinTypeWithTrait(right, leftTraitRef, meetOrJoin);
                     }
                 }
                 if(auto rightDeclRefType = right->As<DeclRefType>())
@@ -2124,13 +2194,51 @@ namespace Spire
                     if( auto rightTraitRef = rightDeclRefType->declRef.As<TraitDeclRef>() )
                     {
                         // 
-                        return TryJoinTypeWithTrait(left, rightTraitRef);
+                        return TryMeetOrJoinTypeWithTrait(left, rightTraitRef, meetOrJoin);
                     }
                 }
 
                 // TODO: all the cases for vectors apply to matrices too!
 
                 // Default case is that we just fail.
+                return nullptr;
+            }
+
+            RefPtr<ExpressionType> TryJoinTypes(
+                RefPtr<ExpressionType>  left,
+                RefPtr<ExpressionType>  right)
+            {
+                return TryMeetOrJoinTypes(left, right, MeetOrJoin::Join);
+            }
+
+            RefPtr<ExpressionType> TryMeetTypes(
+                RefPtr<ExpressionType>  left,
+                RefPtr<ExpressionType>  right)
+            {
+                return TryMeetOrJoinTypes(left, right, MeetOrJoin::Meet);
+            }
+
+            bool AddTraitConformanceConstraint(
+                ConstraintSystem*       system,
+                RefPtr<ExpressionType>  sub,
+                RefPtr<ExpressionType>  sup)
+            {
+                return AddTypeConstraints(
+                    *system,
+                    sub,
+                    ConstraintDirection::Sub,
+                    sup);
+            }
+
+            ConstraintVar* FindConstraintVar(
+                ConstraintSystem*   system,
+                Decl*               decl)
+            {
+                for( auto& v : system->vars )
+                {
+                    if(v.decl == decl)
+                        return &v;
+                }
                 return nullptr;
             }
 
@@ -2150,47 +2258,68 @@ namespace Spire
                 // The generic itself will have some constraints, so we need to try and solve those too
                 for( auto constraintDeclRef : genericDeclRef.GetMembersOfType<GenericTypeConstraintDeclRef>() )
                 {
-                    if(!TryUnifyTypes(*system, constraintDeclRef.GetSub(), constraintDeclRef.GetSup()))
+                    // TODO: we really want to check that these constraints actually apply to something,
+                    // and arent' just testing unrelated types...
+                    if(!AddTraitConformanceConstraint(
+                        system,
+                        constraintDeclRef.GetSub(),
+                        constraintDeclRef.GetSup()))
+                    {
+                        // couldn't satisfy this constraint
                         return nullptr;
+                    }
                 }
 
-                // We will loop over the generic parameters, and for
-                // each we will try to find a way to satisfy all
-                // the constraints for that parameter
+                // With the way we've defined things, the solution better be done.
                 List<RefPtr<Val>> args;
                 for (auto m : genericDeclRef.GetMembers())
                 {
                     if (auto typeParam = m.As<GenericTypeParamDeclRef>())
                     {
+                        auto var = FindConstraintVar(system, typeParam.GetDecl());
+                        assert(var);
+                        if(!var) return nullptr;
+
                         RefPtr<ExpressionType> type = nullptr;
-                        for (auto& c : system->constraints)
+
+                        // Need to confirm that the variable was solved!
+
+                        auto lower = var->lower.As<ExpressionType>();
+                        auto upper = var->upper.As<ExpressionType>();
+
+                        if(!lower && !upper)
                         {
-                            if (c.decl != typeParam.GetDecl())
-                                continue;
-
-                            auto cType = c.val.As<ExpressionType>();
-                            assert(cType.Ptr());
-
-                            if (!type)
-                            {
-                                type = cType;
-                            }
-                            else
-                            {
-                                auto joinType = TryJoinTypes(type, cType);
-                                if (!joinType)
-                                {
-                                    // failure!
-                                    return nullptr;
-                                }
-                                type = joinType;
-                            }
-
-                            c.satisfied = true;
+                            // No constraints applied to this variable, so we have no guess
+                            //
+                            // TODO(tfoley): I suppose in this case we might look at a default...
+                            return nullptr;
+                        }
+                        // If there is only one bound, then use it
+                        else if(!lower)
+                        {
+                            type = upper;
+                        }
+                        else if(!upper)
+                        {
+                            type = lower;
+                        }
+                        else if(lower->Equals(upper))
+                        {
+                            type = lower;
+                        }
+                        else
+                        {
+                            // This is the one hard part: we need
+                            // to find the "best" type between `lower` and `upper`
+                            //
+                            // For now we just pick the upper bound;
+                            type = upper;
                         }
 
                         if (!type)
                         {
+                            throw 99;
+
                             // failure!
                             return nullptr;
                         }
@@ -2201,30 +2330,12 @@ namespace Spire
                         // TODO(tfoley): maybe support more than integers some day?
                         // TODO(tfoley): figure out how this needs to interact with
                         // compile-time integers that aren't just constants...
-                        RefPtr<ConstantIntVal> val = nullptr;
-                        for (auto& c : system->constraints)
-                        {
-                            if (c.decl != valParam.GetDecl())
-                                continue;
 
-                            auto cVal = c.val.As<ConstantIntVal>();
-                            assert(cVal.Ptr());
+                        auto var = FindConstraintVar(system, valParam.GetDecl());
+                        assert(var);
+                        if(!var) return nullptr;
 
-                            if (!val)
-                            {
-                                val = cVal;
-                            }
-                            else
-                            {
-                                if (val->value != cVal->value)
-                                {
-                                    // failure!
-                                    return nullptr;
-                                }
-                            }
-
-                            c.satisfied = true;
-                        }
+                        RefPtr<IntVal> val = var->lower.As<IntVal>();
 
                         if (!val)
                         {
@@ -2239,122 +2350,14 @@ namespace Spire
                     }
                 }
 
-                // Make sure we haven't constructed any spurious constraints
-                // that we aren't able to satisfy:
-                for (auto c : system->constraints)
-                {
-                    if (!c.satisfied)
-                    {
-                        return nullptr;
-                    }
-                }
-
-                // Consruct a reference to the extension with our constraint variables
-                // as the 
+                // Consruct a substitution that specialized the generic to the
+                // argument values that we solved for.
                 RefPtr<Substitutions> solvedSubst = new Substitutions();
                 solvedSubst->genericDecl = genericDeclRef.GetDecl();
                 solvedSubst->outer = genericDeclRef.substitutions;
                 solvedSubst->args = args;
 
                 return solvedSubst;
-
-
-#if 0
-                List<RefPtr<Val>> solvedArgs;
-                for (auto varArg : varSubst->args)
-                {
-                    if (auto typeVar = dynamic_cast<ConstraintVarType*>(varArg.Ptr()))
-                    {
-                        RefPtr<ExpressionType> type = nullptr;
-                        for (auto& c : system->constraints)
-                        {
-                            if (c.decl != typeVar->declRef.GetDecl())
-                                continue;
-
-                            auto cType = c.val.As<ExpressionType>();
-                            assert(cType.Ptr());
-
-                            if (!type)
-                            {
-                                type = cType;
-                            }
-                            else
-                            {
-                                if (!type->Equals(cType))
-                                {
-                                    // failure!
-                                    return nullptr;
-                                }
-                            }
-
-                            c.satisfied = true;
-                        }
-
-                        if (!type)
-                        {
-                            // failure!
-                            return nullptr;
-                        }
-                        solvedArgs.Add(type);
-                    }
-                    else if (auto valueVar = dynamic_cast<ConstraintVarInt*>(varArg.Ptr()))
-                    {
-                        // TODO(tfoley): maybe support more than integers some day?
-                        RefPtr<IntVal> val = nullptr;
-                        for (auto& c : system->constraints)
-                        {
-                            if (c.decl != valueVar->declRef.GetDecl())
-                                continue;
-
-                            auto cVal = c.val.As<IntVal>();
-                            assert(cVal.Ptr());
-
-                            if (!val)
-                            {
-                                val = cVal;
-                            }
-                            else
-                            {
-                                if (val->value != cVal->value)
-                                {
-                                    // failure!
-                                    return nullptr;
-                                }
-                            }
-
-                            c.satisfied = true;
-                        }
-
-                        if (!val)
-                        {
-                            // failure!
-                            return nullptr;
-                        }
-                        solvedArgs.Add(val);
-                    }
-                    else
-                    {
-                        // ignore anything that isn't a generic parameter
-                    }
-                }
-
-                // Make sure we haven't constructed any spurious constraints
-                // that we aren't able to satisfy:
-                for (auto c : system->constraints)
-                {
-                    if (!c.satisfied)
-                    {
-                        return nullptr;
-                    }
-                }
-
-                RefPtr<Substitutions> newSubst = new Substitutions();
-                newSubst->genericDecl = varSubst->genericDecl;
-                newSubst->outer = varSubst->outer;
-                newSubst->args = solvedArgs;
-                return newSubst;
-
-#endif
             }
 
             //
@@ -2516,12 +2519,12 @@ namespace Spire
                 {
                     if (argCount < paramCounts.required)
                     {
-                        getSink()->diagnose(context.appExpr, Diagnostics::unimplemented, "not enough arguments for call");
+                        getSink()->diagnose(context.appExpr, Diagnostics::notEnoughArgumentsExpectedNGotM, paramCounts.required, argCount);
                     }
                     else
                     {
                         assert(argCount > paramCounts.allowed);
-                        getSink()->diagnose(context.appExpr, Diagnostics::unimplemented, "too many arguments for call");
+                        getSink()->diagnose(context.appExpr, Diagnostics::toManyArgumentsExpectedNGotM, paramCounts.allowed, argCount);
                     }
                 }
 
@@ -2949,6 +2952,7 @@ namespace Spire
             bool TryUnifyVals(
                 ConstraintSystem&	constraints,
                 RefPtr<Val>			fst,
+                ConstraintDirection direction,
                 RefPtr<Val>			snd)
             {
                 // if both values are types, then unify types
@@ -2956,7 +2960,7 @@ namespace Spire
                 {
                     if (auto sndType = snd.As<ExpressionType>())
                     {
-                        return TryUnifyTypes(constraints, fstType, sndType);
+                        return AddTypeConstraints(constraints, fstType, direction, sndType);
                     }
                 }
 
@@ -2978,9 +2982,9 @@ namespace Spire
                         auto sndParam = sndInt.As<GenericParamIntVal>();
 
                         if (fstParam)
-                            TryUnifyIntParam(constraints, fstParam->declRef.GetDecl(), sndInt);
+                            AddIntParamEqualityConstraint(&constraints, fstParam->declRef.GetDecl(), sndInt);
                         if (sndParam)
-                            TryUnifyIntParam(constraints, sndParam->declRef.GetDecl(), fstInt);
+                            AddIntParamEqualityConstraint(&constraints, sndParam->declRef.GetDecl(), fstInt);
 
                         if (fstParam || sndParam)
                             return true;
@@ -3011,7 +3015,7 @@ namespace Spire
                 int argCount = fst->args.Count();
                 for (int aa = 0; aa < argCount; ++aa)
                 {
-                    if (!TryUnifyVals(constraints, fst->args[aa], snd->args[aa]))
+                    if (!TryUnifyVals(constraints, fst->args[aa], ConstraintDirection::Equal, snd->args[aa]))
                         return false;
                 }
 
@@ -3022,41 +3026,99 @@ namespace Spire
                 return true;
             }
 
-            bool TryUnifyTypeParam(
-                ConstraintSystem&				constraints,
-                RefPtr<GenericTypeParamDecl>	typeParamDecl,
-                RefPtr<ExpressionType>			type)
+            bool AddTypeParamConstraint(
+                ConstraintSystem*               constraints,
+                RefPtr<GenericTypeParamDecl>    typeParamDecl,
+                RefPtr<ExpressionType>          lower,
+                RefPtr<ExpressionType>          upper)
             {
-                // We want to constrain the given type parameter
-                // to equal the given type.
-                Constraint constraint;
-                constraint.decl = typeParamDecl.Ptr();
-                constraint.val = type;
+                ConstraintVar* var = FindConstraintVar(constraints, typeParamDecl.Ptr());
+                if(!var)
+                    return false;
 
-                constraints.constraints.Add(constraint);
+                if(var->lower)
+                {
+                    auto joinType = TryJoinTypes(lower, var->lower.As<ExpressionType>());
+                    if(!joinType)
+                        return false;
+                    var->lower = joinType;
+                }
+                else
+                {
+                    var->lower = lower;
+                }
+
+                if(var->upper)
+                {
+                    auto meetType = TryMeetTypes(upper, var->upper.As<ExpressionType>());
+                    if(!meetType)
+                        return false;
+                    var->upper = meetType;
+                }
+                else
+                {
+                    var->upper = upper;
+                }
 
                 return true;
             }
 
-            bool TryUnifyIntParam(
-                ConstraintSystem&               constraints,
-                RefPtr<GenericValueParamDecl>	paramDecl,
+            bool AddIntParamEqualityConstraint(
+                ConstraintSystem*               constraints,
+                RefPtr<GenericValueParamDecl>   paramDecl,
                 RefPtr<IntVal>                  val)
             {
-                // We want to constrain the given parameter to equal the given value.
-                Constraint constraint;
-                constraint.decl = paramDecl.Ptr();
-                constraint.val = val;
+                ConstraintVar* var = FindConstraintVar(constraints, paramDecl.Ptr());
+                if(!var)
+                    return false;
 
-                constraints.constraints.Add(constraint);
+                RefPtr<IntVal> oldVal = var->lower.As<IntVal>();
+
+                if(!oldVal || val->EqualsVal(oldVal.Ptr()))
+                {
+                    var->lower = val;
+                    var->upper = val;
+                }
+                else
+                {
+                    // Values were not equal!
+                    return false;
+                }
 
                 return true;
             }
 
-            bool TryUnifyTypes(
-                ConstraintSystem&	constraints,
-                RefPtr<ExpressionType> fst,
-                RefPtr<ExpressionType> snd)
+            bool AddTypeParamConstraint(
+                ConstraintSystem*               constraints,
+                RefPtr<GenericTypeParamDecl>    typeParamDecl,
+                ConstraintDirection             direction,
+                RefPtr<ExpressionType>          type)
+            {
+                switch(direction)
+                {
+                case ConstraintDirection::Sub:
+                    return AddTypeParamConstraint(constraints, typeParamDecl, nullptr, type);
+                    break;
+
+                case ConstraintDirection::Equal:
+                    return AddTypeParamConstraint(constraints, typeParamDecl, type, type);
+                    break;
+
+                case ConstraintDirection::Sup:
+                    return AddTypeParamConstraint(constraints, typeParamDecl, type, nullptr);
+                    break;
+                }
+
+                assert(!"unexpected");
+                return false;
+            }
+
+
+            bool AddTypeConstraints(
+                ConstraintSystem&       constraints,
+                RefPtr<ExpressionType>  fst,
+                ConstraintDirection     direction,
+                RefPtr<ExpressionType>  snd)
             {
                 if (fst->Equals(snd)) return true;
 
@@ -3071,14 +3133,14 @@ namespace Spire
                     auto fstDeclRef = fstDeclRefType->declRef;
 
                     if (auto typeParamDecl = dynamic_cast<GenericTypeParamDecl*>(fstDeclRef.GetDecl()))
-                        return TryUnifyTypeParam(constraints, typeParamDecl, snd);
+                        return AddTypeParamConstraint(&constraints, typeParamDecl, direction, snd);
 
                     if (auto sndDeclRefType = snd->As<DeclRefType>())
                     {
                         auto sndDeclRef = sndDeclRefType->declRef;
 
                         if (auto typeParamDecl = dynamic_cast<GenericTypeParamDecl*>(sndDeclRef.GetDecl()))
-                            return TryUnifyTypeParam(constraints, typeParamDecl, fst);
+                            return AddTypeParamConstraint(&constraints, typeParamDecl, Reverse(direction), fst);
 
                         // can't be unified if they refer to differnt declarations.
                         if (fstDeclRef.GetDecl() != sndDeclRef.GetDecl()) return false;
@@ -3102,7 +3164,7 @@ namespace Spire
                     auto sndDeclRef = sndDeclRefType->declRef;
 
                     if (auto typeParamDecl = dynamic_cast<GenericTypeParamDecl*>(sndDeclRef.GetDecl()))
-                        return TryUnifyTypeParam(constraints, typeParamDecl, fst);
+                        return AddTypeParamConstraint(&constraints, typeParamDecl, Reverse(direction), fst);
                 }
 
                 throw "unimplemented";
@@ -3117,8 +3179,9 @@ namespace Spire
                 if (auto extGenericDecl = GetOuterGeneric(extDecl))
                 {
                     ConstraintSystem constraints;
+                    InitializeConstraintSystem(&constraints, extGenericDecl);
 
-                    if (!TryUnifyTypes(constraints, extDecl->targetType, type))
+                    if (!AddTypeConstraints(constraints, extDecl->targetType, ConstraintDirection::Equal, type))
                         return DeclRef().As<ExtensionDeclRef>();
 
                     auto constraintSubst = TrySolveConstraintSystem(&constraints, DeclRef(extGenericDecl, nullptr).As<GenericDeclRef>());
@@ -3155,7 +3218,8 @@ namespace Spire
                 // TODO(tfoley): potentially need a bit more
                 // nuance in case where argument might be
                 // an overload group...
-                return TryUnifyTypes(system, argExpr->Type, paramDeclRef.GetType());
+
+                return AddTypeConstraints(system, paramDeclRef.GetType(), ConstraintDirection::Sub, argExpr->Type.type);
             }
 
             // Take a generic declaration and try to specialize its parameters
@@ -3166,6 +3230,7 @@ namespace Spire
                 OverloadResolveContext&	context)
             {
                 ConstraintSystem constraints;
+                InitializeConstraintSystem(&constraints, genericDeclRef.GetDecl());
 
                 // Construct a reference to the inner declaration that has any generic
                 // parameter substitutions in place already, but *not* any substutions
