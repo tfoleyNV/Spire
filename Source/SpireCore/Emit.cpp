@@ -599,11 +599,22 @@ static void EmitLoopAttributes(EmitContext* context, RefPtr<StatementSyntaxNode>
     }
 }
 
+static void EmitUnparsedStmt(EmitContext* context, RefPtr<UnparsedStmt> stmt)
+{
+    // TODO: actually emit the tokens that made up the statement...
+    Emit(context, "{ /*unparsed*/ }\n");
+}
+
 static void EmitStmt(EmitContext* context, RefPtr<StatementSyntaxNode> stmt)
 {
     if (auto blockStmt = stmt.As<BlockStatementSyntaxNode>())
     {
         EmitBlockStmt(context, blockStmt);
+        return;
+    }
+    else if( auto unparsedStmt = stmt.As<UnparsedStmt>() )
+    {
+        EmitUnparsedStmt(context, unparsedStmt);
         return;
     }
     else if (auto exprStmt = stmt.As<ExpressionStatementSyntaxNode>())

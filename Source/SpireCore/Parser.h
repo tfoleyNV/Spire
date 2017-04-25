@@ -9,6 +9,7 @@ namespace Spire
     namespace Compiler
     {
         RefPtr<ProgramSyntaxNode> ParseProgram(
+            CompileOptions&     options,
             TokenSpan const&    tokens,
             DiagnosticSink*     sink,
             String const&       fileName,

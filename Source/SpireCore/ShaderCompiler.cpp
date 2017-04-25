@@ -37,6 +37,21 @@ namespace Spire
 {
     namespace Compiler
     {
+        //
+
+        Profile Profile::LookUp(char const* name)
+        {
+            #define PROFILE(TAG, NAME, STAGE, VERSION)	if(strcmp(name, #NAME) == 0) return Profile::TAG;
+            #define PROFILE_ALIAS(TAG, NAME)			if(strcmp(name, #NAME) == 0) return Profile::TAG;
+            #include "ProfileDefs.h"
+
+            return Profile::Unknown;
+        }
+
+
+
+        //
+
         int compilerInstances = 0;
 
         class ShaderCompilerImpl : public ShaderCompiler
@@ -44,12 +59,12 @@ namespace Spire
         private:
             Dictionary<String, RefPtr<CodeGenBackend>> backends;
         public:
-            virtual CompileUnit Parse(CompileResult & result, String source, String fileName, IncludeHandler* includeHandler, Dictionary<String,String> const& preprocesorDefinitions,
+            virtual CompileUnit Parse(CompileOptions& options, CompileResult & result, String source, String fileName, IncludeHandler* includeHandler, Dictionary<String,String> const& preprocesorDefinitions,
                 CompileUnit predefUnit) override
             {
                 auto tokens = PreprocessSource(source, fileName, result.GetErrorWriter(), includeHandler, preprocesorDefinitions);
                 CompileUnit rs;
-                rs.SyntaxNode = ParseProgram(tokens, result.GetErrorWriter(), fileName, predefUnit.SyntaxNode.Ptr());
+                rs.SyntaxNode = ParseProgram(options, tokens, result.GetErrorWriter(), fileName, predefUnit.SyntaxNode.Ptr());
                 return rs;
             }
 
@@ -148,6 +163,7 @@ namespace Spire
                     // HLSL that doesn't produce any diagnostics...)
                     String diagnostics = (char const*) diagnosticsBlob->GetBufferPointer();
                     fprintf(stderr, "%s", diagnostics.begin());
+                    OutputDebugStringA(diagnostics.begin());
                     diagnosticsBlob->Release();
                 }
                 if (FAILED(hr))

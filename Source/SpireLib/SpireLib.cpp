@@ -227,7 +227,9 @@ namespace SpireLib
 
 
         CompileUnit predefUnit;
-        predefUnit = compiler->Parse(compileResult, SpireStdLib::GetCode(), "stdlib", &includeHandler, options.PreprocessorDefinitions, predefUnit);
+        predefUnit = compiler->Parse(
+            options,
+            compileResult, SpireStdLib::GetCode(), "stdlib", &includeHandler, options.PreprocessorDefinitions, predefUnit);
         for (int i = 0; i < unitsToInclude.Count(); i++)
         {
             auto inputFileName = unitsToInclude[i];
@@ -236,7 +238,9 @@ namespace SpireLib
                 String source = src;
                 if (i > 0)
                     source = File::ReadAllText(inputFileName);
-                auto unit = compiler->Parse(compileResult, source, inputFileName, &includeHandler, options.PreprocessorDefinitions, predefUnit);
+                auto unit = compiler->Parse(
+                    options,
+                    compileResult, source, inputFileName, &includeHandler, options.PreprocessorDefinitions, predefUnit);
                 units.Add(unit);
                 if (unit.SyntaxNode)
                 {
@@ -566,7 +570,9 @@ namespace SpireLib
                     String source = src;
                     if (i > 0)
                         source = File::ReadAllText(inputFileName);
-                    auto unit = compiler->Parse(result, source, inputFileName, &includeHandler, Options.PreprocessorDefinitions, predefUnit);
+                    auto unit = compiler->Parse(
+                        Options,
+                        result, source, inputFileName, &includeHandler, Options.PreprocessorDefinitions, predefUnit);
 
                     // HACK(tfoley): Assume that the first thing we parse represents the predef unit!
                     if (!predefUnit.SyntaxNode)
@@ -615,7 +621,9 @@ namespace SpireLib
         Shader * NewShaderFromSource(const char * source, const char * fileName)
         {
             Spire::Compiler::CompileResult result;
-            auto unit = compiler->Parse(result, source, fileName, nullptr, Dictionary<String, String>(), predefUnit);
+            auto unit = compiler->Parse(
+                Options,
+                result, source, fileName, nullptr, Dictionary<String, String>(), predefUnit);
             auto list = unit.SyntaxNode->GetMembersOfType<TemplateShaderSyntaxNode>();
             if (list.Count())
                 return new Shader((*list.begin())->Name.Content, String(source));
@@ -724,6 +732,26 @@ SpireCompilationContext * spCreateCompilationContext(const char * cacheDir)
 {
     return reinterpret_cast<SpireCompilationContext *>(new SpireLib::CompilationContext((cacheDir ? true : false), cacheDir));
 }
+
+void spSetCompileFlags(
+    SpireCompilationContext*    context,
+    SpireCompileFlags           flags)
+{
+    CTX(context)->Options.flags = flags;
+}
+
+void spAddEntryPoint(
+    SpireCompilationContext*    context,
+    char const*                 name,
+    char const*                 profile)
+{
+    EntryPointOption entryPoint;
+    entryPoint.name = name;
+    entryPoint.profile = Profile::LookUp(profile);
+
+    CTX(context)->Options.entryPoints.Add(entryPoint);
+}
+
 
 void spSetCodeGenTarget(SpireCompilationContext * ctx, int target)
 {
@@ -1346,14 +1374,32 @@ unsigned spReflectionParameter_GetBindingIndex(SpireReflectionParameter* inParam
 {
     auto param = ((ReflectionNode*) inParam)->AsParameter();
     if(!param) return 0;
-    return param->GetBindingIndex();
+
+    switch( param->GetCategory() )
+    {
+    case SPIRE_PARAMETER_CATEGORY_MIXED:
+        // This isn't a meaningful query!
+        return 0;
+
+    default:
+        return param->binding.index;
+    }
 }
 
 unsigned spReflectionParameter_GetBindingSpace(SpireReflectionParameter* inParam)
 {
     auto param = ((ReflectionNode*) inParam)->AsParameter();
     if(!param) return 0;
-    return param->GetBindingSpace();
+
+    switch( param->GetCategory() )
+    {
+    case SPIRE_PARAMETER_CATEGORY_MIXED:
+        // This isn't a meaningful query!
+        return 0;
+
+    default:
+        return param->binding.space;
+    }
 }
 
 // constant buffers

@@ -37,7 +37,6 @@ enum class ReflectionNodeFlavor : uint8_t
     TypeLayout,
     MultiTypeLayout,
     Parameter,
-    MultiParameter,
     Variable,
     VariableLayout,
 };
@@ -316,9 +315,7 @@ struct ReflectionVariableNode : ReflectionNode
     ReflectionTypeNode* GetType() const { return type; }
 };
 
-// A variable *layout* represents a variable/field/etc. that has been laid out
-// according to a specific set of layout rules.
-struct ReflectionVariableLayoutNode : ReflectionNode
+struct ReflectionVariableLayoutBaseNode : ReflectionNode
 {
     // The original variable that got laid out
     ReflectionPtr<ReflectionVariableNode> variable;
@@ -326,15 +323,38 @@ struct ReflectionVariableLayoutNode : ReflectionNode
     // The layout generated for the variable's type
     ReflectionPtr<ReflectionTypeLayoutNode> typeLayout;
 
-    // The offset of this variable within its logical parent.
-    ReflectionSize offset;
+    union
+    {
+        // The offset of this variable within its logical parent,
+        // used for variables with only a single resource kind.
+        ReflectionSize offset;
+
+        // Pointer to an array of offset data, so that we can
+        // look up the right offset for each category.
+        ReflectionPtr<ReflectionSize> offsets;
+    };
 
     ReflectionVariableNode* GetVariable() const { return variable; }
     char const* GetName() const { return variable->GetName(); }
     ReflectionTypeNode* GetType() const { return variable->GetType(); }
     ReflectionTypeLayoutNode* GetTypeLayout() const { return typeLayout; }
+};
+
+
+
+// A variable *layout* represents a variable/field/etc. that has been laid out
+// according to a specific set of layout rules.
+struct ReflectionVariableLayoutNode : ReflectionVariableLayoutBaseNode
+{
     size_t GetOffset() const { return offset; }
 };
+
+// A special-case structure for the case where a variable has more than one
+// logical resource kind, and so its layout cannot be represented directly
+struct ReflectionMultiVariableLayoutNode : ReflectionVariableLayoutBaseNode
+{
+};
+
 
 // Scalar types don't need to store much additional information.
 struct ReflectionScalarTypeNode : ReflectionTypeNode
@@ -482,17 +502,38 @@ struct ReflectionSamplerStateTypeNode : ReflectionTypeNode
     // TODO(tfoley): record whether it was a shadow one or not?
 };
 
+struct ReflectionParameterBindingInfo
+{
+    ReflectionSize category;
+    union
+    {
+        // In the simple case, the category is not `Mixed`, and we
+        // can just store a single binding index and space.
+        struct
+        {
+            ReflectionSize space;
+            ReflectionSize index;
+        };
 
+        // In the mixed case, we need to store a bunch of entries,
+        // so we do that via an indirection:
+        struct
+        {
+            ReflectionSize                                  bindingCount;
+            ReflectionPtr<ReflectionParameterBindingInfo>   bindings;
+        };
+    };
+
+};
 
 struct ReflectionParameterNode : ReflectionVariableNode
 {
-    ReflectionSize category;
-    ReflectionSize bindingIndex;
-    ReflectionSize bindingSpace;
+    ReflectionParameterBindingInfo binding;
 
-    SpireParameterCategory GetCategory() const { return (SpireParameterCategory) category; }
-    uint32_t GetBindingIndex() const { return bindingIndex; }
-    uint32_t GetBindingSpace() const { return bindingSpace; }
+    SpireParameterCategory GetCategory() const { return (SpireParameterCategory) binding.category; }
+
+//    uint32_t GetBindingIndex() const { return bindingIndex; }
+//    uint32_t GetBindingSpace() const { return bindingSpace; }
 };
 
 struct ReflectionBlob : ReflectionNode

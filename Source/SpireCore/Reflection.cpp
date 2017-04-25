@@ -451,7 +451,27 @@ static bool IsReflectionParameter(
     }
 }
 
-static SpireParameterCategory ComputeRefelctionParameterCategory(
+static SpireParameterCategory ComputeReflectionParameterCategory(
+    ReflectionGenerationContext*    context,
+    LayoutResourceKind              kind)
+{
+    switch (kind)
+    {
+    case LayoutResourceKind::ConstantBuffer:
+        return SPIRE_PARAMETER_CATEGORY_CONSTANT_BUFFER;
+    case LayoutResourceKind::ShaderResource:
+        return SPIRE_PARAMETER_CATEGORY_SHADER_RESOURCE;
+    case LayoutResourceKind::UnorderedAccess:
+        return SPIRE_PARAMETER_CATEGORY_UNORDERED_ACCESS;
+    case LayoutResourceKind::SamplerState:
+        return SPIRE_PARAMETER_CATEGORY_SAMPLER_STATE;
+
+    default:
+        return SPIRE_PARAMETER_CATEGORY_NONE;
+    }
+}
+
+static SpireParameterCategory ComputeReflectionParameterCategory(
     ReflectionGenerationContext*        context,
     RefPtr<TypeLayout>                  typeLayout)
 {
@@ -480,20 +500,7 @@ static SpireParameterCategory ComputeRefelctionParameterCategory(
     }
     
     // Otherwise look at the kind of resource
-    switch (typeLayout->resources.kind)
-    {
-    case LayoutResourceKind::ConstantBuffer:
-        return SPIRE_PARAMETER_CATEGORY_CONSTANT_BUFFER;
-    case LayoutResourceKind::ShaderResource:
-        return SPIRE_PARAMETER_CATEGORY_SHADER_RESOURCE;
-    case LayoutResourceKind::UnorderedAccess:
-        return SPIRE_PARAMETER_CATEGORY_UNORDERED_ACCESS;
-    case LayoutResourceKind::SamplerState:
-        return SPIRE_PARAMETER_CATEGORY_SAMPLER_STATE;
-
-    default:
-        return SPIRE_PARAMETER_CATEGORY_NONE;
-    }
+    return ComputeReflectionParameterCategory(context, typeLayout->resources.kind);
 }
 
 static void GenerateReflectionParameter(
@@ -507,32 +514,56 @@ static void GenerateReflectionParameter(
     assert(!varDecl->HasModifier<HLSLStaticModifier>());
 
     // Figure out what kind of parameter we are looking at:
-    auto category = ComputeRefelctionParameterCategory(context, paramLayout->typeLayout);
+    auto category = ComputeReflectionParameterCategory(context, paramLayout->typeLayout);
 
+    parameter->flavor = ReflectionNodeFlavor::Parameter;
     parameter->name = GenerateReflectionName(context, varDecl->Name.Content);
     parameter->type = GenerateReflectionType(context, varDecl->Type);
-    parameter->category = category;
+    parameter->binding.category = category;
 
     if (category == SPIRE_PARAMETER_CATEGORY_MIXED)
     {
-        parameter->flavor = ReflectionNodeFlavor::MultiParameter;
         // More than one resource: need to handle this in a special way
 
-        assert(!"unimplemented");
+        List<ReflectionParameterBindingInfo> bindingsData;
+
+        // If there is any uniform data, then give it an offset
+        if( paramLayout->typeLayout->uniforms.size )
+        {
+            ReflectionParameterBindingInfo info;
+            info.category = SPIRE_PARAMETER_CATEGORY_UNIFORM;
+            info.space = 0;
+            info.index = (ReflectionSize) paramLayout->uniformOffset;
+
+            bindingsData.Add(info);
+        }
+        for( auto rr = &paramLayout->resources; rr; rr = rr->next.Ptr() )
+        {
+            ReflectionParameterBindingInfo info;
+            info.category = ComputeReflectionParameterCategory(context, rr->kind);
+            info.space = (ReflectionSize) rr->space;
+            info.index = (ReflectionSize) rr->index;
+
+            bindingsData.Add(info);
+        }
+
+        ReflectionSize bindingCount = bindingsData.Count();
+        auto bindings = AllocateNodes<ReflectionParameterBindingInfo>(context, bindingCount);
+
+        parameter->binding.bindingCount = 0;
+        parameter->binding.bindings = bindings;
     }
     else if (category == SPIRE_PARAMETER_CATEGORY_UNIFORM)
     {
         // A uniform parameter inside of a parent buffer.
-        parameter->flavor = ReflectionNodeFlavor::Parameter;
-        parameter->bindingSpace = 0;
-        parameter->bindingIndex = (ReflectionSize) paramLayout->uniformOffset;
+        parameter->binding.space = 0;
+        parameter->binding.index = (ReflectionSize) paramLayout->uniformOffset;
     }
     else
     {
         // A resource parameter
-        parameter->flavor = ReflectionNodeFlavor::Parameter;
-        parameter->bindingSpace = (ReflectionSize) paramLayout->resources.space;
-        parameter->bindingIndex = (ReflectionSize) paramLayout->resources.index;
+        parameter->binding.space = (ReflectionSize) paramLayout->resources.space;
+        parameter->binding.index = (ReflectionSize) paramLayout->resources.index;
     }
 }
 

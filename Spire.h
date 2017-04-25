@@ -72,6 +72,15 @@ extern "C"
         SPIRE_DXBC_ASM,
     };
 
+    /*!
+    Flags to control compilation behavior.
+    */
+    typedef unsigned int SpireCompileFlags;
+    enum
+    {
+        SPIRE_COMPILE_FLAG_NO_CHECKING = 1 << 0, /**< Disable semantic checking as much as possible. */
+    };
+
 //#define SPIRE_LAYOUT_UNIFORM 0
 //#define SPIRE_LAYOUT_PACKED 1
 //#define SPIRE_LAYOUT_STORAGE 2
@@ -191,6 +200,16 @@ extern "C"
     @return A new compilation context.
     */
     SPIRE_API SpireCompilationContext * spCreateCompilationContext(const char * cacheDir);
+
+
+    SPIRE_API void spSetCompileFlags(
+        SpireCompilationContext*    context,
+        SpireCompileFlags           flags);
+
+    SPIRE_API void spAddEntryPoint(
+        SpireCompilationContext*    context,
+        char const*                 name,
+        char const*                 profile);
 
     /*!
     @brief Sets the target for code generation.
@@ -789,6 +808,16 @@ namespace spire
 
         bool isArray() { return getKind() == TypeReflection::Kind::Array; }
 
+        TypeReflection* unwrapArray()
+        {
+            TypeReflection* type = this;
+            while( type->isArray() )
+            {
+                type = type->getElementType();
+            }
+            return type;
+        }
+
         // only useful if `getKind() == Kind::Array`
         size_t getElementCount()
         {
@@ -919,8 +948,19 @@ namespace spire
                 return (BufferReflection*) this;
 
             default:
-                return 0;
+                break;
             }
+
+            switch( getType()->unwrapArray()->getKind() )
+            {
+            case TypeReflection::Kind::ConstantBuffer:
+                return (BufferReflection*) this;
+
+            default:
+                break;
+            }
+
+            return 0;
         }
 
         char const* getName()

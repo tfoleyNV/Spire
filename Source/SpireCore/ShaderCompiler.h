@@ -70,6 +70,8 @@ namespace Spire
             Stage GetStage() const { return Stage((uint32_t(raw) >> 16) & 0xFFFF); }
             ProfileVersion GetVersion() const { return ProfileVersion(uint32_t(raw) & 0xFFFF); }
 
+            static Profile LookUp(char const* name);
+
             RawVal raw = Unknown;
         };
 
@@ -132,6 +134,9 @@ namespace Spire
 
             // should we just pass the input to another compiler?
             PassThroughMode passThrough = PassThroughMode::None;
+
+            // Flags supplied through the API
+            SpireCompileFlags flags = 0;
         };
 
         class CompileUnit
@@ -150,6 +155,7 @@ namespace Spire
         {
         public:
             virtual CompileUnit Parse(
+                CompileOptions& options,
                 CompileResult & result,
                 String source,
                 String fileName,

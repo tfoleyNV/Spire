@@ -1898,5 +1898,18 @@ namespace Spire
         {
             return ExpressionType::Error.Ptr();
         }
+
+        //
+
+        RefPtr<SyntaxNode> UnparsedStmt::Accept(SyntaxVisitor * visitor)
+        {
+            return this;
+        }
+
+        UnparsedStmt* UnparsedStmt::Clone(CloneContext & ctx)
+        {
+            return this;
+        }
+
     }
 }

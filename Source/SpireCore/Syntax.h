@@ -1569,6 +1569,13 @@ namespace Spire
             virtual BlockStatementSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
+        class UnparsedStmt : public StatementSyntaxNode
+        {
+        public:
+            virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
+            virtual UnparsedStmt * Clone(CloneContext & ctx) override;
+        };
+
         class ParameterSyntaxNode : public VarDeclBase
         {
         public:
@@ -1589,7 +1596,7 @@ namespace Spire
                 return GetMembersOfType<ParameterSyntaxNode>();
             }
             TypeExp ReturnType;
-            RefPtr<BlockStatementSyntaxNode> Body;
+            RefPtr<StatementSyntaxNode> Body;
         };
 
         struct FuncDeclBaseRef : ContainerDeclRef
@@ -2202,7 +2209,7 @@ namespace Spire
         {
         public:
             RefPtr<ExpressionSyntaxNode> condition;
-            RefPtr<BlockStatementSyntaxNode> body;
+            RefPtr<StatementSyntaxNode> body;
 
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
             virtual SwitchStmt * Clone(CloneContext & ctx) override;
@@ -2387,6 +2394,9 @@ namespace Spire
 
         // HLSL `nointerpolation` modifier
         class HLSLNoInterpolationModifier : public Modifier {};
+
+        // HLSL `linear` modifier
+        class HLSLLinearModifier : public Modifier {};
 
         // HLSL `precise` modifier
         class HLSLPreciseModifier : public Modifier {};

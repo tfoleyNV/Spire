@@ -486,6 +486,7 @@ LayoutInfo GetLayoutImpl(
                                     foundStructRes = structRes;
                                     break;
                                 }
+                                structRes = structRes->next.Ptr();
                             }
                             if (foundStructRes)
                             {

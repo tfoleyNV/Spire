@@ -63,6 +63,9 @@ __trait __BuiltinArithmeticType : __BuiltinType {}
 // A type that logically has a sign (positive/negative/zero)
 __trait __BuiltinSignedArithmeticType : __BuiltinArithmeticType {}
 
+// A type that can represent integers
+__trait __BuiltinIntegerType : __BuiltinArithmeticType {}
+
 // A type that can represent non-integers
 __trait __BuiltinRealType : __BuiltinArithmeticType {}
 

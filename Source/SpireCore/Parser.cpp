@@ -6,7 +6,7 @@ namespace Spire
 {
     namespace Compiler
     {
-            enum Precedence : int
+        enum Precedence : int
         {
             Invalid = -1,
             Comma,
@@ -31,6 +31,7 @@ namespace Spire
         class Parser
         {
         public:
+            CompileOptions& options;
             int anonymousCounter = 0;
             RefPtr<ContainerDecl> currentScope;
             TokenReader tokenReader;
@@ -59,8 +60,8 @@ namespace Spire
             {
                 currentScope = currentScope->ParentDecl;
             }
-            Parser(TokenSpan const& _tokens, DiagnosticSink * sink, String _fileName)
-                : tokenReader(_tokens), sink(sink), fileName(_fileName)
+            Parser(CompileOptions& options, TokenSpan const& _tokens, DiagnosticSink * sink, String _fileName)
+                : options(options), tokenReader(_tokens), sink(sink), fileName(_fileName)
             {
                 typeNames.Add("int");
                 typeNames.Add("uint");
@@ -142,7 +143,7 @@ namespace Spire
             RefPtr<StructSyntaxNode>					ParseStruct();
             RefPtr<ClassSyntaxNode>					    ParseClass();
             RefPtr<StatementSyntaxNode>					ParseStatement();
-            RefPtr<BlockStatementSyntaxNode>			ParseBlockStatement();
+            RefPtr<StatementSyntaxNode>			        ParseBlockStatement();
             RefPtr<VarDeclrStatementSyntaxNode>			ParseVarDeclrStatement(Modifiers modifiers);
             RefPtr<IfStatementSyntaxNode>				ParseIfStatement();
             RefPtr<ForStatementSyntaxNode>				ParseForStatement();
@@ -677,6 +678,7 @@ namespace Spire
                 CASE(column_major, HLSLColumnMajorLayoutModifier);
 
                 CASE(nointerpolation, HLSLNoInterpolationModifier);
+                CASE(linear, HLSLLinearModifier);
                 CASE(precise, HLSLPreciseModifier);
                 CASE(shared, HLSLEffectSharedModifier);
                 CASE(groupshared, HLSLGroupSharedModifier);
@@ -2283,8 +2285,22 @@ namespace Spire
             return statement;
         }
 
-        RefPtr<BlockStatementSyntaxNode> Parser::ParseBlockStatement()
+        RefPtr<StatementSyntaxNode> Parser::ParseBlockStatement()
         {
+            if( options.flags & SPIRE_COMPILE_FLAG_NO_CHECKING )
+            {
+                // We have been asked to parse the input, but not attempt to understand it.
+
+                // TODO: record start/end locations...
+
+                ReadToken(TokenType::LBrace);
+                SkipToMatchingToken(&tokenReader, TokenType::RBrace);
+
+                RefPtr<UnparsedStmt> unparsedStmt = new UnparsedStmt();
+                return unparsedStmt;
+            }
+
+
             RefPtr<ScopeDecl> scopeDecl = new ScopeDecl();
             RefPtr<BlockStatementSyntaxNode> blockStatement = new BlockStatementSyntaxNode();
             blockStatement->scopeDecl = scopeDecl;
@@ -2890,12 +2906,13 @@ namespace Spire
         }
 
         RefPtr<ProgramSyntaxNode> ParseProgram(
+            CompileOptions&     options,
             TokenSpan const&    tokens,
             DiagnosticSink*     sink,
             String const&       fileName,
             ProgramSyntaxNode*	predefUnit)
         {
-            Parser parser(tokens, sink, fileName);
+            Parser parser(options, tokens, sink, fileName);
             return parser.Parse(predefUnit);
         }
 
