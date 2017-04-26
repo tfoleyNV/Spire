@@ -1572,6 +1572,9 @@ namespace Spire
         class UnparsedStmt : public StatementSyntaxNode
         {
         public:
+            // The tokens that were contained between `{` and `}`
+            List<Token> tokens;
+
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
             virtual UnparsedStmt * Clone(CloneContext & ctx) override;
         };

@@ -2293,10 +2293,40 @@ namespace Spire
 
                 // TODO: record start/end locations...
 
+                List<Token> tokens;
+
                 ReadToken(TokenType::LBrace);
-                SkipToMatchingToken(&tokenReader, TokenType::RBrace);
+
+                int depth = 1;
+                for( ;;)
+                {
+                    switch( tokenReader.PeekTokenType() )
+                    {
+                    case TokenType::EndOfFile:
+                        goto done;
+
+                    case TokenType::RBrace:
+                        depth--;
+                        if(depth == 0)
+                            goto done;
+                        break;
+
+                    case TokenType::LBrace:
+                        depth++;
+                        break;
+
+                    default:
+                        break;
+                    }
+
+                    auto token = tokenReader.AdvanceToken();
+                    tokens.Add(token);
+                }
+            done:
+                ReadToken(TokenType::RBrace);
 
                 RefPtr<UnparsedStmt> unparsedStmt = new UnparsedStmt();
+                unparsedStmt->tokens = tokens;
                 return unparsedStmt;
             }
 

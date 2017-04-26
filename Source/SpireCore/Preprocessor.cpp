@@ -300,6 +300,11 @@ static Token AdvanceRawToken(Preprocessor* preprocessor)
                 EndInputStream(preprocessor, inputStream);
                 continue;
             }
+            else
+            {
+                // HACK(tfoley): A place to fall into debugger...
+                int f = 0;
+            }
         }
 
         // Everything worked, so read a token from the top-most stream
@@ -330,6 +335,11 @@ static Token PeekRawToken(Preprocessor* preprocessor)
             {
                 inputStream = inputStream->parent;
                 continue;
+            }
+            else
+            {
+                // HACK(tfoley): A place to fall into debugger...
+                int f = 0;
             }
         }
 

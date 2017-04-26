@@ -602,7 +602,16 @@ static void EmitLoopAttributes(EmitContext* context, RefPtr<StatementSyntaxNode>
 static void EmitUnparsedStmt(EmitContext* context, RefPtr<UnparsedStmt> stmt)
 {
     // TODO: actually emit the tokens that made up the statement...
-    Emit(context, "{ /*unparsed*/ }\n");
+    Emit(context, "{\n");
+    for( auto& token : stmt->tokens )
+    {
+        if(token.flags & TokenFlag::AtStartOfLine)
+            Emit(context, "\n");
+        else if(token.flags & TokenFlag::AfterWhitespace)
+            Emit(context, " ");
+        Emit(context, token.Content);
+    }
+    Emit(context, "}\n");
 }
 
 static void EmitStmt(EmitContext* context, RefPtr<StatementSyntaxNode> stmt)
