@@ -351,6 +351,9 @@ void GenerateParameterBindings(
     for (auto varLayout : sharedContext.varLayouts)
     {
         CompleteBindingsForParameter(&context, varLayout);
+
+        assert(varLayout->typeLayout->resources.kind != LayoutResourceKind::Dummy);
+        assert(varLayout->resources.kind != LayoutResourceKind::Dummy);
     }
 
     // We now have a bunch of layout information, which we should

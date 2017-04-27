@@ -2,6 +2,7 @@
 #include "Emit.h"
 
 #include "Syntax.h"
+#include "TypeLayout.h"
 
 #include <assert.h>
 
@@ -21,6 +22,7 @@ struct EmitContext
 
 static void EmitDecl(EmitContext* context, RefPtr<Decl> decl);
 static void EmitDecl(EmitContext* context, RefPtr<DeclBase> declBase);
+static void EmitDeclUsingLayout(EmitContext* context, RefPtr<Decl> decl, RefPtr<VarLayout> layout);
 static void EmitType(EmitContext* context, RefPtr<ExpressionType> type, String const& name);
 static void EmitType(EmitContext* context, RefPtr<ExpressionType> type);
 static void EmitExpr(EmitContext* context, RefPtr<ExpressionSyntaxNode> expr);
@@ -847,6 +849,8 @@ static void EmitSemantic(EmitContext* context, RefPtr<HLSLSemantic> semantic, ES
     }
     else if(auto registerSemantic = semantic.As<HLSLRegisterSemantic>())
     {
+        // Don't print out semantic from the user, since we are going to print the same thing our own way...
+#if 0
         Emit(context, ": register(");
         Emit(context, registerSemantic->registerName.Content);
         if(registerSemantic->componentMask.Type != TokenType::Unknown)
@@ -855,9 +859,12 @@ static void EmitSemantic(EmitContext* context, RefPtr<HLSLSemantic> semantic, ES
             Emit(context, registerSemantic->componentMask.Content);
         }
         Emit(context, ")");
+#endif
     }
     else if(auto packOffsetSemantic = semantic.As<HLSLPackOffsetSemantic>())
     {
+        // Don't print out semantic from the user, since we are going to print the same thing our own way...
+#if 0
         if(mask & kESemanticMask_NoPackOffset)
             return;
 
@@ -869,6 +876,7 @@ static void EmitSemantic(EmitContext* context, RefPtr<HLSLSemantic> semantic, ES
             Emit(context, packOffsetSemantic->componentMask.Content);
         }
         Emit(context, ")");
+#endif
     }
     else
     {
@@ -895,6 +903,30 @@ static void EmitDeclsInContainer(EmitContext* context, RefPtr<ContainerDecl> con
     {
         EmitDecl(context, member);
     }
+}
+
+static void EmitDeclsInContainerUsingLayout(
+    EmitContext*                context,
+    RefPtr<ContainerDecl>       container,
+    RefPtr<StructTypeLayout>    containerLayout)
+{
+    auto fieldCount = containerLayout->fields.Count();
+    int fieldIndex = 0;
+
+    for (auto member : container->Members)
+    {
+        if(fieldIndex < fieldCount && containerLayout->fields[fieldIndex]->varDecl.GetDecl() == member.Ptr())
+        {
+            EmitDeclUsingLayout(context, member, containerLayout->fields[fieldIndex]);
+            fieldIndex++;
+        }
+        else
+        {
+            // No layout for this decl
+            EmitDecl(context, member);
+        }
+    }
+    assert(fieldIndex == fieldCount);
 }
 
 static void EmitTypeDefDecl(EmitContext* context, RefPtr<TypeDefDecl> decl)
@@ -941,40 +973,132 @@ static void EmitVarDeclCommon(EmitContext* context, RefPtr<VarDeclBase> decl)
     EmitVarDeclCommon(context, DeclRef(decl.Ptr(), nullptr).As<VarDeclBaseRef>());
 }
 
+static void emitHLSLRegisterSemantic(
+    EmitContext*                context,
+    VarLayout::ResourceInfo*    info)
+{
+    assert(info);
+    Emit(context, ": register(");
+    switch( info->kind )
+    {
+    case LayoutResourceKind::ConstantBuffer:
+        Emit(context, "b");
+        break;
+    case LayoutResourceKind::ShaderResource:
+        Emit(context, "t");
+        break;
+    case LayoutResourceKind::UnorderedAccess:
+        Emit(context, "u");
+        break;
+    case LayoutResourceKind::SamplerState:
+        Emit(context, "s");
+        break;
+    default:
+        assert(!"unexpected");
+        break;
+    }
+    Emit(context, info->index);
+    if(info->space)
+    {
+        Emit(context, ", space");
+        Emit(context, info->space);
+    }
+    Emit(context, ")");
+}
+
+
 static void EmitConstantBufferDecl(
     EmitContext*				context,
     RefPtr<VarDeclBase>			varDecl,
-    RefPtr<ConstantBufferType>	cbufferType)
+    RefPtr<ConstantBufferType>	cbufferType,
+    RefPtr<VarLayout>           layout)
 {
     // The data type that describes where stuff in the constant buffer should go
     RefPtr<ExpressionType> dataType = cbufferType->elementType;
 
     // We expect/require the data type to be a user-defined `struct` type
-    if (auto declRefType = dataType->As<DeclRefType>())
+    auto declRefType = dataType->As<DeclRefType>();
+    assert(declRefType);
+
+    // We expect to always have layout information
+    assert(layout);
+
+    // We expect the layout to be for a structured type...
+    RefPtr<ConstantBufferTypeLayout> bufferLayout = layout->typeLayout.As<ConstantBufferTypeLayout>();
+    assert(bufferLayout);
+
+    RefPtr<StructTypeLayout> structTypeLayout = bufferLayout->elementTypeLayout.As<StructTypeLayout>();
+    assert(structTypeLayout);
+
+    Emit(context, "cbuffer ");
+    Emit(context, varDecl->Name.Content);
+
+    EmitSemantics(context, varDecl, kESemanticMask_None);
+
+    auto info = layout->FindResourceInfo(LayoutResourceKind::ConstantBuffer);
+    emitHLSLRegisterSemantic(context, info);
+
+    Emit(context, "\n{\n");
+    if (auto structRef = declRefType->declRef.As<StructDeclRef>())
     {
-        Emit(context, "cbuffer ");
-        Emit(context, varDecl->Name.Content);
+        int fieldCount = structTypeLayout->fields.Count();
+        int fieldIndex = 0;
 
-        EmitSemantics(context, varDecl, kESemanticMask_None);
-
-        Emit(context, "\n{\n");
-        if (auto structRef = declRefType->declRef.As<StructDeclRef>())
+        for (auto field : structRef.GetMembersOfType<FieldDeclRef>())
         {
-            for (auto field : structRef.GetMembersOfType<FieldDeclRef>())
+            assert(fieldIndex < fieldCount);
+
+            EmitVarDeclCommon(context, field);
+
+            auto fieldLayout = structTypeLayout->fields[fieldIndex];
+            assert(fieldLayout->varDecl.GetDecl() == field.GetDecl());
+
+            if( fieldLayout->typeLayout->uniforms.size )
             {
-                EmitVarDeclCommon(context, field);
-                Emit(context, ";\n");
+                // The field has uniform data, so we need to place it explicitly, just in case
+                size_t offset = fieldLayout->uniformOffset;
+
+                // The HLSL `c` register space is logically grouped in 16-byte registers,
+                // while we try to traffic in byte offsets. That means we need to pick
+                // a register number, based on the starting offset in 16-byte register
+                // units, and then a "component" within that register, based on 4-byte
+                // offsets from there. We cannot support more fine-grained offsets than that.
+
+                Emit(context, ": packofset(c");
+                Emit(context, int(offset / 16));
+                size_t rem = offset % 16;
+                size_t comp = rem / 4; 
+                assert((rem % 4) == 0);
+                if(comp != 0)
+                {
+                    // TODO: may need to emit more than one character here, in case 
+                    // the value spans multiple components. I'm not sure what the right
+                    // rules are...
+                    static const char* kComponentNames[] = {"x", "y", "z", "w"};
+                    Emit(context, ".");
+                    Emit(context, kComponentNames[comp]);
+                }
             }
+
+            // Next handle any resources in the field...
+            if(fieldLayout->resources.kind != LayoutResourceKind::Invalid)
+            {
+                for( auto rr = &fieldLayout->resources; rr; rr = rr->next.Ptr() )
+                {
+                    emitHLSLRegisterSemantic(context, rr);
+                }
+            }
+
+            fieldIndex++;
+
+            Emit(context, ";\n");
         }
-        Emit(context, "}\n");
+        assert(fieldIndex == fieldCount);
     }
-    else
-    {
-        assert(!"unexpected");
-    }
+    Emit(context, "}\n");
 }
 
-static void EmitVarDecl(EmitContext* context, RefPtr<VarDeclBase> decl)
+static void EmitVarDecl(EmitContext* context, RefPtr<VarDeclBase> decl, RefPtr<VarLayout> layout)
 {
     // As a special case, a variable using the `Constantbuffer<T>` type
     // should be translated into a `cbuffer` declaration if the target
@@ -984,7 +1108,7 @@ static void EmitVarDecl(EmitContext* context, RefPtr<VarDeclBase> decl)
     // with an attribute that gets attached to the variable declaration.
     if (auto cbufferType = decl->Type->As<ConstantBufferType>())
     {
-        EmitConstantBufferDecl(context, decl, cbufferType);
+        EmitConstantBufferDecl(context, decl, cbufferType, layout);
         return;
     }
 
@@ -1040,12 +1164,12 @@ static void EmitFuncDecl(EmitContext* context, RefPtr<FunctionSyntaxNode> decl)
     }
 }
 
-static void EmitProgram(EmitContext* context, RefPtr<ProgramSyntaxNode> program)
+static void EmitProgram(EmitContext* context, RefPtr<ProgramSyntaxNode> program, RefPtr<ProgramLayout> programLayout)
 {
-    EmitDeclsInContainer(context, program);
+    EmitDeclsInContainerUsingLayout(context, program, programLayout);
 }
 
-static void EmitDecl(EmitContext* context, RefPtr<Decl> decl)
+static void EmitDeclImpl(EmitContext* context, RefPtr<Decl> decl, RefPtr<VarLayout> layout)
 {
     // Don't emit code for declarations that came from the stdlib.
     //
@@ -1066,7 +1190,7 @@ static void EmitDecl(EmitContext* context, RefPtr<Decl> decl)
     }
     else if (auto varDecl = decl.As<VarDeclBase>())
     {
-        EmitVarDecl(context, varDecl);
+        EmitVarDecl(context, varDecl, layout);
         return;
     }
     else if (auto funcDecl = decl.As<FunctionSyntaxNode>())
@@ -1085,6 +1209,16 @@ static void EmitDecl(EmitContext* context, RefPtr<Decl> decl)
 		return;
 	}
     throw "unimplemented";
+}
+
+static void EmitDecl(EmitContext* context, RefPtr<Decl> decl)
+{
+    EmitDeclImpl(context, decl, nullptr);
+}
+
+static void EmitDeclUsingLayout(EmitContext* context, RefPtr<Decl> decl, RefPtr<VarLayout> layout)
+{
+    EmitDeclImpl(context, decl, layout);
 }
 
 static void EmitDecl(EmitContext* context, RefPtr<DeclBase> declBase)
@@ -1106,11 +1240,27 @@ static void EmitDecl(EmitContext* context, RefPtr<DeclBase> declBase)
 
 String EmitProgram(ProgramSyntaxNode* program)
 {
-    EmitContext context;
+
+    auto programLayoutMod = program->FindModifier<ComputedLayoutModifier>();
+    if (!programLayoutMod)
+    {
+        // TODO: error message
+        return nullptr;
+    }
+    auto programLayout = programLayoutMod->typeLayout.As<ProgramLayout>();
+    if (!programLayout)
+    {
+        // TODO: error message
+        return nullptr;
+    }
+
+
 
     // TODO(tfoley): only emit symbols on-demand, as needed by a particular entry point
 
-    EmitProgram(&context, program);
+    EmitContext context;
+
+    EmitProgram(&context, program, programLayout);
 
     String code = context.sb.ProduceString();
 

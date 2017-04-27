@@ -387,7 +387,7 @@ static NodePtr<ReflectionTypeLayoutNode> GenerateReflectionTypeLayout(
 
             for( size_t ff = 0; ff < fieldCount; ++ff )
             {
-                auto fieldNode = structTypeNode->GetFieldByIndex(ff);
+                auto fieldNode = MakeNodePtr(context, structTypeNode->GetFieldByIndex(ff));
                 auto fieldLayoutNode = fieldLayoutNodes + ff;
 
                 LayoutInfo fieldTypeLayout;
@@ -549,8 +549,12 @@ static void GenerateReflectionParameter(
 
         ReflectionSize bindingCount = bindingsData.Count();
         auto bindings = AllocateNodes<ReflectionParameterBindingInfo>(context, bindingCount);
+        for( ReflectionSize bb = 0; bb < bindingCount; ++bb )
+        {
+            bindings[bb] = bindingsData[bb];
+        }
 
-        parameter->binding.bindingCount = 0;
+        parameter->binding.bindingCount = bindingCount;
         parameter->binding.bindings = bindings;
     }
     else if (category == SPIRE_PARAMETER_CATEGORY_UNIFORM)
@@ -621,10 +625,96 @@ static ReflectionBlob* GenerateReflectionBlob(
     return result;
 }
 
+// Debug helper code: dump reflection data after generation
+
+static void dumpReflectionType(StringBuilder& sb, ReflectionTypeNode* type)
+{
+    sb << "TYPE\n";
+}
+
+static void dumpReflectionVar(StringBuilder& sb, ReflectionVariableNode* var)
+{
+    sb << "name: '" << var->name << "'\n";
+    sb << "type: ";
+    dumpReflectionType(sb, var->GetType());
+    sb << "\n";
+}
+
+static void dumpReflectionBindingInfo(StringBuilder& sb, ReflectionParameterBindingInfo* info)
+{
+    if( info->category == SPIRE_PARAMETER_CATEGORY_MIXED )
+    {
+        ReflectionSize bindingCount = info->bindingCount;
+        assert(bindingCount);
+        ReflectionParameterBindingInfo* bindings = info->bindings;
+        for( ReflectionSize bb = 0; bb < bindingCount; ++bb )
+        {
+            dumpReflectionBindingInfo(sb, &bindings[bb]);
+        }
+        return;
+    }
+
+
+    switch( info->category )
+    {
+#define CASE(NAME) case SPIRE_PARAMETER_CATEGORY_##NAME: sb << #NAME; break
+CASE(NONE);
+CASE(CONSTANT_BUFFER);
+CASE(SHADER_RESOURCE);
+CASE(UNORDERED_ACCESS);
+CASE(VERTEX_INPUT);
+CASE(FRAGMENT_OUTPUT);
+CASE(SAMPLER_STATE);
+CASE(UNIFORM);
+#undef CASE
+
+    default:
+        sb << "UNEXPCTED";
+        assert(!"unexpected");
+        break;
+    }
+    sb << "(space: " << info->space << ", index: " << info->index << ")\n";
+}
+
+static void dumpReflectionParam(StringBuilder& sb, ReflectionParameterNode* param)
+{
+    dumpReflectionVar(sb, param);
+    dumpReflectionBindingInfo(sb, &param->binding);
+}
+
+static void dumpReflectionBlob(StringBuilder& sb, ReflectionBlob* blob)
+{
+    sb << "reflectionDataSize: " << (int) blob->reflectionDataSize << "\n";
+    sb << "parameterCount: " << (int) blob->parameterCount << "\n";
+    sb << "pad: " << (int) blob->pad << "\n";
+
+    sb << "params: {\n";
+    uint32_t paramCount = blob->GetParameterCount();
+    for( uint32_t pp = 0; pp < paramCount; ++pp )
+    {
+        if(pp != 0) sb << "// ---\n";
+        dumpReflectionParam(sb, blob->GetParameterByIndex(pp));
+    }
+    sb << "} // params\n";
+}
+
+static String dumpReflectionBlob(ReflectionBlob* blob)
+{
+    StringBuilder sb;
+    dumpReflectionBlob(sb, blob);
+    return sb.ProduceString();
+}
+
 ReflectionBlob* ReflectionBlob::Create(RefPtr<ProgramSyntaxNode> program)
 {
     ReflectionGenerationContext context;
-    return GenerateReflectionBlob(&context, program);
+    ReflectionBlob* blob = GenerateReflectionBlob(&context, program);
+#if 0
+    String debugDump = dumpReflectionBlob(blob);
+    OutputDebugStringA("REFLECTION BLOB\n");
+    OutputDebugStringA(debugDump.begin());
+#endif
+    return blob;
 }
 
 }}

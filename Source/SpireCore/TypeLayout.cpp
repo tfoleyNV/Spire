@@ -298,15 +298,54 @@ LayoutInfo GetLayoutImpl(
 
             // The layout of the constant buffer if it gets stored
             // in another constant buffer is just what we computed
-            // originally.
+            // originally (which should be a single binding "slot"
+            // and hence no uniform data).
+            // 
             typeLayout->uniforms = info;
+            assert(typeLayout->uniforms.size == 0);
+            assert(typeLayout->uniforms.alignment == 1);
 
-            // If the contained type has any resources, then
-            // our constant buffer will share them.
-            //
-            // Note(tfoley): I'm just copying the list by-reference
-            // here, rather than allocating a deep copy.
-            typeLayout->resources = elementTypeLayout->resources;
+            // TODO(tfoley): There is a subtle question here of whether
+            // a constant buffer declaration that then contains zero
+            // bytes of uniform data should actually allocate a CB
+            // binding slot. For now I'm going to try to ignore it,
+            // but handling this robustly could let other code
+            // simply handle the "global scope" as a giant outer
+            // CB declaration...
+
+            // The CB will always allocate at least one resource
+            // binding slot for the CB itself.
+            typeLayout->resources.count = 1;
+            typeLayout->resources.kind = LayoutResourceKind::ConstantBuffer;
+            typeLayout->resources.next = 0;
+
+            // Now, if the element type itself had any resources, then
+            // we need to make these part of the layout for our CB
+            if( elementTypeLayout->resources.kind != LayoutResourceKind::Invalid )
+            {
+                RefPtr<TypeLayout::ResourceInfo>* link = &typeLayout->resources.next;
+                for( auto rr = &elementTypeLayout->resources; rr; rr = rr->next.Ptr() )
+                {
+                    assert(rr->kind != LayoutResourceKind::Invalid);
+
+                    // If we have nested constant buffers, then just increase the number of slots reserved
+                    if( rr->kind == LayoutResourceKind::ConstantBuffer )
+                    {
+                        typeLayout->resources.count += rr->count;
+                    }
+                    else
+                    {
+                        // Otherwise, we are appending a new slot type to the array (need to make a copy here...)
+                        RefPtr<TypeLayout::ResourceInfo> info = new TypeLayout::ResourceInfo();
+                        info->kind = rr->kind;
+                        info->count = rr->count;
+                        info->next = nullptr;
+
+                        *link = info;
+                        link = &info->next;
+                    }
+                }
+            }
         }
 
         return info;
@@ -469,6 +508,7 @@ LayoutInfo GetLayoutImpl(
                         for (;;)
                         {
                             fieldRes->kind = fieldTypeRes->kind;
+                            assert(fieldRes->kind != LayoutResourceKind::Invalid);
                             fieldRes->space = 0;
 
                             // To compute the right index, we need
@@ -514,8 +554,8 @@ LayoutInfo GetLayoutImpl(
                                     foundStructRes = new TypeLayout::ResourceInfo();
                                     structRes->next = foundStructRes;
                                 }
-                                structRes->kind = fieldTypeRes->kind;
-                                structRes->count = fieldTypeRes->count;
+                                foundStructRes->kind = fieldTypeRes->kind;
+                                foundStructRes->count = fieldTypeRes->count;
                             }
 
                             // Okay, now we move to the next resource kind

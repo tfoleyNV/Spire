@@ -1370,20 +1370,67 @@ char const* spReflectionParameter_GetName(SpireReflectionParameter* inParam)
     return param->GetName();
 }
 
+static ReflectionParameterBindingInfo const* getParameterBindingInfo(
+    ReflectionParameterNode*    param,
+    SpireParameterCategory      category)
+{
+    if( param->GetCategory() == category )
+    {
+        return &param->binding;
+    }
+
+    if( param->GetCategory() == SPIRE_PARAMETER_CATEGORY_MIXED )
+    {
+        auto bindingCount = param->binding.bindingCount;
+        ReflectionParameterBindingInfo* bindings = param->binding.bindings;
+        for( ReflectionSize bb = 0; bb < bindingCount; ++bb )
+        {
+            if(bindings[bb].category == category)
+                return &bindings[bb];
+        }
+    }
+
+    return 0;
+}
+
+static ReflectionParameterBindingInfo const* getParameterBindingInfo(
+    ReflectionParameterNode*    param )
+{
+    switch( param->GetCategory() )
+    {
+    default:
+        return &param->binding;
+
+    case SPIRE_PARAMETER_CATEGORY_NONE:
+    case SPIRE_PARAMETER_CATEGORY_UNIFORM:
+        // This isn't a meaningful query!
+        return 0;
+
+    case SPIRE_PARAMETER_CATEGORY_MIXED:
+        // It usually isn't meaningful to ask the binding index of something
+        // with a "mixed" type, but we need to special-case constant buffers here
+        //
+        switch( param->GetType()->UnwrapArrays()->GetKind() )
+        {
+        case SPIRE_TYPE_KIND_CONSTANT_BUFFER:
+            return getParameterBindingInfo(param, SPIRE_PARAMETER_CATEGORY_CONSTANT_BUFFER);
+
+        default:
+            return 0;
+        }
+        break;
+    }
+}
+
 unsigned spReflectionParameter_GetBindingIndex(SpireReflectionParameter* inParam)
 {
     auto param = ((ReflectionNode*) inParam)->AsParameter();
     if(!param) return 0;
 
-    switch( param->GetCategory() )
-    {
-    case SPIRE_PARAMETER_CATEGORY_MIXED:
-        // This isn't a meaningful query!
-        return 0;
+    auto info = getParameterBindingInfo(param);
+    if(!info) return 0;
 
-    default:
-        return param->binding.index;
-    }
+    return info->index;
 }
 
 unsigned spReflectionParameter_GetBindingSpace(SpireReflectionParameter* inParam)
@@ -1391,15 +1438,10 @@ unsigned spReflectionParameter_GetBindingSpace(SpireReflectionParameter* inParam
     auto param = ((ReflectionNode*) inParam)->AsParameter();
     if(!param) return 0;
 
-    switch( param->GetCategory() )
-    {
-    case SPIRE_PARAMETER_CATEGORY_MIXED:
-        // This isn't a meaningful query!
-        return 0;
+    auto info = getParameterBindingInfo(param);
+    if(!info) return 0;
 
-    default:
-        return param->binding.space;
-    }
+    return info->space;
 }
 
 // constant buffers
@@ -1408,24 +1450,14 @@ SpireReflectionType* spReflectionParameter_GetBufferType(SpireReflectionParamete
     auto param = ((ReflectionNode*) inParam)->AsParameter();
     if(!param) return 0;
 
-    switch( param->GetCategory() )
+    auto type = param->GetType()->UnwrapArrays();
+    switch(type->GetKind())
     {
     default:
         return 0;
 
-    case SPIRE_PARAMETER_CATEGORY_CONSTANT_BUFFER:
-        {
-            auto type = param->GetType()->UnwrapArrays();
-            switch(type->GetKind())
-            {
-            default:
-                return 0;
-
-            case SPIRE_TYPE_KIND_CONSTANT_BUFFER:
-                return (SpireReflectionType*) ((ReflectionConstantBufferTypeNode*) type)->GetElementType();
-            }
-        }
-        break;
+    case SPIRE_TYPE_KIND_CONSTANT_BUFFER:
+        return (SpireReflectionType*) ((ReflectionConstantBufferTypeNode*) type)->GetElementType();
     }
 }
 

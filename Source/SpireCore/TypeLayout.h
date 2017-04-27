@@ -45,6 +45,7 @@ enum class LayoutResourceKind
 {
     Uniform = -2,
     Invalid = -1,
+    Dummy,
     //
     ConstantBuffer,     // HLSL `b` register
     ShaderResource,     // HLSL `t` register
@@ -118,7 +119,7 @@ public:
     struct ResourceInfo
     {
         // What kind of register was it?
-        LayoutResourceKind  kind;
+        LayoutResourceKind  kind = LayoutResourceKind::Invalid;
 
         // How many registers of the above kind did we use?
         int                 count;
@@ -161,7 +162,7 @@ public:
     struct ResourceInfo
     {
         // What kind of register was it?
-        LayoutResourceKind  kind;
+        LayoutResourceKind  kind = LayoutResourceKind::Invalid;
 
         // What binding space (HLSL) or set (Vulkan) are we placed in?
         int                 space;
@@ -192,7 +193,10 @@ public:
     ResourceInfo* AddResourceInfo(LayoutResourceKind kind)
     {
         if (!IsResourceKind(resources.kind))
+        {
+            resources.kind = kind;
             return &resources;
+        }
 
         auto link = &resources.next;
         while (*link)
