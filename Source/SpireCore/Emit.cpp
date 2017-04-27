@@ -1095,31 +1095,27 @@ static void EmitConstantBufferDecl(
 
                 size_t byteOffsetInRegister = offset % registerSize;
 
-                // If this field doesn't start on an even register boundary, *or*
-                // we don't fill up the whole register, then we need to emit
-                // additional information to pick the right component(s)
-                if (byteOffsetInRegister != 0 || uniformSize < registerSize)
+                // If this field doesn't start on an even register boundary,
+                // then we need to emit additional information to pick the
+                // right component to start from
+                if (byteOffsetInRegister != 0)
                 {
                     // The value had better occupy a whole number of components,
                     // and start on an even component boundary
                     assert(byteOffsetInRegister % componentSize == 0);
                     assert(uniformSize % componentSize == 0);
 
-                    // We also require that the size of the value be smaller than
+                    // We also expect that the size of the value be smaller than
                     // a single register (the layout rules should guarantee that
                     // anything that spans multiple registers starts on a full
                     // register boundary, but lets sanity check it here)
                     assert(uniformSize < registerSize);
 
                     size_t startComponent = byteOffsetInRegister / componentSize;
-                    size_t componentCount = uniformSize / componentSize;
 
                     static const char* kComponentNames[] = {"x", "y", "z", "w"};
                     Emit(context, ".");
-                    for (size_t cc = 0; cc < componentCount; ++cc)
-                    {
-                        Emit(context, kComponentNames[startComponent + cc]);
-                    }
+                    Emit(context, kComponentNames[startComponent]);
                 }
                 Emit(context, ")");
             }
