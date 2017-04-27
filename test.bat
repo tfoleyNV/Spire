@@ -4,4 +4,4 @@ pushd %~dp0
 
 :: TODO: ensure that everything is built?
 
-.\Source\Debug\SpireTestTool.exe -v %*
+.\Source\Debug\SpireTestTool.exe %*

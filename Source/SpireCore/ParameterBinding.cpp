@@ -70,10 +70,10 @@ struct UsedRanges
             int end = ranges[rr].begin;
 
             // If there is enough space...
-            if (end > begin + count)
+            if (end >= begin + count)
             {
                 // ... then claim it and be done
-                Add(begin, end);
+                Add(begin, begin + count);
                 return begin;
             }
 
@@ -263,7 +263,7 @@ static void GenerateBindingsForParameter(
         {
             context->usedResourceRanges[(int)semanticInfo.kind].Add(
                 semanticInfo.index,
-                count);
+                semanticInfo.index + count);
         }
     }
 }
