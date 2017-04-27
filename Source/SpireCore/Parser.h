@@ -2,6 +2,7 @@
 #define RASTER_RENDERER_PARSER_H
 
 #include "Lexer.h"
+#include "ShaderCompiler.h"
 #include "Syntax.h"
 
 namespace Spire

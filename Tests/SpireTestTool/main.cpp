@@ -331,7 +331,9 @@ TestResult runHLSLTestImpl(
 {
     // We will use the Microsoft compiler to generate out expected output here
     String expectedOutputPath = filePath + ".expected";
-    if(options.generateHLSLBaselines || !CoreLib::IO::File::Exists(expectedOutputPath))
+
+    // You know what? Let's always generate the expected output, just so we don't have problems with stale inputs
+//    if(options.generateHLSLBaselines || !CoreLib::IO::File::Exists(expectedOutputPath))
     {
         generateHLSLBaseline(filePath);
     }
@@ -344,6 +346,10 @@ TestResult runHLSLTestImpl(
     spawner.pushArgument(filePath);
 
     gatherOptionsFromTestFile(filePath, &spawner);
+
+    // TODO: The compiler should probably define this automatically...
+    spawner.pushArgument("-D");
+    spawner.pushArgument("__SPIRE__");
 
     spawner.pushArgument("-target");
     spawner.pushArgument("dxbc-assembly");
@@ -500,6 +506,7 @@ int main(
 
 #ifdef SPIRE_TEST_SUPPORT_HLSL
     runHLSLTestsInDirectory(&context, "Tests/HLSL/");
+    runHLSLTestsInDirectory(&context, "Tests/bindings/");
 #endif
 
     if (!context.totalTestCount)

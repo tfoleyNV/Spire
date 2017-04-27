@@ -973,6 +973,7 @@ static void EmitVarDeclCommon(EmitContext* context, RefPtr<VarDeclBase> decl)
     EmitVarDeclCommon(context, DeclRef(decl.Ptr(), nullptr).As<VarDeclBaseRef>());
 }
 
+// Emit a single `regsiter` semantic, as appropriate for a given resource-type-specific layout info
 static void emitHLSLRegisterSemantic(
     EmitContext*                context,
     VarLayout::ResourceInfo*    info)
@@ -1006,6 +1007,21 @@ static void emitHLSLRegisterSemantic(
     Emit(context, ")");
 }
 
+// Emit all the `register` semantics that are appropriate for a particular variable layout
+static void emitHLSLRegisterSemantics(
+    EmitContext*        context,
+    RefPtr<VarLayout>   layout)
+{
+    if (!layout) return;
+
+    if(layout->resources.kind != LayoutResourceKind::Invalid)
+    {
+        for( auto rr = &layout->resources; rr; rr = rr->next.Ptr() )
+        {
+            emitHLSLRegisterSemantic(context, rr);
+        }
+    }
+}
 
 static void EmitConstantBufferDecl(
     EmitContext*				context,
@@ -1053,7 +1069,9 @@ static void EmitConstantBufferDecl(
             auto fieldLayout = structTypeLayout->fields[fieldIndex];
             assert(fieldLayout->varDecl.GetDecl() == field.GetDecl());
 
-            if( fieldLayout->typeLayout->uniforms.size )
+            // How many bytes of uniform data does this field need to occupy?
+            size_t uniformSize = fieldLayout->typeLayout->uniforms.size;
+            if( uniformSize )
             {
                 // The field has uniform data, so we need to place it explicitly, just in case
                 size_t offset = fieldLayout->uniformOffset;
@@ -1064,30 +1082,50 @@ static void EmitConstantBufferDecl(
                 // units, and then a "component" within that register, based on 4-byte
                 // offsets from there. We cannot support more fine-grained offsets than that.
 
-                Emit(context, ": packofset(c");
-                Emit(context, int(offset / 16));
-                size_t rem = offset % 16;
-                size_t comp = rem / 4; 
-                assert((rem % 4) == 0);
-                if(comp != 0)
+                Emit(context, ": packoffset(c");
+
+                // Size of a logical `c` register in bytes
+                auto registerSize = 16;
+
+                // Size of each component of a logical `c` register, in bytes
+                auto componentSize = 4;
+
+                size_t startRegister = offset / registerSize;
+                Emit(context, int(startRegister));
+
+                size_t byteOffsetInRegister = offset % registerSize;
+
+                // If this field doesn't start on an even register boundary, *or*
+                // we don't fill up the whole register, then we need to emit
+                // additional information to pick the right component(s)
+                if (byteOffsetInRegister != 0 || uniformSize < registerSize)
                 {
-                    // TODO: may need to emit more than one character here, in case 
-                    // the value spans multiple components. I'm not sure what the right
-                    // rules are...
+                    // The value had better occupy a whole number of components,
+                    // and start on an even component boundary
+                    assert(byteOffsetInRegister % componentSize == 0);
+                    assert(uniformSize % componentSize == 0);
+
+                    // We also require that the size of the value be smaller than
+                    // a single register (the layout rules should guarantee that
+                    // anything that spans multiple registers starts on a full
+                    // register boundary, but lets sanity check it here)
+                    assert(uniformSize < registerSize);
+
+                    size_t startComponent = byteOffsetInRegister / componentSize;
+                    size_t componentCount = uniformSize / componentSize;
+
                     static const char* kComponentNames[] = {"x", "y", "z", "w"};
                     Emit(context, ".");
-                    Emit(context, kComponentNames[comp]);
+                    for (size_t cc = 0; cc < componentCount; ++cc)
+                    {
+                        Emit(context, kComponentNames[startComponent + cc]);
+                    }
                 }
+                Emit(context, ")");
             }
 
             // Next handle any resources in the field...
-            if(fieldLayout->resources.kind != LayoutResourceKind::Invalid)
-            {
-                for( auto rr = &fieldLayout->resources; rr; rr = rr->next.Ptr() )
-                {
-                    emitHLSLRegisterSemantic(context, rr);
-                }
-            }
+            emitHLSLRegisterSemantics(context, fieldLayout);
 
             fieldIndex++;
 
@@ -1113,6 +1151,8 @@ static void EmitVarDecl(EmitContext* context, RefPtr<VarDeclBase> decl, RefPtr<V
     }
 
     EmitVarDeclCommon(context, decl);
+
+    emitHLSLRegisterSemantics(context, layout);
 
     Emit(context, ";\n");
 }

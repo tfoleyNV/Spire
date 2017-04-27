@@ -372,7 +372,7 @@ LayoutInfo GetLayoutImpl(
     else if(auto basicType = type->As<BasicExpressionType>())
     {
         return GetSimpleLayoutImpl(
-            rules->GetObjectLayout(spire::TypeReflection::Kind::Texture),
+            rules->GetScalarLayout(basicType->BaseType),
             type,
             rules,
             outTypeLayout);
