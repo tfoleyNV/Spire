@@ -121,7 +121,7 @@ struct DefaultLayoutRulesImpl : LayoutRulesImpl
     {
         LayoutInfo vectorInfo;
         vectorInfo.size = elementInfo.size * elementCount;
-        vectorInfo.alignment = RoundUpToPowerOfTwo(elementInfo.size * elementInfo.alignment);
+        vectorInfo.alignment = elementInfo.alignment;
         return vectorInfo;
     }
 
@@ -156,10 +156,13 @@ struct DefaultLayoutRulesImpl : LayoutRulesImpl
     }
 };
 
-struct Std140LayoutRulesImpl : DefaultLayoutRulesImpl
+// Capture common behavior betwen HLSL and GLSL (`std140`) constnat buffer rules
+struct DefaultConstantBufferLayoutRulesImpl : DefaultLayoutRulesImpl
 {
     // The `std140` rules require that all array elements
     // be a multiple of 16 bytes.
+    //
+    // HLSL agrees.
     ArrayLayoutInfo GetArrayLayout(LayoutInfo elementInfo, size_t elementCount) override
     {
         if (elementInfo.alignment < 16)
@@ -171,12 +174,55 @@ struct Std140LayoutRulesImpl : DefaultLayoutRulesImpl
 
     // The `std140` rules require that a `struct` type be
     // alinged to at least 16.
+    //
+    // HLSL agrees.
     LayoutInfo BeginStructLayout() override
     {
         LayoutInfo structInfo;
         structInfo.size = 0;
         structInfo.alignment = 16;
         return structInfo;
+    }
+};
+
+
+struct Std140LayoutRulesImpl : DefaultConstantBufferLayoutRulesImpl
+{
+    // The `std140` rules require vectors to be aligned to the next power of two
+    // up from their size (so a `float2` is 8-byte aligned, and a `float3` is
+    // 16-byte aligned).
+    LayoutInfo GetVectorLayout(LayoutInfo elementInfo, size_t elementCount) override
+    {
+        LayoutInfo vectorInfo;
+        vectorInfo.size = elementInfo.size * elementCount;
+        vectorInfo.alignment = RoundUpToPowerOfTwo(elementInfo.size * elementInfo.alignment);
+        return vectorInfo;
+    }
+};
+
+struct HLSLConstantBufferLayoutRulesImpl : DefaultConstantBufferLayoutRulesImpl
+{
+    // Can't let a `struct` field straddle a register (16-byte) boundary
+    size_t AddStructField(LayoutInfo* ioStructInfo, LayoutInfo fieldInfo) override
+    {
+        ioStructInfo->alignment = std::max(ioStructInfo->alignment, fieldInfo.alignment);
+        ioStructInfo->size = RoundToAlignment(ioStructInfo->size, fieldInfo.alignment);
+
+        size_t fieldOffset = ioStructInfo->size;
+        size_t fieldSize = fieldInfo.size;
+
+        // Would this field cross a 16-byte boundary?
+        auto registerSize = 16;
+        auto startRegister = fieldOffset / registerSize;
+        auto endRegister = (fieldOffset + fieldSize - 1) / registerSize;
+        if (startRegister != endRegister)
+        {
+            ioStructInfo->size = RoundToAlignment(ioStructInfo->size, size_t(registerSize));
+            fieldOffset = ioStructInfo->size;
+        }
+
+        ioStructInfo->size += fieldInfo.size;
+        return fieldOffset;
     }
 };
 
@@ -191,6 +237,7 @@ struct PackedLayoutRulesImpl : DefaultLayoutRulesImpl
 Std140LayoutRulesImpl kStd140LayoutRulesImpl;
 Std430LayoutRulesImpl kStd430LayoutRulesImpl;
 PackedLayoutRulesImpl kPackedLayoutRulesImpl;
+HLSLConstantBufferLayoutRulesImpl kHLSLConstantBufferLayoutRulesImpl;
 
 LayoutRulesImpl* GetLayoutRulesImpl(LayoutRule rule)
 {
@@ -199,6 +246,7 @@ LayoutRulesImpl* GetLayoutRulesImpl(LayoutRule rule)
     case LayoutRule::Std140: return &kStd140LayoutRulesImpl;
     case LayoutRule::Std430: return &kStd430LayoutRulesImpl;
     case LayoutRule::Packed: return &kPackedLayoutRulesImpl;
+    case LayoutRule::HLSLConstantBuffer: return &kHLSLConstantBufferLayoutRulesImpl;
     default:
         return nullptr;
     }

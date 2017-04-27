@@ -22,10 +22,7 @@ enum class LayoutRule
     Std140,
     Std430,
     Packed,
-
-    // TODO(tfoley): HLSL constant buffer rules don't actually
-    // match `std140`, but we won't deal with the differences right now
-    HLSLConstantBuffer = Std140,
+    HLSLConstantBuffer,
 };
 
 // Layout appropriate to "just memory" scenarios,
