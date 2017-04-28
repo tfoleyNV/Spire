@@ -1167,6 +1167,13 @@ SpireTypeKind spReflectionType_GetKind(SpireReflectionType* inType)
     return ((ReflectionNode*) inType)->AsType()->GetKind();
 }
 
+SpireParameterCategory spReflectionType_GetParameterCategory(SpireReflectionType* inType)
+{
+    auto type = ((ReflectionNode*) inType)->AsTypeLayout();
+    if(!type) return SPIRE_PARAMETER_CATEGORY_NONE;
+    return type->GetParameterCategory();
+}
+
 unsigned int spReflectionType_GetFieldCount(SpireReflectionType* inType)
 {
     return ((ReflectionNode*) inType)->AsType()->AsStruct()->GetFieldCount();
@@ -1197,9 +1204,9 @@ size_t spReflectionType_GetElementCount(SpireReflectionType* inType)
     return ((ReflectionNode*) inType)->AsType()->AsArray()->GetElementCount();
 }
 
-size_t spReflectionType_GetElementStride(SpireReflectionType* inType)
+size_t spReflectionType_GetElementStride(SpireReflectionType* inType, SpireParameterCategory category)
 {
-    return ((ReflectionNode*) inType)->AsTypeLayout()->AsArray()->GetElementStride();
+    return ((ReflectionNode*) inType)->AsTypeLayout()->AsArray()->GetElementStride(category);
 }
 
 SpireReflectionType* spReflectionType_GetElementType(SpireReflectionType* inType)
@@ -1311,11 +1318,11 @@ SPIRE_API SpireReflectionType* spReflectionType_GetTextureResultType(SpireReflec
 
 // type layout reflection
 
-size_t spReflectionType_GetSize(SpireReflectionType* inType)
+size_t spReflectionType_GetSize(SpireReflectionType* inType, SpireParameterCategory category)
 {
     auto typeLayout = ((ReflectionNode*) inType)->AsTypeLayout();
     if(!typeLayout) return 0;
-    return typeLayout->GetSize();
+    return typeLayout->GetSize(category);
 }
 
 // variable reflection
@@ -1347,11 +1354,11 @@ SpireReflectionType* spReflectionVariable_GetType(SpireReflectionVariable* inVar
 
 // variable layout reflection
 
-size_t spReflectionVariable_GetOffset(SpireReflectionVariable* inVar)
+size_t spReflectionVariable_GetOffset(SpireReflectionVariable* inVar, SpireParameterCategory category)
 {
     auto var = ((ReflectionNode*) inVar)->AsVariableLayout();
     if(!var) return 0;
-    return var->GetOffset();
+    return var->GetOffset(category);
 }
 
 // shader parameter reflection

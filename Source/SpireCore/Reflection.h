@@ -12,7 +12,7 @@ namespace Compiler {
 // The role of the reflection interface is to extract data from one or more program elements that
 // can later be used to assit in binding shader parameters, filling in buffers, etc.
 //
-// The key goals for the design here are:
+// The key goals for the design here are:A
 //
 // - Reflection data can be represented as a single binary "blob" with no pointers, so that it can be saved/restored easily.
 //   - As a corralary: reflection data is independent of the AST and other compiler data structures
@@ -66,6 +66,10 @@ struct ReflectionPtr
     T* operator->() const
     {
         return Ptr();
+    }
+    T& operator[](int index) const
+    {
+        return Ptr()[index];
     }
 
     // Allow assignment from a raw pointer
@@ -159,6 +163,20 @@ struct ReflectionNode
                 } resource;
             };
         } type;
+
+        // Used for type-layout nodes
+        struct
+        {
+            ReflectionNodeFlavor    flavor;
+
+            // parameter-binding category
+            uint8_t                 category;
+
+            // if `category` is `MIXED`, then this tells
+            // us how many additional categories we have
+            // to deal with.
+            uint16_t                categoryCount;
+        } typeLayout;
 
         // We put a 32-bit value in this `union` to force 4-byte alignment on the structure
         uint32_t headerWord;
@@ -262,6 +280,12 @@ struct ReflectionTypeNode : ReflectionNode
     ReflectionTypeNode* UnwrapArrays();
 };
 
+struct ReflectionTypeSizeInfo
+{
+    ReflectionSize category;
+    ReflectionSize size;
+};
+
 // A type layout node extends a type node with information about how the type was laid
 // out in memory, using particular layout rules (e.g., `std140`). For all types this
 // includes the size of the type as laid out. More specialized node types can be used
@@ -269,10 +293,14 @@ struct ReflectionTypeNode : ReflectionNode
 struct ReflectionTypeLayoutNode : ReflectionNode
 {
     ReflectionPtr<ReflectionTypeNode> type;
-    ReflectionSize size;
+
+    union
+    {
+        ReflectionSize simple;
+        ReflectionPtr<ReflectionTypeSizeInfo> mixed;
+    } size;
 
     SpireTypeKind GetKind() const { return type->GetKind(); }
-    size_t GetSize() const { return size; }
     ReflectionTypeNode* GetType() const { return type; }
 
     ReflectionStructTypeLayoutNode* AsStruct() const
@@ -300,6 +328,13 @@ struct ReflectionTypeLayoutNode : ReflectionNode
             return nullptr;
         }
     }
+
+    SpireParameterCategory GetParameterCategory() const
+    {
+        return (SpireParameterCategory) typeLayout.category;
+    }
+
+    size_t GetSize(SpireParameterCategory category) const;
 };
 
 // A variable node represents a shader parameter, struct field, value in a constant buffer, etc.
@@ -315,7 +350,7 @@ struct ReflectionVariableNode : ReflectionNode
     ReflectionTypeNode* GetType() const { return type; }
 };
 
-struct ReflectionVariableLayoutBaseNode : ReflectionNode
+struct ReflectionVariableLayoutNode : ReflectionNode
 {
     // The original variable that got laid out
     ReflectionPtr<ReflectionVariableNode> variable;
@@ -327,32 +362,24 @@ struct ReflectionVariableLayoutBaseNode : ReflectionNode
     {
         // The offset of this variable within its logical parent,
         // used for variables with only a single resource kind.
-        ReflectionSize offset;
+        ReflectionSize simple;
 
         // Pointer to an array of offset data, so that we can
         // look up the right offset for each category.
-        ReflectionPtr<ReflectionSize> offsets;
-    };
+        ReflectionPtr<ReflectionSize> mixed;
+    } offset;
 
     ReflectionVariableNode* GetVariable() const { return variable; }
     char const* GetName() const { return variable->GetName(); }
     ReflectionTypeNode* GetType() const { return variable->GetType(); }
     ReflectionTypeLayoutNode* GetTypeLayout() const { return typeLayout; }
-};
 
+    SpireParameterCategory GetParameterCategory() const
+    {
+        return typeLayout->GetParameterCategory();
+    }
 
-
-// A variable *layout* represents a variable/field/etc. that has been laid out
-// according to a specific set of layout rules.
-struct ReflectionVariableLayoutNode : ReflectionVariableLayoutBaseNode
-{
-    size_t GetOffset() const { return offset; }
-};
-
-// A special-case structure for the case where a variable has more than one
-// logical resource kind, and so its layout cannot be represented directly
-struct ReflectionMultiVariableLayoutNode : ReflectionVariableLayoutBaseNode
-{
+    size_t GetOffset(SpireParameterCategory category) const;
 };
 
 
@@ -437,6 +464,10 @@ struct ReflectionArrayTypeLayoutNode : ReflectionTypeLayoutNode
     ReflectionPtr<ReflectionTypeLayoutNode> elementTypeLayout;
 
     // stride in bytes between array elements
+    // Note that this is only applicable to uniform data;
+    // it is assumed that the stride for any other resource
+    // type is equal to the size of the element type (no
+    // alignment to deal with...)
     ReflectionSize elementStride;
 
     // Get the underlying array type.
@@ -446,7 +477,7 @@ struct ReflectionArrayTypeLayoutNode : ReflectionTypeLayoutNode
     uint32_t GetElementCount() const { return GetType()->GetElementCount(); }
 
     // Access the element stride
-    uint32_t GetElementStride() const { return elementStride; }
+    uint32_t GetElementStride(SpireParameterCategory category) const;
 
     // Access the element type layout
     ReflectionTypeLayoutNode* GetElementTypeLayout() const { return elementTypeLayout; }
