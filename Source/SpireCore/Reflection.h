@@ -587,8 +587,9 @@ struct ReflectionBlob : ReflectionNode
     {
         return reflectionDataSize;
     }
-};
 
+    String emitAsJSON();
+};
 
 
 //

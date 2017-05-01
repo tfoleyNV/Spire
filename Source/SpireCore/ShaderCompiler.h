@@ -96,6 +96,7 @@ namespace Spire
             SPIRV               = SPIRE_SPIRV,
             DXBytecode          = SPIRE_DXBC,
             DXBytecodeAssembly  = SPIRE_DXBC_ASM,
+            ReflectionJSON, // TODO: Add to `Spire.h`
         };
 
         // Describes an entry point that we've been requested to compile

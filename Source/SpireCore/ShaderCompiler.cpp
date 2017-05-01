@@ -338,6 +338,16 @@ namespace Spire
                     }
                     break;
 
+                case CodeGenTarget::ReflectionJSON:
+                    {
+                        String reflectionJSON = context.compileResult->reflectionBlob->emitAsJSON();
+
+                        // HACK(tfoley): just print it out since that is what people probably expect.
+                        // TODO: need a way to control where output gets routed across all possible targets.
+                        fprintf(stdout, "%s", reflectionJSON.begin());
+                        return;
+                    }
+
                 // Note(tfoley): We currently hit this case when compiling the stdlib
                 case CodeGenTarget::Unknown:
                     break;

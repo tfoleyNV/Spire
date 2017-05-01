@@ -675,11 +675,74 @@ static ReflectionBlob* GenerateReflectionBlob(
 
 // Debug helper code: dump reflection data after generation
 
-static void dumpReflectionVar(StringBuilder& sb, ReflectionVariableNode* var, int indent = 0);
-static void dumpReflectionTypeLayout(StringBuilder& sb, ReflectionTypeLayoutNode* type, int indent = 0);
+struct PrettyWriter
+{
+    StringBuilder sb;
+    bool startOfLine = true;
+    int indent = 0;
+};
 
-static void dumpReflectionVarBindingInfo(
-    StringBuilder&          sb,
+static void adjust(PrettyWriter& writer)
+{
+    if (!writer.startOfLine)
+        return;
+
+    int indent = writer.indent;
+    for (int ii = 0; ii < indent; ++ii)
+        writer.sb << "    ";
+
+    writer.startOfLine = false;
+}
+
+static void indent(PrettyWriter& writer)
+{
+    writer.indent++;
+}
+
+static void dedent(PrettyWriter& writer)
+{
+    writer.indent--;
+}
+
+static void write(PrettyWriter& writer, char const* text)
+{
+    // TODO: can do this more efficiently...
+    char const* cursor = text;
+    for(;;)
+    {
+        char c = *cursor++;
+        if (!c) break;
+
+        if (c == '\n')
+        {
+            writer.startOfLine = true;
+        }
+        else
+        {
+            adjust(writer);
+        }
+
+        writer.sb << c;
+    }
+}
+
+static void write(PrettyWriter& writer, uint32_t val)
+{
+    adjust(writer);
+    writer.sb << val;
+}
+
+static void write(PrettyWriter& writer, int32_t val)
+{
+    adjust(writer);
+    writer.sb << val;
+}
+
+static void emitReflectionVarInfoJSON(PrettyWriter& writer, ReflectionVariableNode* var);
+static void emitReflectionTypeLayoutJSON(PrettyWriter& writer, ReflectionTypeLayoutNode* type);
+
+static void emitReflectionVarBindingInfoJSON(
+    PrettyWriter&           writer,
     SpireParameterCategory  category,
     ReflectionSize          index,
     ReflectionSize          count,
@@ -687,119 +750,167 @@ static void dumpReflectionVarBindingInfo(
 {
     if( category == SPIRE_PARAMETER_CATEGORY_UNIFORM )
     {
-        sb << " : offset(" << index << ", size: " << count << ")\n";
+        write(writer,"\"kind\": \"uniform\"");
+        write(writer, ", ");
+        write(writer,"\"offset\": ");
+        write(writer, index);
+        write(writer, ", ");
+        write(writer, "\"size\": ");
+        write(writer, count);
     }
     else
     {
-        sb << " : register(";
+        write(writer, "\"kind\": \"");
         switch( category )
         {
-    #define CASE(NAME, REG) case SPIRE_PARAMETER_CATEGORY_##NAME: sb << #REG; break
-    CASE(CONSTANT_BUFFER, b);
-    CASE(SHADER_RESOURCE, t);
-    CASE(UNORDERED_ACCESS, u);
-    CASE(VERTEX_INPUT, i);
-    CASE(FRAGMENT_OUTPUT, o);
-    CASE(SAMPLER_STATE, s);
+    #define CASE(NAME, KIND) case SPIRE_PARAMETER_CATEGORY_##NAME: write(writer, #KIND); break
+    CASE(CONSTANT_BUFFER, constantBuffer);
+    CASE(SHADER_RESOURCE, shaderResource);
+    CASE(UNORDERED_ACCESS, unorderedAccess);
+    CASE(VERTEX_INPUT, vertexInput);
+    CASE(FRAGMENT_OUTPUT, fragmentOutput);
+    CASE(SAMPLER_STATE, samplerState);
     #undef CASE
 
         default:
-            sb << "UNEXPCTED";
+            write(writer, "unknown");
             assert(!"unexpected");
             break;
         }
-        sb << index;
+        write(writer, "\"");
         if( space )
         {
-            sb << ", space" << space;
+            write(writer, ", ");
+            write(writer, "\"space\": ");
+            write(writer, space);
         }
+        write(writer, ", ");
+        write(writer, "\"index\": ");
+        write(writer, index);
         if( count != 1)
         {
-            sb << ", count:" << count;
+            write(writer, ", ");
+            write(writer, "\"count\": ");
+            write(writer, count);
         }
-        sb << ")";
     }
 }
 
-static void dumpReflectionVarBindingInfo(StringBuilder& sb, ReflectionVariableLayoutNode* var)
+static void emitReflectionVarBindingInfoJSON(PrettyWriter& writer, ReflectionVariableLayoutNode* var)
 {
     auto category = var->GetParameterCategory();
     if( category == SPIRE_PARAMETER_CATEGORY_MIXED )
     {
+        write(writer,"\"bindings\": [");
+        indent(writer);
         ReflectionSize bindingCount = var->GetTypeLayout()->typeLayout.categoryCount;
         assert(bindingCount);
         for( ReflectionSize bb = 0; bb < bindingCount; ++bb )
         {
-            dumpReflectionVarBindingInfo(
-                sb,
+            if (bb != 0) write(writer, ",\n");
+
+            write(writer,"{");
+            emitReflectionVarBindingInfoJSON(
+                writer,
                 var->GetTypeLayout()->size.mixed[bb].category,
                 var->offset.mixed[bb],
                 var->GetTypeLayout()->size.mixed[bb].size);
+            write(writer,"}");
         }
+        dedent(writer);
+        write(writer,"]");
         return;
     }
-
-    dumpReflectionVarBindingInfo(
-        sb,
-        category,
-        var->offset.simple,
-        var->GetTypeLayout()->size.simple);
+    else
+    {
+        write(writer,"\"binding\": {");
+        indent(writer);
+        emitReflectionVarBindingInfoJSON(
+            writer,
+            category,
+            var->offset.simple,
+            var->GetTypeLayout()->size.simple);
+        dedent(writer);
+        write(writer,"}");
+    }
 }
 
-static void dumpReflectionVarLayout(StringBuilder& sb, ReflectionVariableLayoutNode* var, int indent = 0)
+static void emitReflectionNameInfoJSON(PrettyWriter& writer, ReflectionVariableNode* var)
 {
-    dumpReflectionTypeLayout(sb, var->GetTypeLayout(), indent);
-    sb << " '" << var->GetName() << "'";
-
-    dumpReflectionVarBindingInfo(sb, var);
-    sb << "\n";
+    // TODO: deal with escaping special characters if/when needed
+    write(writer, "\"name\": \"");
+    write(writer, var->GetName());
+    write(writer, "\"");
 }
 
-static void dumpReflectionTypeLayout(StringBuilder& sb, ReflectionTypeLayoutNode* type, int indent)
+static void emitReflectionVarLayoutJSON(PrettyWriter& writer, ReflectionVariableLayoutNode* var)
+{
+    write(writer, "{\n");
+    indent(writer);
+
+    emitReflectionNameInfoJSON(writer, var->GetVariable());
+    write(writer, ",\n");
+
+    write(writer, "\"type\": ");
+    emitReflectionTypeLayoutJSON(writer, var->GetTypeLayout());
+    write(writer, ",\n");
+
+    emitReflectionVarBindingInfoJSON(writer, var);
+
+    dedent(writer);
+    write(writer, "\n}");
+}
+
+static void emitReflectionTypeLayoutInfoJSON(PrettyWriter& writer, ReflectionTypeLayoutNode* type)
 {
     switch( type->GetKind() )
     {
     case SPIRE_TYPE_KIND_SAMPLER_STATE:
-        sb << "SAMPLER_STATE";
+        write(writer, "\"kind\": \"samplerState\"");
         break;
 
     case SPIRE_TYPE_KIND_TEXTURE:
-        sb << "TEXTURE";
+        write(writer, "\"kind\": \"texture\"");
         break;
 
     case SPIRE_TYPE_KIND_CONSTANT_BUFFER:
-        sb << "CONSTANT_BUFFER";
+        write(writer, "\"kind\": \"constantBuffer\"");
         break;
 
     case SPIRE_TYPE_KIND_SCALAR:
-        sb << "SCALAR";
+        write(writer, "\"kind\": \"scalar\"");
         break;
 
     case SPIRE_TYPE_KIND_VECTOR:
-        sb << "VECTOR";
+        write(writer, "\"kind\": \"vector\"");
         break;
 
     case SPIRE_TYPE_KIND_MATRIX:
-        sb << "MATRIX";
+        write(writer, "\"kind\": \"matrix\"");
         break;
 
     case SPIRE_TYPE_KIND_ARRAY:
-        sb << "ARRAY";
+        write(writer, "\"kind\": \"array\"");
         break;
 
     case SPIRE_TYPE_KIND_STRUCT:
         {
+            write(writer, "\n");
+            write(writer, "\"kind\": \"struct\",\n");
+            write(writer, "\"fields\": [\n");
+            indent(writer);
+
             auto structTypeLayout = type->AsStruct();
-            sb << "STRUCT {\n";
             auto fieldCount = structTypeLayout->GetFieldCount();
             for( uint32_t ff = 0; ff < fieldCount; ++ff )
             {
-                dumpReflectionVarLayout(
-                    sb,
-                    structTypeLayout->GetFieldByIndex(ff),
-                    indent+1);
+                emitReflectionVarLayoutJSON(
+                    writer,
+                    structTypeLayout->GetFieldByIndex(ff));
             }
-            sb << "}";
+            dedent(writer);
+            write(writer, "\n]");
+            write(writer, "\n");
         }
         break;
 
@@ -807,62 +918,79 @@ static void dumpReflectionTypeLayout(StringBuilder& sb, ReflectionTypeLayoutNode
         assert(!"unimplemented");
         break;
     }
-
-
 }
 
-
-static void dumpReflectionType(StringBuilder& sb, ReflectionTypeNode* type, int indent)
+static void emitReflectionTypeLayoutJSON(PrettyWriter& writer, ReflectionTypeLayoutNode* type)
 {
-    if( auto typeLayout = type->AsTypeLayout() )
-    {
-        dumpReflectionTypeLayout(sb, typeLayout, indent);
-        return;
-    }
+    write(writer, "{");
+    indent(writer);
+    emitReflectionTypeLayoutInfoJSON(writer, type);
+    dedent(writer);
+    write(writer, "}");
+}
 
+static void emitReflectionTypeInfoJSON(PrettyWriter& writer, ReflectionTypeNode* type)
+{
     switch( type->GetKind() )
     {
     case SPIRE_TYPE_KIND_SAMPLER_STATE:
-        sb << "SAMPLER_STATE";
+        write(writer, "\"kind\": \"samplerState\"");
         break;
 
     case SPIRE_TYPE_KIND_TEXTURE:
-        sb << "TEXTURE";
+        write(writer, "\"kind\": \"texture\"");
+        // TODO: fill out the relevant fields here
         break;
 
     case SPIRE_TYPE_KIND_CONSTANT_BUFFER:
-        {
-            sb << "CONSTANT_BUFFER of ";
-            dumpReflectionTypeLayout(sb, ((ReflectionConstantBufferTypeNode*)(type))->elementType, indent);
-        }
+        write(writer, "\n");
+        write(writer, "\"kind\": \"constantBuffer\"");
+        write(writer, ",\n");
+        write(writer, "\"elementType\": ");
+        emitReflectionTypeLayoutJSON(
+            writer,
+            ((ReflectionConstantBufferTypeNode*)type)->elementType);
+        write(writer, "\n");
         break;
 
     case SPIRE_TYPE_KIND_SCALAR:
-        sb << "SCALAR";
+        write(writer, "\"kind\": \"scalar\"");
+        // TODO: fill out the relevant fields here
         break;
 
     case SPIRE_TYPE_KIND_VECTOR:
-        sb << "VECTOR";
+        write(writer, "\"kind\": \"vector\"");
+        // TODO: fill out the relevant fields here
         break;
 
     case SPIRE_TYPE_KIND_MATRIX:
-        sb << "MATRIX";
+        write(writer, "\"kind\": \"matrix\"");
+        // TODO: fill out the relevant fields here
         break;
 
     case SPIRE_TYPE_KIND_ARRAY:
-        sb << "ARRAY";
+        write(writer, "\"kind\": \"array\"");
+        // TODO: fill out the relevant fields here
         break;
 
     case SPIRE_TYPE_KIND_STRUCT:
         {
+            write(writer, "\n");
+            write(writer, "\"kind\": \"struct\",\n");
+            write(writer, "\"fields\": [\n");
+            indent(writer);
+
             auto structType = type->AsStruct();
-            sb << "STRUCT {\n";
             auto fieldCount = structType->GetFieldCount();
             for( uint32_t ff = 0; ff < fieldCount; ++ff )
             {
-                dumpReflectionVar(sb, structType->GetFieldByIndex(ff), indent+1);
+                emitReflectionVarInfoJSON(
+                    writer,
+                    structType->GetFieldByIndex(ff));
             }
-            sb << "}";
+            dedent(writer);
+            write(writer, "\n]");
+            write(writer, "\n");
         }
         break;
 
@@ -872,87 +1000,113 @@ static void dumpReflectionType(StringBuilder& sb, ReflectionTypeNode* type, int 
     }
 }
 
-static void dumpReflectionVar(StringBuilder& sb, ReflectionVariableNode* var, int indent)
+static void emitReflectionTypeJSON(PrettyWriter& writer, ReflectionTypeNode* type)
 {
-    dumpReflectionType(sb, var->GetType(), indent);
-    sb << " '" << var->name << "'";
+    if( auto typeLayout = type->AsTypeLayout() )
+    {
+        emitReflectionTypeLayoutJSON(writer, typeLayout);
+        return;
+    }
+
+    write(writer, "{");
+    indent(writer);
+    emitReflectionTypeInfoJSON(writer, type);
+    dedent(writer);
+    write(writer, "}");
 }
 
-static void dumpReflectionBindingInfo(StringBuilder& sb, ReflectionParameterBindingInfo* info)
+static void emitReflectionVarInfoJSON(PrettyWriter& writer, ReflectionVariableNode* var)
 {
+    emitReflectionVarInfoJSON(writer, var);
+    write(writer, ",\n");
+
+    write(writer, "\"type\": ");
+    emitReflectionTypeJSON(writer, var->GetType());
+}
+
+static void emitReflectionBindingInfoJSON(PrettyWriter& writer, ReflectionParameterNode* param)
+{
+    auto info = &param->binding;
+
     if( info->category == SPIRE_PARAMETER_CATEGORY_MIXED )
     {
+        write(writer,"\"bindings\": [");
+        indent(writer);
+
         ReflectionSize bindingCount = info->bindingCount;
         assert(bindingCount);
         ReflectionParameterBindingInfo* bindings = info->bindings;
         for( ReflectionSize bb = 0; bb < bindingCount; ++bb )
         {
-            dumpReflectionBindingInfo(sb, &bindings[bb]);
+            if (bb != 0) write(writer, ",\n");
+
+            write(writer,"{");
+            auto& binding = bindings[bb];
+            emitReflectionVarBindingInfoJSON(
+                writer,
+                binding.category,
+                binding.index,
+                1, // TODO: compute the count to use
+                binding.space);
+
+            write(writer,"}");
         }
-        return;
-    }
-
-
-    if( info->category == SPIRE_PARAMETER_CATEGORY_UNIFORM )
-    {
-        sb << " : offset(" << info->index << ")\n";
+        dedent(writer);
+        write(writer,"]");
     }
     else
     {
-        sb << " : register(";
-        switch( info->category )
-        {
-    #define CASE(NAME, REG) case SPIRE_PARAMETER_CATEGORY_##NAME: sb << #REG; break
-    CASE(CONSTANT_BUFFER, b);
-    CASE(SHADER_RESOURCE, t);
-    CASE(UNORDERED_ACCESS, u);
-    CASE(VERTEX_INPUT, i);
-    CASE(FRAGMENT_OUTPUT, o);
-    CASE(SAMPLER_STATE, s);
-    #undef CASE
+        write(writer,"\"binding\": {");
+        indent(writer);
 
-        default:
-            sb << "UNEXPCTED";
-            assert(!"unexpected");
-            break;
-        }
-        sb << info->index;
-        if( info->space )
-        {
-            sb << ", space" << info->space;
-        }
-        sb << ")";
+        emitReflectionVarBindingInfoJSON(
+            writer,
+            info->category,
+            info->index,
+            1, // TODO: compute the count to use
+            info->space);
+
+        dedent(writer);
+        write(writer,"}");
     }
 }
 
-static void dumpReflectionParam(StringBuilder& sb, ReflectionParameterNode* param)
+static void emitReflectionParamJSON(PrettyWriter& writer, ReflectionParameterNode* param)
 {
-    dumpReflectionVar(sb, param);
-    dumpReflectionBindingInfo(sb, &param->binding);
-    sb << "\n";
+    write(writer, "{\n");
+    indent(writer);
+
+    emitReflectionNameInfoJSON(writer, param);
+    write(writer, ",\n");
+
+    emitReflectionBindingInfoJSON(writer, param);
+    write(writer, ",\n");
+
+    write(writer, "\"type\": ");
+    emitReflectionTypeJSON(writer, param->GetType());
+
+    dedent(writer);
+    write(writer, "\n}");
 }
 
-static void dumpReflectionBlob(StringBuilder& sb, ReflectionBlob* blob)
+static void emitReflectionBlobJSON(PrettyWriter& writer, ReflectionBlob* blob)
 {
-//    sb << "reflectionDataSize: " << (int) blob->reflectionDataSize << "\n";
-//    sb << "parameterCount: " << (int) blob->parameterCount << "\n";
-//    sb << "pad: " << (int) blob->pad << "\n";
+    write(writer, "{\n");
+    indent(writer);
+    write(writer, "\"parameters\": [\n");
+    indent(writer);
 
-    sb << "REFLECTION {\n";
     uint32_t paramCount = blob->GetParameterCount();
     for( uint32_t pp = 0; pp < paramCount; ++pp )
     {
-        if(pp != 0) sb << "// ---\n";
-        dumpReflectionParam(sb, blob->GetParameterByIndex(pp));
+        if (pp != 0) write(writer, ",\n");
+        emitReflectionParamJSON(writer, blob->GetParameterByIndex(pp));
     }
-    sb << "} // params\n";
-}
 
-static String dumpReflectionBlob(ReflectionBlob* blob)
-{
-    StringBuilder sb;
-    dumpReflectionBlob(sb, blob);
-    return sb.ProduceString();
+    dedent(writer);
+    write(writer, "\n]");
+    dedent(writer);
+    write(writer, "\n}\n");
 }
 
 ReflectionBlob* ReflectionBlob::Create(RefPtr<ProgramSyntaxNode> program)
@@ -960,11 +1114,20 @@ ReflectionBlob* ReflectionBlob::Create(RefPtr<ProgramSyntaxNode> program)
     ReflectionGenerationContext context;
     ReflectionBlob* blob = GenerateReflectionBlob(&context, program);
 #if 0
-    String debugDump = dumpReflectionBlob(blob);
+    String debugDump = blob->emitAsJSON();
     OutputDebugStringA("REFLECTION BLOB\n");
     OutputDebugStringA(debugDump.begin());
 #endif
     return blob;
+}
+
+// JSON emit logic
+
+String ReflectionBlob::emitAsJSON()
+{
+    PrettyWriter writer;
+    emitReflectionBlobJSON(writer, this);
+    return writer.sb.ProduceString();
 }
 
 //

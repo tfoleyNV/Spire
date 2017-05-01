@@ -97,9 +97,14 @@ int wmain(int argc, wchar_t* argv[])
                     {
                         options.Target = CodeGenTarget::DXBytecodeAssembly;
                     }
+                    else if (name == "reflection-json")
+                    {
+                        options.Target = CodeGenTarget::ReflectionJSON;
+                    }
                     else
                     {
                         fprintf(stderr, "unknown code generation target '%S'\n", name.ToWString());
+                        exit(1);
                     }
                 }
                 // A "profile" specifies both a specific target stage and a general level
@@ -157,6 +162,7 @@ int wmain(int argc, wchar_t* argv[])
                     else
                     {
                         fprintf(stderr, "unknown pass-through target '%S'\n", name.ToWString());
+                        exit(1);
                     }
                     options.passThrough = passThrough;
                 }

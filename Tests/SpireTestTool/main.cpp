@@ -475,6 +475,8 @@ void runTestsInDirectory(
     String				directoryPath)
 {
     runTestsInDirectory(context, directoryPath, &runTestImpl, "*.spire");
+    runTestsInDirectory(context, directoryPath, &runTestImpl, "*.glsl");
+    runTestsInDirectory(context, directoryPath, &runTestImpl, "*.hlsl");
 }
 
 #ifdef SPIRE_TEST_SUPPORT_HLSL
@@ -503,6 +505,7 @@ int main(
     runTestsInDirectory(&context, "Tests/FrontEnd/");
     runTestsInDirectory(&context, "Tests/Diagnostics/");
     runTestsInDirectory(&context, "Tests/Preprocessor/");
+    runTestsInDirectory(&context, "Tests/reflection/");
 
 #ifdef SPIRE_TEST_SUPPORT_HLSL
     // Note(tfoley): Disabling main HLSL tests for now, bercause 100% HLSL coverage
