@@ -802,7 +802,7 @@ static void emitReflectionVarBindingInfoJSON(PrettyWriter& writer, ReflectionVar
     auto category = var->GetParameterCategory();
     if( category == SPIRE_PARAMETER_CATEGORY_MIXED )
     {
-        write(writer,"\"bindings\": [");
+        write(writer,"\"bindings\": [\n");
         indent(writer);
         ReflectionSize bindingCount = var->GetTypeLayout()->typeLayout.categoryCount;
         assert(bindingCount);
@@ -819,7 +819,7 @@ static void emitReflectionVarBindingInfoJSON(PrettyWriter& writer, ReflectionVar
             write(writer,"}");
         }
         dedent(writer);
-        write(writer,"]");
+        write(writer,"\n]");
         return;
     }
     else
@@ -862,10 +862,10 @@ static void emitReflectionVarLayoutJSON(PrettyWriter& writer, ReflectionVariable
     write(writer, "\n}");
 }
 
-static void emitReflectionScalarTypeInfoJSON(PrettyWriter& writer, ReflectionTypeNode* type)
+static void emitReflectionScalarTypeInfoJSON(PrettyWriter& writer, SpireScalarType scalarType)
 {
     write(writer, "\"scalarType\": \"");
-    switch (type->type.scalar.scalarType)
+    switch (scalarType)
     {
     default:
         write(writer, "unknown");
@@ -881,6 +881,7 @@ static void emitReflectionScalarTypeInfoJSON(PrettyWriter& writer, ReflectionTyp
         CASE(Float16, float16);
         CASE(Float32, float32);
         CASE(Float64, float64);
+#undef CASE
     }
     write(writer, "\"");
 }
@@ -952,13 +953,13 @@ static void emitReflectionTypeInfoJSON(PrettyWriter& writer, ReflectionTypeNode*
     case SPIRE_TYPE_KIND_SCALAR:
         write(writer, "\"kind\": \"scalar\"");
         write(writer, ",\n");
-        emitReflectionScalarTypeInfoJSON(writer, type);
+        emitReflectionScalarTypeInfoJSON(writer, type->type.scalar.scalarType);
         break;
 
     case SPIRE_TYPE_KIND_VECTOR:
         write(writer, "\"kind\": \"vector\"");
-        write(writer, ",\n");
-        emitReflectionScalarTypeInfoJSON(writer, type);
+//        write(writer, ",\n");
+//        emitReflectionScalarTypeInfoJSON(writer, type);
         write(writer, ",\n");
         write(writer, "\"elementCount\": ");
         write(writer, type->type.vector.elementCount);
@@ -966,8 +967,8 @@ static void emitReflectionTypeInfoJSON(PrettyWriter& writer, ReflectionTypeNode*
 
     case SPIRE_TYPE_KIND_MATRIX:
         write(writer, "\"kind\": \"matrix\"");
-        write(writer, ",\n");
-        emitReflectionScalarTypeInfoJSON(writer, type);
+//        write(writer, ",\n");
+//        emitReflectionScalarTypeInfoJSON(writer, type);
         write(writer, ",\n");
         write(writer, "\"rowCount\": ");
         write(writer, type->type.matrix.rowCount);
@@ -999,6 +1000,7 @@ static void emitReflectionTypeInfoJSON(PrettyWriter& writer, ReflectionTypeNode*
             auto fieldCount = structType->GetFieldCount();
             for( uint32_t ff = 0; ff < fieldCount; ++ff )
             {
+                if (ff != 0) write(writer, ",\n");
                 emitReflectionVarInfoJSON(
                     writer,
                     structType->GetFieldByIndex(ff));
@@ -1054,6 +1056,7 @@ static void emitReflectionTypeLayoutInfoJSON(PrettyWriter& writer, ReflectionTyp
             auto fieldCount = structTypeLayout->GetFieldCount();
             for( uint32_t ff = 0; ff < fieldCount; ++ff )
             {
+                if (ff != 0) write(writer, ",\n");
                 emitReflectionVarLayoutJSON(
                     writer,
                     structTypeLayout->GetFieldByIndex(ff));
@@ -1106,7 +1109,7 @@ static void emitReflectionBindingInfoJSON(PrettyWriter& writer, ReflectionParame
 
     if( info->category == SPIRE_PARAMETER_CATEGORY_MIXED )
     {
-        write(writer,"\"bindings\": [");
+        write(writer,"\"bindings\": [\n");
         indent(writer);
 
         ReflectionSize bindingCount = info->bindingCount;
@@ -1128,7 +1131,7 @@ static void emitReflectionBindingInfoJSON(PrettyWriter& writer, ReflectionParame
             write(writer,"}");
         }
         dedent(writer);
-        write(writer,"]");
+        write(writer,"\n]");
     }
     else
     {
