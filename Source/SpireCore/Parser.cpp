@@ -1261,7 +1261,23 @@ namespace Spire
                     return declGroup;
                 }
 
-                parser->ReadToken(TokenType::Comma);
+                // Let's default to assuming that a missing `,`
+                // indicates the end of a declaration,
+                // where a `;` would be expected, and not
+                // a continuation of this declaration, where
+                // a `,` would be expected (this is tailoring
+                // the diagnostic message a bit).
+                //
+                // TODO: a more advanced heuristic here might
+                // look at whether the next token is on the
+                // same line, to predict whether `,` or `;`
+                // would be more likely...
+
+                if (!AdvanceIf(parser, TokenType::Comma))
+                {
+                    parser->ReadToken(TokenType::Semicolon);
+                    return declGroup;
+                }
 
                 // expect another variable declaration...
                 initDeclarator = ParseInitDeclarator(parser);

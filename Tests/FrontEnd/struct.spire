@@ -1,6 +1,7 @@
 // test that `struct` decls work
 
-#include "pipeline-simple.spireh"
+// Note(tfoley): disabled during syntax transition
+// #include "pipeline-simple.spireh"
 
 // struct declaration
 struct Foo
