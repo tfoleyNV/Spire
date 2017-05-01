@@ -1107,7 +1107,7 @@ static void emitReflectionTypeJSON(PrettyWriter& writer, ReflectionTypeNode* typ
 
 static void emitReflectionVarInfoJSON(PrettyWriter& writer, ReflectionVariableNode* var)
 {
-    emitReflectionVarInfoJSON(writer, var);
+    emitReflectionNameInfoJSON(writer, var);
     write(writer, ",\n");
 
     write(writer, "\"type\": ");
