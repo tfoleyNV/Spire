@@ -513,6 +513,7 @@ int main(
     //
     //  runHLSLTestsInDirectory(&context, "Tests/HLSL/");
     runHLSLTestsInDirectory(&context, "Tests/bindings/");
+    runHLSLTestsInDirectory(&context, "Tests/rewriter/");
 #endif
 
     if (!context.totalTestCount)

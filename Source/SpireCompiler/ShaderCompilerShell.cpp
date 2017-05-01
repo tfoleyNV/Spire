@@ -66,6 +66,8 @@ int wmain(int argc, wchar_t* argv[])
                     options.SymbolToCompile = tryReadCommandLineArgument(arg, &argCursor, argEnd);
                 else if (argStr == "-schedule")
                     options.ScheduleFileName = tryReadCommandLineArgument(arg, &argCursor, argEnd);
+                else if (argStr == "-no-checking")
+                    options.flags |= SPIRE_COMPILE_FLAG_NO_CHECKING;
                 else if (argStr == "-backend" || argStr == "-target")
                 {
                     String name = tryReadCommandLineArgument(arg, &argCursor, argEnd);
