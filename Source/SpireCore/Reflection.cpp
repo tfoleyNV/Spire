@@ -958,23 +958,29 @@ static void emitReflectionTypeInfoJSON(PrettyWriter& writer, ReflectionTypeNode*
 
     case SPIRE_TYPE_KIND_VECTOR:
         write(writer, "\"kind\": \"vector\"");
-//        write(writer, ",\n");
-//        emitReflectionScalarTypeInfoJSON(writer, type);
         write(writer, ",\n");
         write(writer, "\"elementCount\": ");
         write(writer, type->type.vector.elementCount);
+        write(writer, ",\n");
+        write(writer, "\"elementType\": ");
+        emitReflectionTypeJSON(
+            writer,
+            ((ReflectionVectorTypeNode*)type)->elementType);
         break;
 
     case SPIRE_TYPE_KIND_MATRIX:
         write(writer, "\"kind\": \"matrix\"");
-//        write(writer, ",\n");
-//        emitReflectionScalarTypeInfoJSON(writer, type);
         write(writer, ",\n");
         write(writer, "\"rowCount\": ");
         write(writer, type->type.matrix.rowCount);
         write(writer, ",\n");
         write(writer, "\"columnCount\": ");
         write(writer, type->type.matrix.columnCount);
+        write(writer, ",\n");
+        write(writer, "\"elementType\": ");
+        emitReflectionTypeJSON(
+            writer,
+            ((ReflectionMatrixTypeNode*)type)->elementType);
         break;
 
     case SPIRE_TYPE_KIND_ARRAY:

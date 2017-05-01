@@ -20,7 +20,11 @@ standard output = {
                             "name": "v",
                             "type": {
                                 "kind": "vector",
-                                "elementCount": 3
+                                "elementCount": 3,
+                                "elementType": {
+                                    "kind": "scalar",
+                                    "scalarType": "float32"
+                                }
                             },
                             "binding": {"kind": "uniform", "offset": 0, "size": 12}
                         },
