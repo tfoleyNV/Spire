@@ -7,12 +7,17 @@ standard output = {
         {
             "name": "t",
             "binding": {"kind": "shaderResource", "index": 0},
-            "type": {"kind": "texture"}
+            "type": {
+                "kind": "texture",
+                "baseShape": "2D"
+            }
         },
         {
             "name": "s",
             "binding": {"kind": "samplerState", "index": 0},
-            "type": {"kind": "samplerState"}
+            "type": {
+                "kind": "samplerState"
+            }
         },
         {
             "name": "C",
@@ -24,7 +29,10 @@ standard output = {
                     "fields": [
                         {
                             "name": "c",
-                            "type": {"kind": "scalar"},
+                            "type": {
+                                "kind": "scalar",
+                                "scalarType": "float32"
+                            },
                             "binding": {"kind": "uniform", "offset": 0, "size": 4}
                         }
                     ]

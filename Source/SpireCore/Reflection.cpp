@@ -740,6 +740,7 @@ static void write(PrettyWriter& writer, int32_t val)
 
 static void emitReflectionVarInfoJSON(PrettyWriter& writer, ReflectionVariableNode* var);
 static void emitReflectionTypeLayoutJSON(PrettyWriter& writer, ReflectionTypeLayoutNode* type);
+static void emitReflectionTypeJSON(PrettyWriter& writer, ReflectionTypeNode* type);
 
 static void emitReflectionVarBindingInfoJSON(
     PrettyWriter&           writer,
@@ -861,72 +862,27 @@ static void emitReflectionVarLayoutJSON(PrettyWriter& writer, ReflectionVariable
     write(writer, "\n}");
 }
 
-static void emitReflectionTypeLayoutInfoJSON(PrettyWriter& writer, ReflectionTypeLayoutNode* type)
+static void emitReflectionScalarTypeInfoJSON(PrettyWriter& writer, ReflectionTypeNode* type)
 {
-    switch( type->GetKind() )
+    write(writer, "\"scalarType\": \"");
+    switch (type->type.scalar.scalarType)
     {
-    case SPIRE_TYPE_KIND_SAMPLER_STATE:
-        write(writer, "\"kind\": \"samplerState\"");
-        break;
-
-    case SPIRE_TYPE_KIND_TEXTURE:
-        write(writer, "\"kind\": \"texture\"");
-        break;
-
-    case SPIRE_TYPE_KIND_CONSTANT_BUFFER:
-        write(writer, "\"kind\": \"constantBuffer\"");
-        break;
-
-    case SPIRE_TYPE_KIND_SCALAR:
-        write(writer, "\"kind\": \"scalar\"");
-        break;
-
-    case SPIRE_TYPE_KIND_VECTOR:
-        write(writer, "\"kind\": \"vector\"");
-        break;
-
-    case SPIRE_TYPE_KIND_MATRIX:
-        write(writer, "\"kind\": \"matrix\"");
-        break;
-
-    case SPIRE_TYPE_KIND_ARRAY:
-        write(writer, "\"kind\": \"array\"");
-        break;
-
-    case SPIRE_TYPE_KIND_STRUCT:
-        {
-            write(writer, "\n");
-            write(writer, "\"kind\": \"struct\",\n");
-            write(writer, "\"fields\": [\n");
-            indent(writer);
-
-            auto structTypeLayout = type->AsStruct();
-            auto fieldCount = structTypeLayout->GetFieldCount();
-            for( uint32_t ff = 0; ff < fieldCount; ++ff )
-            {
-                emitReflectionVarLayoutJSON(
-                    writer,
-                    structTypeLayout->GetFieldByIndex(ff));
-            }
-            dedent(writer);
-            write(writer, "\n]");
-            write(writer, "\n");
-        }
-        break;
-
     default:
-        assert(!"unimplemented");
+        write(writer, "unknown");
+        assert(!"unexpected");
         break;
+#define CASE(TAG, ID) case spire::TypeReflection::ScalarType::TAG: write(writer, #ID); break
+        CASE(Void, void);
+        CASE(Bool, bool);
+        CASE(Int32, int32);
+        CASE(UInt32, uint32);
+        CASE(Int64, int64);
+        CASE(UInt64, uint64);
+        CASE(Float16, float16);
+        CASE(Float32, float32);
+        CASE(Float64, float64);
     }
-}
-
-static void emitReflectionTypeLayoutJSON(PrettyWriter& writer, ReflectionTypeLayoutNode* type)
-{
-    write(writer, "{");
-    indent(writer);
-    emitReflectionTypeLayoutInfoJSON(writer, type);
-    dedent(writer);
-    write(writer, "}");
+    write(writer, "\"");
 }
 
 static void emitReflectionTypeInfoJSON(PrettyWriter& writer, ReflectionTypeNode* type)
@@ -938,44 +894,103 @@ static void emitReflectionTypeInfoJSON(PrettyWriter& writer, ReflectionTypeNode*
         break;
 
     case SPIRE_TYPE_KIND_TEXTURE:
-        write(writer, "\"kind\": \"texture\"");
-        // TODO: fill out the relevant fields here
+        {
+            auto shape = type->type.resource.shape;
+            write(writer, "\"kind\": \"texture\"");
+            write(writer, ",\n");
+            write(writer, "\"baseShape\": \"");
+            switch (shape & SPIRE_TEXTURE_BASE_SHAPE_MASK)
+            {
+            default:
+                write(writer, "unknown");
+                assert(!"unexpected");
+                break;
+
+#define CASE(SHAPE, NAME) case SPIRE_TEXTURE_##SHAPE: write(writer, #NAME); break
+                CASE(1D, 1D);
+                CASE(2D, 2D);
+                CASE(3D, 3D);
+                CASE(CUBE, cube);
+                CASE(BUFFER, buffer);
+                CASE(STRUCTURE_BUFFER, structuredBuffer);
+                CASE(BYTE_ADDRESS_BUFFER, byteAddressBuffer);
+#undef CASE
+            }
+            write(writer, "\"");
+            if (shape & SPIRE_TEXTURE_ARRAY_FLAG)
+            {
+                write(writer, ",\n");
+                write(writer, "\"array\": true");
+            }
+            if (shape & SPIRE_TEXTURE_MULTISAMPLE_FLAG)
+            {
+                write(writer, ",\n");
+                write(writer, "\"multisample\": true");
+            }
+            if (shape & SPIRE_TEXTURE_READ_WRITE_FLAG)
+            {
+                write(writer, ",\n");
+                write(writer, "\"readWrite\": true");
+            }
+            if (shape & SPIRE_TEXTURE_RASTER_ORDERED_FLAG)
+            {
+                write(writer, ",\n");
+                write(writer, "\"rasterOrdered\": true");
+            }
+        }
         break;
 
     case SPIRE_TYPE_KIND_CONSTANT_BUFFER:
-        write(writer, "\n");
         write(writer, "\"kind\": \"constantBuffer\"");
         write(writer, ",\n");
         write(writer, "\"elementType\": ");
         emitReflectionTypeLayoutJSON(
             writer,
             ((ReflectionConstantBufferTypeNode*)type)->elementType);
-        write(writer, "\n");
         break;
 
     case SPIRE_TYPE_KIND_SCALAR:
         write(writer, "\"kind\": \"scalar\"");
-        // TODO: fill out the relevant fields here
+        write(writer, ",\n");
+        emitReflectionScalarTypeInfoJSON(writer, type);
         break;
 
     case SPIRE_TYPE_KIND_VECTOR:
         write(writer, "\"kind\": \"vector\"");
-        // TODO: fill out the relevant fields here
+        write(writer, ",\n");
+        emitReflectionScalarTypeInfoJSON(writer, type);
+        write(writer, ",\n");
+        write(writer, "\"elementCount\": ");
+        write(writer, type->type.vector.elementCount);
         break;
 
     case SPIRE_TYPE_KIND_MATRIX:
         write(writer, "\"kind\": \"matrix\"");
-        // TODO: fill out the relevant fields here
+        write(writer, ",\n");
+        emitReflectionScalarTypeInfoJSON(writer, type);
+        write(writer, ",\n");
+        write(writer, "\"rowCount\": ");
+        write(writer, type->type.matrix.rowCount);
+        write(writer, ",\n");
+        write(writer, "\"columnCount\": ");
+        write(writer, type->type.matrix.columnCount);
         break;
 
     case SPIRE_TYPE_KIND_ARRAY:
-        write(writer, "\"kind\": \"array\"");
-        // TODO: fill out the relevant fields here
+        {
+            auto arrayType = type->AsArray();
+            write(writer, "\"kind\": \"array\"");
+            write(writer, ",\n");
+            write(writer, "\"elementCount\": ");
+            write(writer, arrayType->GetElementCount());
+            write(writer, ",\n");
+            write(writer, "\"elementType\": ");
+            emitReflectionTypeJSON(writer, arrayType->GetElementType());
+        }
         break;
 
     case SPIRE_TYPE_KIND_STRUCT:
         {
-            write(writer, "\n");
             write(writer, "\"kind\": \"struct\",\n");
             write(writer, "\"fields\": [\n");
             indent(writer);
@@ -990,7 +1005,6 @@ static void emitReflectionTypeInfoJSON(PrettyWriter& writer, ReflectionTypeNode*
             }
             dedent(writer);
             write(writer, "\n]");
-            write(writer, "\n");
         }
         break;
 
@@ -998,6 +1012,68 @@ static void emitReflectionTypeInfoJSON(PrettyWriter& writer, ReflectionTypeNode*
         assert(!"unimplemented");
         break;
     }
+}
+
+static void emitReflectionTypeLayoutInfoJSON(PrettyWriter& writer, ReflectionTypeLayoutNode* type)
+{
+    switch( type->GetKind() )
+    {
+    default:
+        emitReflectionTypeInfoJSON(writer, type->GetType());
+        break;
+
+    case SPIRE_TYPE_KIND_ARRAY:
+        {
+            auto arrayTypeLayout = type->AsArray();
+            auto elementTypeLayout = arrayTypeLayout->GetElementTypeLayout();
+            write(writer, "\"kind\": \"array\"");
+            write(writer, ",\n");
+            write(writer, "\"elementCount\": ");
+            write(writer, arrayTypeLayout->GetElementCount());
+            write(writer, ",\n");
+            write(writer, "\"elementType\": ");
+            emitReflectionTypeLayoutJSON(
+                writer,
+                elementTypeLayout);
+            if (arrayTypeLayout->GetSize(SPIRE_PARAMETER_CATEGORY_UNIFORM) != 0)
+            {
+                write(writer, ",\n");
+                write(writer, "\"uniformStride\": ");
+                write(writer, arrayTypeLayout->GetElementStride(SPIRE_PARAMETER_CATEGORY_UNIFORM));
+            }
+        }
+        break;
+
+    case SPIRE_TYPE_KIND_STRUCT:
+        {
+            write(writer, "\"kind\": \"struct\",\n");
+            write(writer, "\"fields\": [\n");
+            indent(writer);
+
+            auto structTypeLayout = type->AsStruct();
+            auto fieldCount = structTypeLayout->GetFieldCount();
+            for( uint32_t ff = 0; ff < fieldCount; ++ff )
+            {
+                emitReflectionVarLayoutJSON(
+                    writer,
+                    structTypeLayout->GetFieldByIndex(ff));
+            }
+            dedent(writer);
+            write(writer, "\n]");
+        }
+        break;
+    }
+
+    // TODO: emit size info for types
+}
+
+static void emitReflectionTypeLayoutJSON(PrettyWriter& writer, ReflectionTypeLayoutNode* type)
+{
+    write(writer, "{\n");
+    indent(writer);
+    emitReflectionTypeLayoutInfoJSON(writer, type);
+    dedent(writer);
+    write(writer, "\n}");
 }
 
 static void emitReflectionTypeJSON(PrettyWriter& writer, ReflectionTypeNode* type)
@@ -1008,11 +1084,11 @@ static void emitReflectionTypeJSON(PrettyWriter& writer, ReflectionTypeNode* typ
         return;
     }
 
-    write(writer, "{");
+    write(writer, "{\n");
     indent(writer);
     emitReflectionTypeInfoJSON(writer, type);
     dedent(writer);
-    write(writer, "}");
+    write(writer, "\n}");
 }
 
 static void emitReflectionVarInfoJSON(PrettyWriter& writer, ReflectionVariableNode* var)
