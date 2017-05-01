@@ -566,7 +566,7 @@ static void GenerateReflectionParameter(
 
     parameter->flavor = ReflectionNodeFlavor::Parameter;
     parameter->name = GenerateReflectionName(context, varDecl->Name.Content);
-    parameter->type = GenerateReflectionType(context, varDecl->Type);
+    parameter->typeLayout = GenerateReflectionTypeLayout(context, paramLayout->typeLayout);
     parameter->binding.category = category;
 
     if (category == SPIRE_PARAMETER_CATEGORY_MIXED)
@@ -836,12 +836,17 @@ static void emitReflectionVarBindingInfoJSON(PrettyWriter& writer, ReflectionVar
     }
 }
 
-static void emitReflectionNameInfoJSON(PrettyWriter& writer, ReflectionVariableNode* var)
+static void emitReflectionNameInfoJSON(PrettyWriter& writer, char const* name)
 {
     // TODO: deal with escaping special characters if/when needed
     write(writer, "\"name\": \"");
-    write(writer, var->GetName());
+    write(writer, name);
     write(writer, "\"");
+}
+
+static void emitReflectionNameInfoJSON(PrettyWriter& writer, ReflectionVariableNode* var)
+{
+    emitReflectionNameInfoJSON(writer, var->GetName());
 }
 
 static void emitReflectionVarLayoutJSON(PrettyWriter& writer, ReflectionVariableLayoutNode* var)
@@ -1161,14 +1166,14 @@ static void emitReflectionParamJSON(PrettyWriter& writer, ReflectionParameterNod
     write(writer, "{\n");
     indent(writer);
 
-    emitReflectionNameInfoJSON(writer, param);
+    emitReflectionNameInfoJSON(writer, param->GetName());
     write(writer, ",\n");
 
     emitReflectionBindingInfoJSON(writer, param);
     write(writer, ",\n");
 
     write(writer, "\"type\": ");
-    emitReflectionTypeJSON(writer, param->GetType());
+    emitReflectionTypeLayoutJSON(writer, param->GetTypeLayout());
 
     dedent(writer);
     write(writer, "\n}");

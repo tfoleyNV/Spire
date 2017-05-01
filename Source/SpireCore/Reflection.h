@@ -337,8 +337,12 @@ struct ReflectionTypeLayoutNode : ReflectionNode
     size_t GetSize(SpireParameterCategory category) const;
 };
 
+// Anything variable-like (a variable, parameter, or variable layout)
+struct ReflectionVariableBaseNode : ReflectionNode
+{};
+
 // A variable node represents a shader parameter, struct field, value in a constant buffer, etc.
-struct ReflectionVariableNode : ReflectionNode
+struct ReflectionVariableNode : ReflectionVariableBaseNode
 {
     // The name of the variable
     ReflectionPtr<char> name;
@@ -350,7 +354,11 @@ struct ReflectionVariableNode : ReflectionNode
     ReflectionTypeNode* GetType() const { return type; }
 };
 
-struct ReflectionVariableLayoutNode : ReflectionNode
+struct ReflectionVariableLayoutBaseNode : ReflectionVariableBaseNode
+{};
+
+
+struct ReflectionVariableLayoutNode : ReflectionVariableLayoutBaseNode
 {
     // The original variable that got laid out
     ReflectionPtr<ReflectionVariableNode> variable;
@@ -557,10 +565,20 @@ struct ReflectionParameterBindingInfo
 
 };
 
-struct ReflectionParameterNode : ReflectionVariableNode
+struct ReflectionParameterNode : ReflectionVariableLayoutBaseNode
 {
+    // The name of the parameter
+    ReflectionPtr<char> name;
+
+    // The layout generated for the parameter's type
+    ReflectionPtr<ReflectionTypeLayoutNode> typeLayout;
+
+    // binding information generated for the parameter
     ReflectionParameterBindingInfo binding;
 
+    char const* GetName() const { return name; }
+    ReflectionTypeLayoutNode* GetTypeLayout() const { return typeLayout; }
+    ReflectionTypeNode* GetType() const { return GetTypeLayout()->GetType(); }
     SpireParameterCategory GetCategory() const { return (SpireParameterCategory) binding.category; }
 
 //    uint32_t GetBindingIndex() const { return bindingIndex; }
