@@ -939,71 +939,11 @@ __intrinsic float mix(float v0, float v1, float t);
 __intrinsic vec3 mix(vec3 v0, vec3 v1, vec3 t);
 __intrinsic vec4 mix(vec4 v0, vec4 v1, vec4 t);
 __intrinsic vec2 mix(vec2 v0, vec2 v1, vec2 t);
-__intrinsic mat3 mat3(vec3 a, vec3 b, vec3 c);
-__intrinsic mat3 mat3(float a0, float a1, float a2, float a3, float a4, float a5, float a6, float a7, float a8);
-__intrinsic mat4 mat4(vec4 a, vec4 b, vec4 c, vec4 d);
-__intrinsic mat4 mat4(float a0, float a1, float a2, float a3, float a4, float a5, float a6, float a7, float a8, float a9, float a10, float a11, float a12, float a13, float a14, float a15);
+
 __intrinsic vec3 cross(vec3 v1, vec3 v2);
-__intrinsic float float(float v);
-__intrinsic int int(int v);
-__intrinsic uint uint(uint v);
-__intrinsic bool bool(bool v);
-__intrinsic vec2 vec2(float v);
-__intrinsic vec3 vec3(float v);
-__intrinsic vec4 vec4(float v);
-__intrinsic vec2 vec2(float x, float y);
-__intrinsic vec3 vec3(float x, float y, float z);
-__intrinsic vec3 vec3(vec2 v, float z);
-__intrinsic vec4 vec4(float x, float y, float z, float w);
-__intrinsic vec4 vec4(vec3 v, float w);
-__intrinsic vec4 vec4(vec2 v, float z, float w);
-__intrinsic vec4 vec4(vec2 v, vec2 w);
-__intrinsic ivec2 ivec2(int x, int y);
-__intrinsic ivec3 ivec3(int x, int y, int z);
-__intrinsic ivec3 ivec3(ivec2 v, int z);
-__intrinsic ivec4 ivec4(int x, int y, int z, int w);
-__intrinsic ivec4 ivec4(ivec3 v, int w);
-__intrinsic ivec4 ivec4(ivec2 v, int z, int w);
-__intrinsic ivec4 ivec4(ivec2 v, ivec2 w);
-
-__intrinsic uvec2 uvec2(uint x, uint y);
-__intrinsic uvec3 uvec3(uint x, uint y, uint z);
-__intrinsic uvec3 uvec3(uvec2 v, uint z);
-__intrinsic uvec4 uvec4(uint x, uint y, uint z, uint w);
-__intrinsic uvec4 uvec4(uvec3 v, uint w);
-__intrinsic uvec4 uvec4(uvec2 v, uint z, uint w);
-__intrinsic uvec4 uvec4(uvec2 v, uvec2 w);
-
-__intrinsic int int(uint val);
-__intrinsic int int(float val);
-__intrinsic ivec2 ivec2(uvec2 val);
-__intrinsic ivec2 ivec2(vec2 val);
-__intrinsic ivec3 ivec3(uvec3 val);
-__intrinsic ivec3 ivec3(vec3 val);
-__intrinsic ivec4 ivec4(uvec4 val);
-__intrinsic ivec4 ivec4(vec4 val);
-
-__intrinsic uint uint(int val);
-__intrinsic uint uint(float val);
-__intrinsic uvec2 uvec2(ivec2 val);
-__intrinsic uvec2 uvec2(vec2 val);
-__intrinsic uvec3 uvec3(ivec3 val);
-__intrinsic uvec3 uvec3(vec3 val);
-__intrinsic uvec4 uvec4(ivec4 val);
-__intrinsic uvec4 uvec4(vec4 val);
-
-__intrinsic float float(int val);
-__intrinsic float float(uint val);
-__intrinsic vec2 vec2(ivec2 val);
-__intrinsic vec2 vec2(uvec2 val);
-__intrinsic vec3 vec3(ivec3 val);
-__intrinsic vec3 vec3(uvec3 val);
-__intrinsic vec4 vec4(ivec4 val);
-__intrinsic vec4 vec4(uvec4 val);
 
 __intrinsic mat3 transpose(mat3 in);
 __intrinsic mat4 transpose(mat4 in);
-__intrinsic mat3 mat3(mat4 in);
 
 struct trait __intrinsic {};
 __intrinsic trait IsTriviallyPassable(float);
