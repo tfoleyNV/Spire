@@ -959,7 +959,7 @@ ReflectionBlob* ReflectionBlob::Create(RefPtr<ProgramSyntaxNode> program)
 {
     ReflectionGenerationContext context;
     ReflectionBlob* blob = GenerateReflectionBlob(&context, program);
-#if 1
+#if 0
     String debugDump = dumpReflectionBlob(blob);
     OutputDebugStringA("REFLECTION BLOB\n");
     OutputDebugStringA(debugDump.begin());

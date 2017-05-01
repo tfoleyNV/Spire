@@ -476,7 +476,7 @@ namespace Spire
                     if (basicType->BaseType == BaseType::Void)
                     {
                         // TODO(tfoley): pick the right diagnostic message
-                        getSink()->diagnose(result.exp.Ptr(), Diagnostics::parameterCannotBeVoid);
+                        getSink()->diagnose(result.exp.Ptr(), Diagnostics::invalidTypeVoid);
                         result.type = ExpressionType::Error;
                         return result;
                     }

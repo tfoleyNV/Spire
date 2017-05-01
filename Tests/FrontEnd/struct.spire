@@ -19,6 +19,8 @@ Foo makeFoo(float x, float y)
 	return foo;
 }
 
+/* Note(tfoley): disabled during syntax transition
+
 template shader Test()
 //    targets StandardPipeline
 {
@@ -41,3 +43,5 @@ template shader Test()
 
     out @Fragment vec4 colorTarget = vec4(result,1);
 }
+
+*/

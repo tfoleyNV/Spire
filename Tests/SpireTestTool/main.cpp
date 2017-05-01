@@ -505,7 +505,10 @@ int main(
     runTestsInDirectory(&context, "Tests/Preprocessor/");
 
 #ifdef SPIRE_TEST_SUPPORT_HLSL
-    runHLSLTestsInDirectory(&context, "Tests/HLSL/");
+    // Note(tfoley): Disabling main HLSL tests for now, bercause 100% HLSL coverage
+    // is not a near-term priority.
+    //
+    //  runHLSLTestsInDirectory(&context, "Tests/HLSL/");
     runHLSLTestsInDirectory(&context, "Tests/bindings/");
 #endif
 

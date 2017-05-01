@@ -21,6 +21,8 @@ struct Pair
 // function at global scope
 float tail(Pair p) { return p.tail; }
 
+/* Note(tfoley): disabled during syntax transition
+
 // module
 module M
 {
@@ -45,3 +47,4 @@ shader S
 
 }
 
+*/
