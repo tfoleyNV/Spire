@@ -16,7 +16,7 @@ float4 use(Texture2D t, SamplerState s) { return t.Sample(s, 0.0); }
 Texture2D 		t R(: register(t0));
 SamplerState 	s R(: register(s0));
 
-cbuffer C R(: register(c0))
+cbuffer C R(: register(b0))
 {
 	float c;
 }
