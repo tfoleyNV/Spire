@@ -611,6 +611,35 @@ extern "C"
     */
     SPIRE_API void spDestroyCompilationResult(SpireCompilationResult * result);
 
+
+    /* Note(tfoley): working on revamped compilation interface for "rewriter" case
+    */
+
+    // Add a distinct translation unit to the compilation request
+    // name is optional
+    // returns the zero-based index of the translation unit created
+    SPIRE_API int spAddTranslationUnit(SpireCompilationContext* context, char const* name);
+
+    // Add a source file to the given translation unit
+    SPIRE_API void spAddTranslationUnitSourceFile(
+        SpireCompilationContext*    context,
+        int                         translationUnitIndex,
+        char const*                 path);
+
+    // Add a source string to the given translation unit
+    SPIRE_API void spAddTranslationUnitSourceString(
+        SpireCompilationContext*    context,
+        int                         translationUnitIndex,
+        char const*                 path,
+        char const*                 source);
+
+    // Compile in a context that already has its translation units specified
+    SPIRE_API SpireCompilationResult* spCompile(SpireCompilationContext* context, SpireDiagnosticSink* sink);
+
+    // Get the output code associated with a specific translation unit
+    SPIRE_API char const* spGetTranslationUnitSource(SpireCompilationResult* result, int translationUnitIndex);
+
+
     /* Note(tfoley): working on new reflection interface...
     */
 
@@ -1032,6 +1061,11 @@ namespace spire
         size_t getReflectionDataSize()
         {
             return spReflection_GetReflectionDataSize((SpireReflection*) this);
+        }
+
+        static ShaderReflection* get(SpireCompilationResult* result)
+        {
+            return (ShaderReflection*) spGetReflection(result);
         }
     };
 }

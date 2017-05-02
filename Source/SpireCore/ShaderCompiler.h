@@ -203,7 +203,7 @@ namespace Spire
                 Compile(result, context, units, options);
             }
 
-            virtual void PassThrough(
+            virtual TranslationUnitResult PassThrough(
                 CompileResult &			result, 
                 String const&			sourceText,
                 String const&			sourcePath,

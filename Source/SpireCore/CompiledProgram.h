@@ -35,6 +35,11 @@ namespace Spire
 
         void IndentString(StringBuilder & sb, String src);
 
+        struct TranslationUnitResult
+        {
+            String outputSource;
+        };
+
         class CompileResult
         {
         public:
@@ -42,7 +47,14 @@ namespace Spire
             String ScheduleFile;
             RefPtr<ILProgram> Program;
             EnumerableDictionary<String, CompiledShaderSource> CompiledSource; // shader -> stage -> code
+            
+            // Per-translation-unit results
+            List<TranslationUnitResult> translationUnits;
+
+            // Reflection info that spans all translation units
             ReflectionBlob* reflectionBlob = nullptr;
+
+
             void PrintDiagnostics()
             {
                 for (int i = 0; i < sink.diagnostics.Count(); i++)

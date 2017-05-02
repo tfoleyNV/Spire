@@ -476,6 +476,8 @@ namespace SpireLib
         CoreLib::EnumerableDictionary<String, List<SpireParameterSet>> ParamSets;
         ReflectionBlob* reflectionBlob = nullptr;
 
+        List<String> translationUnitSources;
+
         ~CompileResult()
         {
             if(reflectionBlob) free(reflectionBlob);
@@ -803,6 +805,7 @@ namespace SpireLib
             return 0;
         }
 
+        // Act as exepcted of the command-line compiler
         int executeCompilerDriverActions()
         {
             Spire::Compiler::CompileResult result;
@@ -810,6 +813,36 @@ namespace SpireLib
             result.PrintDiagnostics();
             return err;
         }
+
+        // Act as expected of the API-based compiler
+        SpireLib::CompileResult* executeAPIActions(SpireDiagnosticSink* sink)
+        {
+            Spire::Compiler::CompileResult result;
+
+            int err = executeCompilerDriverActions(result);
+            sink->diagnostics = result.sink.diagnostics;
+            sink->errorCount = result.sink.errorCount;
+
+            SpireLib::CompileResult* rs = new SpireLib::CompileResult();
+
+            // TODO: what to copy into `rs` here?
+
+            // Move the reflection blob over (so it doesn't get deleted)
+            rs->reflectionBlob = result.reflectionBlob;
+            result.reflectionBlob = NULL;
+
+            // Copy over the per-translation-unit results
+            int translationUnitCount = Options.translationUnits.Count();
+            for( int tt = 0; tt < translationUnitCount; ++tt )
+            {
+                auto source = result.translationUnits[tt].outputSource;
+                rs->translationUnitSources.Add(source);
+            }
+
+            return rs;
+        }
+
+
     };
 
     int executeCompilerDriverActions(Spire::Compiler::CompileOptions const& options)
@@ -1258,6 +1291,64 @@ SpireResourceBindingInfo * spParameterSetGetBindingSlot(SpireParameterSet * set,
 void spDestroyCompilationResult(SpireCompilationResult * result)
 {
     delete RS(result);
+}
+
+// New-fangled compilation API
+
+SPIRE_API int spAddTranslationUnit(SpireCompilationContext* context, char const* name)
+{
+    auto ctx = CTX(context);
+    int result = ctx->Options.translationUnits.Count();
+
+    TranslationUnitOptions translationUnit;
+
+    // TODO: need to deduce this, or expect it via API
+    translationUnit.flavor = TranslationUnitFlavor::ForeignShaderCode;
+
+    ctx->Options.translationUnits.Add(translationUnit);
+
+    return result;
+}
+
+SPIRE_API void spAddTranslationUnitSourceFile(
+    SpireCompilationContext*    context,
+    int                         translationUnitIndex,
+    char const*                 path)
+{
+    auto ctx = CTX(context);
+    if(!ctx) return;
+    if(!path) return;
+    if(translationUnitIndex < 0) return;
+    if(translationUnitIndex >= ctx->Options.translationUnits.Count()) return;
+
+    ctx->Options.translationUnits[translationUnitIndex].sourceFilePaths.Add(path);
+}
+
+// Add a source string to the given translation unit
+SPIRE_API void spAddTranslationUnitSourceString(
+    SpireCompilationContext*    context,
+    int                         translationUnitIndex,
+    char const*                 path,
+    char const*                 source)
+{
+    // TODO: Need to have `TranslationUnitOptions` support having source come in as a string...
+    assert(!"unimplemented");
+}
+
+// Compile in a context that already has its translation units specified
+SPIRE_API SpireCompilationResult* spCompile(SpireCompilationContext* context, SpireDiagnosticSink* sink)
+{
+    auto ctx = CTX(context);
+
+    SpireLib::CompileResult* rs = ctx->executeAPIActions(sink);
+    return reinterpret_cast<SpireCompilationResult*>(rs);
+}
+
+// Get the output code associated with a specific translation unit
+SPIRE_API char const* spGetTranslationUnitSource(SpireCompilationResult* result, int translationUnitIndex)
+{
+    auto rs = RS(result);
+    return rs->translationUnitSources[translationUnitIndex].begin();
 }
 
 // Reflection API

@@ -256,17 +256,10 @@ namespace Spire
             }
 #endif
 
-            void DoNewEmitLogic(ExtraContext& context)
+            TranslationUnitResult DoNewEmitLogic(ExtraContext& context)
             {
-                // Do reflection stuff first
-
-                if( context.compileResult )
-                {
-                    GenerateParameterBindings(context.programSyntax.Ptr());
-                    context.compileResult->reflectionBlob = ReflectionBlob::Create(context.programSyntax);
-                }
-
                 //
+                TranslationUnitResult result;
 
                 switch (context.getOptions().Target)
                 {
@@ -276,17 +269,20 @@ namespace Spire
 
                         if (context.compileResult)
                         {
+                            result.outputSource = hlslProgram;
+#if 0
                             StageSource stageSource;
                             stageSource.MainCode = hlslProgram;
                             CompiledShaderSource compiled;
                             compiled.Stages[""] = stageSource;
                             context.compileResult->CompiledSource[""] = compiled;
+#endif
                         }
                         else
                         {
                             fprintf(stdout, "%s", hlslProgram.begin());
                         }
-                        return;
+                        return result;
                     }
                     break;
 
@@ -299,12 +295,15 @@ namespace Spire
                             sb.Append((char*) code.begin(), code.Count());
 
                             String codeString = sb.ProduceString();
+                            result.outputSource = codeString;
 
+#if 0
                             StageSource stageSource;
                             stageSource.MainCode = codeString;
                             CompiledShaderSource compiled;
                             compiled.Stages[""] = stageSource;
                             context.compileResult->CompiledSource[""] = compiled;
+#endif
                         }
                         else
                         {
@@ -325,7 +324,7 @@ namespace Spire
                                 fputs("\n", stdout);
                             }
                         }
-                        return;
+                        return result;
                     }
                     break;
 
@@ -336,7 +335,7 @@ namespace Spire
                         // HACK(tfoley): just print it out since that is what people probably expect.
                         // TODO: need a way to control where output gets routed across all possible targets.
                         fprintf(stdout, "%s", hlslProgram.begin());
-                        return;
+                        return result;
                     }
                     break;
 
@@ -347,7 +346,7 @@ namespace Spire
                         // HACK(tfoley): just print it out since that is what people probably expect.
                         // TODO: need a way to control where output gets routed across all possible targets.
                         fprintf(stdout, "%s", reflectionJSON.begin());
-                        return;
+                        return result;
                     }
 
                 // Note(tfoley): We currently hit this case when compiling the stdlib
@@ -356,8 +355,9 @@ namespace Spire
 
                 default:
                     throw "unimplemented";
-                    return;
                 }
+
+                return result;
             }
 
 
@@ -415,6 +415,18 @@ namespace Spire
 
 #endif
 
+                    // Do binding generation, and then reflection (globally)
+                    // before we move on to any code-generation activites.
+                    //
+                    // TODO: actually make this global!
+
+                    for( auto translationUnit : collectionOfTranslationUnits->translationUnits )
+                    {
+                        GenerateParameterBindings(translationUnit.SyntaxNode.Ptr());
+                        result.reflectionBlob = ReflectionBlob::Create(translationUnit.SyntaxNode);
+                    }
+
+
                     // HACK(tfoley): for right now I just want to pretty-print an AST
                     // into another language, so the whole compiler back-end is just
                     // getting in the way.
@@ -431,7 +443,8 @@ namespace Spire
                         extra.sourceText = "";
                         extra.compileResult = &result;
 
-                        DoNewEmitLogic(extra);
+                        TranslationUnitResult translationUnitResult = DoNewEmitLogic(extra);
+                        result.translationUnits.Add(translationUnitResult);
                     }
                 }
                 catch (int)
@@ -467,7 +480,7 @@ namespace Spire
                 }
             }
 
-            virtual void PassThrough(
+            virtual TranslationUnitResult PassThrough(
                 CompileResult &			/*result*/,
                 String const&			sourceText,
                 String const&			sourcePath,
@@ -480,9 +493,7 @@ namespace Spire
                 extra.sourcePath = sourcePath;
                 extra.sourceText = sourceText;
 
-                DoNewEmitLogic(extra);
-                return;
-
+                return DoNewEmitLogic(extra);
             }
 
         };
