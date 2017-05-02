@@ -120,7 +120,7 @@ namespace Spire
             CodeGenTarget Target = CodeGenTarget::Unknown;
             StageTarget stage = StageTarget::Unknown;
             EnumerableDictionary<String, String> BackendArguments;
-            String ScheduleSource, ScheduleFileName;
+
             String SymbolToCompile;
             String outputName;
             List<String> TemplateShaderArguments;

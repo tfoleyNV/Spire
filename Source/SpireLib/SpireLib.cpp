@@ -120,11 +120,10 @@ namespace SpireLib
     {
         Load(fileName);
     }
-    bool ShaderLib::CompileFrom(String symbolName, String sourceFileName, String schedule)
+    bool ShaderLib::CompileFrom(String symbolName, String sourceFileName)
     {
         Spire::Compiler::CompileResult result;
         CompileOptions options;
-        options.ScheduleSource = schedule;
         options.SymbolToCompile = symbolName;
         options.Mode = CompilerMode::ProduceShader;
         auto shaderLibs = CompileShaderSourceFromFile(result, sourceFileName, options);

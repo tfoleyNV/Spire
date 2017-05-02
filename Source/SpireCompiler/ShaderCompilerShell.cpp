@@ -64,8 +64,6 @@ int wmain(int argc, wchar_t* argv[])
                     options.outputName = tryReadCommandLineArgument(arg, &argCursor, argEnd);
                 else if (argStr == "-symbo")
                     options.SymbolToCompile = tryReadCommandLineArgument(arg, &argCursor, argEnd);
-                else if (argStr == "-schedule")
-                    options.ScheduleFileName = tryReadCommandLineArgument(arg, &argCursor, argEnd);
                 else if (argStr == "-no-checking")
                     options.flags |= SPIRE_COMPILE_FLAG_NO_CHECKING;
                 else if (argStr == "-backend" || argStr == "-target")
@@ -288,20 +286,6 @@ int wmain(int argc, wchar_t* argv[])
         }
 
         auto sourceDir = Path::GetDirectoryName(fileName);
-        String schedule;
-        if (options.ScheduleFileName.Length())
-        {
-            try
-            {
-                schedule = File::ReadAllText(options.ScheduleFileName);
-                options.ScheduleSource = schedule;
-            }
-            catch (IOException)
-            {
-                printf("Cannot open schedule file '%S'.\n", options.ScheduleFileName.ToWString());
-                goto end;
-            }
-        }
         CompileResult result;
         try
         {
@@ -326,7 +310,6 @@ int wmain(int argc, wchar_t* argv[])
         if (result.GetErrorCount() == 0)
             returnValue = 0;
     }
-end:;
 #ifdef _MSC_VER
     _CrtDumpMemoryLeaks();
 #endif

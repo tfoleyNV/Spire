@@ -35,7 +35,7 @@ namespace SpireLib
         ShaderLib() = default;
         ShaderLib(CoreLib::Basic::String fileName);
         void Reload(CoreLib::Basic::String fileName);
-        bool CompileFrom(CoreLib::Basic::String symbolName, CoreLib::Basic::String sourceFileName, CoreLib::Basic::String schedule);
+        bool CompileFrom(CoreLib::Basic::String symbolName, CoreLib::Basic::String sourceFileName);
     };
 
 }
