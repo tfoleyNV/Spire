@@ -34,20 +34,102 @@ Profile TranslateProfileName(char const* name)
     return Profile::Unknown;
 }
 
-int wmain(int argc, wchar_t* argv[])
+struct Options
 {
-    int returnValue = -1;
-    {
-        // We need to parse any command-line arguments.
-        String outputDir;
-        CompileOptions options;
-		options.Target = CodeGenTarget::HLSL;
-        options.outputName = "out";
-        // As we parse the command line, we will rewrite the
-        // entries in `argv` to collect any "ordinary" arguments.
-        wchar_t const** inputPaths = (wchar_t const**)&argv[1];
-        wchar_t const** inputPathCursor = inputPaths;
+    String outputDir;
+    CompileOptions options;
 
+    Options()
+    {
+        options.Target = CodeGenTarget::HLSL;
+        options.outputName = "out";
+    }
+};
+
+struct OptionsParser : Options
+{
+    struct RawEntryPoint : EntryPointOption
+    {
+        int translationUnitIndex = -1;
+    };
+
+    // Collect entry point names, so that we can associate them
+    // with entry points later...
+    List<RawEntryPoint> rawEntryPoints;
+
+    // The translation unit we are currently working on (or `-1` if none so far)
+    int currentTranslationUnitIndex = -1;
+
+    // The number of input files that have been specified
+    int inputPathCount = 0;
+
+    // If we already have a translation unit for Spire code, then this will give its index.
+    // If not, it will be `-1`.
+    int spireTranslationUnit = -1;
+
+    void addInputSpirePath(
+        String const& path)
+    {
+        // All of the input .spire files will be grouped into a single logical translation unit,
+        // which we create lazily when the first .spire file is encountered.
+        if( spireTranslationUnit == -1 )
+        {
+            spireTranslationUnit = options.translationUnits.Count();
+
+            TranslationUnitOptions translationUnit;
+            translationUnit.flavor = TranslationUnitFlavor::SpireCode;
+            options.translationUnits.Add(translationUnit);
+        }
+        options.translationUnits[spireTranslationUnit].sourceFilePaths.Add(path);
+
+        // Set the translation unit to be used by subsequent entry points
+        currentTranslationUnitIndex = spireTranslationUnit;
+    }
+
+    void addInputForeignShaderPath(
+        String const& path)
+    {
+        // Set the translation unit to be used by subsequent entry points
+        currentTranslationUnitIndex = options.translationUnits.Count();
+
+        // Each foreign shader file is assumed to form its own translation unit, since
+        // the existing shading langauges we need to support are all C-derived.
+        TranslationUnitOptions translationUnit;
+        translationUnit.flavor = TranslationUnitFlavor::ForeignShaderCode;
+        translationUnit.sourceFilePaths.Add(path);
+        options.translationUnits.Add(translationUnit);
+    }
+
+    void addInputPath(
+        wchar_t const*  inPath)
+    {
+        inputPathCount++;
+
+        // look at the extension on the file name to determine
+        // how we should handle it.
+        String path = String::FromWString(inPath);
+
+        if( path.EndsWith(".spire") )
+        {
+            // Plain old spire code
+            addInputSpirePath(path);
+        }
+        else if( path.EndsWith(".hlsl") )
+        {
+            // HLSL for rewriting
+            addInputForeignShaderPath(path);
+        }
+        else
+        {
+            fprintf(stderr, "error: can't deduce language for input file '%S'\n", inPath);
+            exit(1);
+        }
+    }
+
+    void parse(
+        int             argc,
+        wchar_t**       argv)
+    {
         wchar_t** argCursor = &argv[1];
         wchar_t** argEnd = &argv[argc];
         while (argCursor != argEnd)
@@ -127,8 +209,9 @@ int wmain(int argc, wchar_t* argv[])
                 {
                     String name = tryReadCommandLineArgument(arg, &argCursor, argEnd);
 
-                    EntryPointOption entry;
+                    RawEntryPoint entry;
                     entry.name = name;
+                    entry.translationUnitIndex = currentTranslationUnitIndex;
 
                     // TODO(tfoley): Allow user to fold a specification of a profile into the entry-point name,
                     // for the case where they might be compiling multiple entry points in one invocation...
@@ -137,7 +220,7 @@ int wmain(int argc, wchar_t* argv[])
 
                     entry.profile = options.profile;
 
-                    options.entryPoints.Add(entry);
+                    rawEntryPoints.Add(entry);
                 }
                 else if (argStr == "-stage")
                 {
@@ -227,7 +310,7 @@ int wmain(int argc, wchar_t* argv[])
                     // and treat the rest of the command line as input file names:
                     while (argCursor != argEnd)
                     {
-                        *inputPathCursor++ = *argCursor++;
+                        addInputPath(*argCursor++);
                     }
                     break;
                 }
@@ -240,11 +323,10 @@ int wmain(int argc, wchar_t* argv[])
             }
             else
             {
-                *inputPathCursor++ = arg;
+                addInputPath(arg);
             }
         }
 
-        int inputPathCount = (int)(inputPathCursor - inputPaths);
         if (inputPathCount == 0)
         {
             fprintf(stderr, "error: no input file specified\n");
@@ -256,34 +338,112 @@ int wmain(int argc, wchar_t* argv[])
             exit(1);
         }
 
+        // No point in moving forward if there is nothing to compile
+        if( options.translationUnits.Count() == 0 )
+        {
+            fprintf(stderr, "error: no compilation requested\n");
+            exit(1);
+        }
+
         // For any entry points that were given without an explicit profile, we can now apply
         // the profile that was given to them.
-        if( options.entryPoints.Count() != 0 )
+        if( rawEntryPoints.Count() != 0 )
         {
             if( options.profile.raw == Profile::Unknown )
             {
                 fprintf(stderr, "error: no profile specified; use the '-profile <profile name>' option");
                 exit(1);
             }
-
-            for( auto& e : options.entryPoints )
+            // TODO: issue an error if we have multiple `-profile` options *and*
+            // there are entry points that didn't get a profile.
+            else
             {
-                if( e.profile.raw == Profile::Unknown )
+                for( auto& e : rawEntryPoints )
                 {
-                    e.profile = options.profile;
+                    if( e.profile.raw == Profile::Unknown )
+                    {
+                        e.profile = options.profile;
+                    }
                 }
             }
         }
 
+        // Next, we want to make sure that entry points get attached to the appropriate translation
+        // unit that will provide them.
+        {
+            bool anyEntryPointWithoutTranslationUnit = false;
+            for( auto& entryPoint : rawEntryPoints )
+            {
+                // Skip entry points that are already associated with a translation unit...
+                if( entryPoint.translationUnitIndex != -1 )
+                    continue;
+
+                anyEntryPointWithoutTranslationUnit = true;
+                entryPoint.translationUnitIndex = 0;
+            }
+
+            if( anyEntryPointWithoutTranslationUnit && options.translationUnits.Count() != 1 )
+            {
+                fprintf(stderr, "error: when using multiple translation units, entry points must be specified after their translation unit file(s)");
+                exit(1);
+            }
+
+            // Now place all those entry points where they belong
+            for( auto& entryPoint : rawEntryPoints )
+            {
+                options.translationUnits[entryPoint.translationUnitIndex].entryPoints.Add(entryPoint);
+            }
+        }
+
+        // Automatically derive an output directory based on the first file specified.
         //
-
-        String fileName = String::FromWString(inputPaths[0]);
-
-        // Output directory defaults to the path of the input file
+        // TODO: require manual specification if there are multiple input files, in different directories
+        String fileName = options.translationUnits[0].sourceFilePaths[0];
         if (outputDir.Length() == 0)
         {
             outputDir = Path::GetDirectoryName(fileName);
         }
+
+    }
+
+};
+
+
+Options parseOptions(
+    int         argc,
+    wchar_t**   argv)
+{
+    OptionsParser parser;
+    parser.parse(argc, argv);
+    return parser;
+}
+
+int wmain(int argc, wchar_t* argv[])
+{
+    // Parse any command-line options
+    Options options = parseOptions(argc, argv);
+
+    // Invoke the compiler
+
+    try
+    {
+        int result = SpireLib::executeCompilerDriverActions(options.options);
+        if( result != 0 )
+        {
+            exit(-1);
+        }
+
+    }
+    catch (Exception & e)
+    {
+        printf("internal compiler error: %S\n", e.Message.ToWString());
+        return 1;
+    }
+
+#if 0
+        int returnValue = -1;
+    {
+
 
         auto sourceDir = Path::GetDirectoryName(fileName);
         CompileResult result;
@@ -310,8 +470,10 @@ int wmain(int argc, wchar_t* argv[])
         if (result.GetErrorCount() == 0)
             returnValue = 0;
     }
+#endif
+
 #ifdef _MSC_VER
     _CrtDumpMemoryLeaks();
 #endif
-    return returnValue;
+    return 0;
 }

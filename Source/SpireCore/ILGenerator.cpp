@@ -1,3 +1,4 @@
+#if 0
 #include "Syntax.h"
 #include "ScopeDictionary.h"
 #include "CodeWriter.h"
@@ -1025,3 +1026,4 @@ namespace Spire
         }
     }
 }
+#endif

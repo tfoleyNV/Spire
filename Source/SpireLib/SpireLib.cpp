@@ -3,6 +3,7 @@
 #include "../CoreLib/Tokenizer.h"
 #include "../SpireCore/StdInclude.h"
 #include "../../Spire.h"
+#include "../SpireCore/Parser.h"
 #include "../SpireCore/Preprocessor.h"
 #include "../SpireCore/Reflection.h"
 #include "../SpireCore/TypeLayout.h"
@@ -216,12 +217,14 @@ namespace SpireLib
         searchDirs.Reverse();
 
 
+#if 0
         // If we are being asked to do pass-through, then we need to do that here...
         if (options.passThrough != PassThroughMode::None)
         {
             compiler->PassThrough(compileResult, src, fileName, options);
             return List<ShaderLibFile>();
         }
+#endif
 
 
 
@@ -229,6 +232,11 @@ namespace SpireLib
         predefUnit = compiler->Parse(
             options,
             compileResult, SpireStdLib::GetCode(), "stdlib", &includeHandler, options.PreprocessorDefinitions, predefUnit);
+
+        // Add this one first, so that it gets processed first...
+        units.Add(predefUnit);
+
+
         for (int i = 0; i < unitsToInclude.Count(); i++)
         {
             auto inputFileName = unitsToInclude[i];
@@ -271,7 +279,6 @@ namespace SpireLib
                 compileResult.GetErrorWriter()->diagnose(CodePosition(0, 0, 0, ""), Diagnostics::cannotOpenFile, inputFileName);
             }
         }
-        units.Add(predefUnit);
         if (compileResult.GetErrorCount() == 0)
             return CompileUnits(compileResult, compiler.Ptr(), units, options);
         else
@@ -716,7 +723,103 @@ namespace SpireLib
             PopContext();
             return succ;
         }
+
+        CompileUnit parseTranslationUnit(Spire::Compiler::CompileResult& result, TranslationUnitOptions const& translationUnitOptions)
+        {
+            CompileUnit translationUnit;
+
+            auto& preprocesorDefinitions = Options.PreprocessorDefinitions;
+
+            RefPtr<ProgramSyntaxNode> translationUnitSyntax = new ProgramSyntaxNode();
+
+            for( auto sourceFilePath : translationUnitOptions.sourceFilePaths )
+            {
+                auto searchDirs = Options.SearchDirectories;
+                searchDirs.Reverse();
+                searchDirs.Add(Path::GetDirectoryName(sourceFilePath));
+                searchDirs.Reverse();
+                includeHandler.searchDirs = searchDirs;
+
+                String source = File::ReadAllText(sourceFilePath);
+
+
+                auto tokens = PreprocessSource(source, sourceFilePath, result.GetErrorWriter(), &includeHandler, preprocesorDefinitions);
+
+                parseSourceFile(translationUnitSyntax.Ptr(), Options, tokens, result.GetErrorWriter(), sourceFilePath, predefUnit.SyntaxNode.Ptr());
+            }
+
+            translationUnit.options = translationUnitOptions;
+            translationUnit.SyntaxNode = translationUnitSyntax;
+
+            return translationUnit;
+        }
+
+        int executeCompilerDriverActions(
+            Spire::Compiler::CompileResult& result)
+        {
+            // If we are being asked to do pass-through, then we need to do that here...
+            if (Options.passThrough != PassThroughMode::None)
+            {
+                for( auto& translationUnitOptions : Options.translationUnits )
+                {
+                    if(translationUnitOptions.flavor != TranslationUnitFlavor::ForeignShaderCode)
+                        continue;
+
+                    auto sourceFilePath = translationUnitOptions.sourceFilePaths[0];
+                    String source = File::ReadAllText(sourceFilePath);
+
+                    compiler->PassThrough(
+                        result,
+                        source,
+                        sourceFilePath,
+                        Options,
+                        translationUnitOptions);
+                }
+                return 0;
+            }
+
+
+            // TODO: load the stdlib
+
+            CollectionOfTranslationUnits collectionOfTranslationUnits;
+
+            // Parse everything from the input files requested
+            //
+            // TODO: this may trigger the loading and/or compilation of additional modules.
+            for( auto& translationUnitOptions : Options.translationUnits )
+            {
+                auto translationUnit = parseTranslationUnit(result, translationUnitOptions);
+                collectionOfTranslationUnits.translationUnits.Add(translationUnit);
+            }
+            if( result.GetErrorCount() != 0 )
+                return 1;
+
+
+            // Now perform semantic checks, emit output, etc.
+            compiler->Compile(result, *compileContext.Last(), collectionOfTranslationUnits.translationUnits, Options);
+            if(result.GetErrorCount() != 0)
+                return 1;
+
+            return 0;
+        }
+
+        int executeCompilerDriverActions()
+        {
+            Spire::Compiler::CompileResult result;
+            int err = executeCompilerDriverActions(result);
+            result.PrintDiagnostics();
+            return err;
+        }
     };
+
+    int executeCompilerDriverActions(Spire::Compiler::CompileOptions const& options)
+    {
+        CompilationContext context(false, "");
+        context.Options = options;
+
+        return context.executeCompilerDriverActions();
+    }
+
 }
 
 using namespace SpireLib;
@@ -744,11 +847,17 @@ void spAddEntryPoint(
     char const*                 name,
     char const*                 profile)
 {
+    auto ctx = CTX(context);
+    if( ctx->Options.translationUnits.Count() == 0 )
+    {
+        ctx->Options.translationUnits.Add(TranslationUnitOptions());
+    }
+
     EntryPointOption entryPoint;
     entryPoint.name = name;
     entryPoint.profile = Profile::LookUp(profile);
 
-    CTX(context)->Options.entryPoints.Add(entryPoint);
+    CTX(context)->Options.translationUnits[0].entryPoints.Add(entryPoint);
 }
 
 

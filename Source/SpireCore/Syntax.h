@@ -2178,10 +2178,12 @@ namespace Spire
             {
                 return GetMembersOfType<TypeDefDecl>();
             }
+#if 0
             void Include(ProgramSyntaxNode * other)
             {
                 Members.AddRange(other->Members);
             }
+#endif
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
             virtual ProgramSyntaxNode * Clone(CloneContext & ctx) override;
         };

@@ -72,6 +72,7 @@ namespace Spire
             struct ExtraContext
             {
                 CompileOptions const* options = nullptr;
+                TranslationUnitOptions const* translationUnitOptions = nullptr;
 
                 CompileResult* compileResult = nullptr;
 
@@ -81,6 +82,7 @@ namespace Spire
                 String sourcePath;
 
                 CompileOptions const& getOptions() { return *options; }
+                TranslationUnitOptions const& getTranslationUnitOptions() { return *translationUnitOptions; }
             };
 
 
@@ -176,9 +178,9 @@ namespace Spire
             List<uint8_t> EmitDXBytecode(
                 ExtraContext&				context)
             {
-                if(context.getOptions().entryPoints.Count() != 1)
+                if(context.getTranslationUnitOptions().entryPoints.Count() != 1)
                 {
-                    if(context.getOptions().entryPoints.Count() == 0)
+                    if(context.getTranslationUnitOptions().entryPoints.Count() == 0)
                     {
                         // TODO(tfoley): need to write diagnostics into this whole thing...
                         fprintf(stderr, "no entry point specified\n");
@@ -190,7 +192,7 @@ namespace Spire
                     return List<uint8_t>();
                 }
 
-                return EmitDXBytecodeForEntryPoint(context, context.getOptions().entryPoints[0]);
+                return EmitDXBytecodeForEntryPoint(context, context.getTranslationUnitOptions().entryPoints[0]);
             }
 
             String EmitDXBytecodeAssemblyForEntryPoint(
@@ -238,7 +240,7 @@ namespace Spire
             String EmitDXBytecodeAssembly(
                 ExtraContext&				context)
             {
-                if(context.getOptions().entryPoints.Count() == 0)
+                if(context.getTranslationUnitOptions().entryPoints.Count() == 0)
                 {
                     // TODO(tfoley): need to write diagnostics into this whole thing...
                     fprintf(stderr, "no entry point specified\n");
@@ -246,7 +248,7 @@ namespace Spire
                 }
 
                 StringBuilder sb;
-                for (auto entryPoint : context.getOptions().entryPoints)
+                for (auto entryPoint : context.getTranslationUnitOptions().entryPoints)
                 {
                     sb << EmitDXBytecodeAssemblyForEntryPoint(context, entryPoint);
                 }
@@ -361,17 +363,20 @@ namespace Spire
 
             virtual void Compile(CompileResult & result, CompilationContext & /*context*/, List<CompileUnit> & units, const CompileOptions & options) override
             {
-                RefPtr<ProgramSyntaxNode> programSyntaxNode = new ProgramSyntaxNode();
+                RefPtr<CollectionOfTranslationUnits> collectionOfTranslationUnits = new CollectionOfTranslationUnits();
                 for (auto & unit : units)
                 {
-                    programSyntaxNode->Include(unit.SyntaxNode.Ptr());
+                    collectionOfTranslationUnits->translationUnits.Add(unit);
                 }
 
                 
                 RefPtr<SyntaxVisitor> visitor = CreateSemanticsVisitor(result.GetErrorWriter());
                 try
                 {
-                    programSyntaxNode->Accept(visitor.Ptr());
+                    for( auto& translationUnit : collectionOfTranslationUnits->translationUnits )
+                    {
+                        translationUnit.SyntaxNode->Accept(visitor.Ptr());
+                    }
                     if (result.GetErrorCount() > 0)
                         return;
 
@@ -416,14 +421,18 @@ namespace Spire
                     //
                     // I'm going to bypass it for now and see what I can do:
 
-                    ExtraContext extra;
-                    extra.options = &options;
-                    extra.programSyntax = programSyntaxNode;
-                    extra.sourcePath = "spire"; // don't have this any more!
-                    extra.sourcePath = "";
-                    extra.compileResult = &result;
+                    for( auto translationUnit : collectionOfTranslationUnits->translationUnits )
+                    {
+                        ExtraContext extra;
+                        extra.options = &options;
+                        extra.translationUnitOptions = &translationUnit.options;
+                        extra.programSyntax = translationUnit.SyntaxNode;
+                        extra.sourcePath = "spire"; // don't have this any more!
+                        extra.sourceText = "";
+                        extra.compileResult = &result;
 
-                    DoNewEmitLogic(extra);
+                        DoNewEmitLogic(extra);
+                    }
                 }
                 catch (int)
                 {
@@ -462,10 +471,12 @@ namespace Spire
                 CompileResult &			/*result*/,
                 String const&			sourceText,
                 String const&			sourcePath,
-                const CompileOptions &	options) override
+                const CompileOptions &	options,
+                TranslationUnitOptions const& translationUnitOptions) override
             {
                 ExtraContext extra;
                 extra.options = &options;
+                extra.translationUnitOptions = &translationUnitOptions;
                 extra.sourcePath = sourcePath;
                 extra.sourceText = sourceText;
 

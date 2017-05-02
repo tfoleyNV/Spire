@@ -15,6 +15,15 @@ namespace Spire
             DiagnosticSink*     sink,
             String const&       fileName,
             ProgramSyntaxNode*	predefUnit);
+
+        // Parse a source file into an existing translation unit
+        void parseSourceFile(
+            ProgramSyntaxNode*  translationUnitSyntax,
+            CompileOptions&     options,
+            TokenSpan const&    tokens,
+            DiagnosticSink*     sink,
+            String const&       fileName,
+            ProgramSyntaxNode*	predefUnit);
     }
 }
 

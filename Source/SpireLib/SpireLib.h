@@ -38,6 +38,8 @@ namespace SpireLib
         bool CompileFrom(CoreLib::Basic::String symbolName, CoreLib::Basic::String sourceFileName);
     };
 
+
+    int executeCompilerDriverActions(Spire::Compiler::CompileOptions const& options);
 }
 
 #endif

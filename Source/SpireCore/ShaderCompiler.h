@@ -113,6 +113,31 @@ namespace Spire
 //			GLSL,	// pass through GLSL to `glslang` library
         };
 
+        // Flavors of translation unit
+        enum class TranslationUnitFlavor
+        {
+            Invalid, // Invalid: should not occur
+
+            SpireCode, // One or more Spire files to be compiled together into a PACKAGE
+
+            ImportedSpireCode, // A separate PACKAGE of Spire code that has been imported
+
+            ForeignShaderCode, // A translation unit of HLSL, GLSL, or other foreign shader code
+        };
+
+        // Options for a single translation unit being requested by the user
+        class TranslationUnitOptions
+        {
+        public:
+            TranslationUnitFlavor flavor = TranslationUnitFlavor::Invalid;
+
+            // All entry points we've been asked to compile for this translation unit
+            List<EntryPointOption> entryPoints;
+
+            // The source file(s) that will be compiled to form this translation unit
+            List<String> sourceFilePaths;
+        };
+
         class CompileOptions
         {
         public:
@@ -127,8 +152,7 @@ namespace Spire
             List<String> SearchDirectories;
             Dictionary<String, String> PreprocessorDefinitions;
 
-            // All entry points we've been asked to compile
-            List<EntryPointOption> entryPoints;
+            List<TranslationUnitOptions> translationUnits;
 
             // the code generation profile we've been asked to use
             Profile profile;
@@ -140,10 +164,19 @@ namespace Spire
             SpireCompileFlags flags = 0;
         };
 
+        // This is the representation of a given translation unit
         class CompileUnit
         {
         public:
-            RefPtr<ProgramSyntaxNode> SyntaxNode;
+            TranslationUnitOptions      options;
+            RefPtr<ProgramSyntaxNode>   SyntaxNode;
+        };
+
+        // TODO: pick an appropriate name for this...
+        class CollectionOfTranslationUnits : public RefObject
+        {
+        public:
+            List<CompileUnit> translationUnits;
         };
 
         class CompilationContext
@@ -174,7 +207,8 @@ namespace Spire
                 CompileResult &			result, 
                 String const&			sourceText,
                 String const&			sourcePath,
-                const CompileOptions &	options) = 0;
+                const CompileOptions &	options,
+                TranslationUnitOptions const& translationUnitOptions) = 0;
 
         };
 

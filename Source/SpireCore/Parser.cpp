@@ -127,6 +127,7 @@ namespace Spire
             bool LookAheadToken(const char * string, int offset = 0);
             Token ReadTypeKeyword();
             bool IsTypeKeyword();
+            void                                        parseSourceFile(ProgramSyntaxNode* program, ProgramSyntaxNode* predefUnit);
             RefPtr<ProgramSyntaxNode>					ParseProgram(ProgramSyntaxNode*	predefUnit);
             RefPtr<ShaderSyntaxNode>					ParseShader();
             RefPtr<TemplateShaderSyntaxNode>			ParseTemplateShader();
@@ -1780,22 +1781,16 @@ namespace Spire
             }
         }
 
-        RefPtr<ProgramSyntaxNode> Parser::ParseProgram(ProgramSyntaxNode*	predefUnit)
+        void Parser::parseSourceFile(ProgramSyntaxNode* program, ProgramSyntaxNode* predefUnit)
         {
             if (predefUnit)
             {
                 PushScope(predefUnit);
             }
 
-            RefPtr<ProgramSyntaxNode> program = new ProgramSyntaxNode();
-            if (predefUnit)
-            {
-                program->ParentDecl = predefUnit;
-            }
-
-            PushScope(program.Ptr());
+            PushScope(program);
             program->Position = CodePosition(0, 0, 0, fileName);
-            ParseDeclBody(this, program.Ptr(), TokenType::EndOfFile);
+            ParseDeclBody(this, program, TokenType::EndOfFile);
             PopScope();
 
             if (predefUnit)
@@ -1819,6 +1814,18 @@ namespace Spire
                 }
             }
 
+
+        }
+
+        RefPtr<ProgramSyntaxNode> Parser::ParseProgram(ProgramSyntaxNode*	predefUnit)
+        {
+            RefPtr<ProgramSyntaxNode> program = new ProgramSyntaxNode();
+            if (predefUnit)
+            {
+                program->ParentDecl = predefUnit;
+            }
+
+            parseSourceFile(program.Ptr(), predefUnit);
 
             return program;
         }
@@ -2962,5 +2969,17 @@ namespace Spire
             return parser.Parse(predefUnit);
         }
 
+                // Parse a source file into an existing translation unit
+        void parseSourceFile(
+            ProgramSyntaxNode*  translationUnitSyntax,
+            CompileOptions&     options,
+            TokenSpan const&    tokens,
+            DiagnosticSink*     sink,
+            String const&       fileName,
+            ProgramSyntaxNode*  predefUnit)
+        {
+            Parser parser(options, tokens, sink, fileName);
+            return parser.parseSourceFile(translationUnitSyntax, predefUnit);
+        }
     }
 }
