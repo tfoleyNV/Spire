@@ -752,6 +752,8 @@ __generic<T : __BuiltinType, let N : int, let M : int> __intrinsic matrix<T,N,M>
 
 )", R"(
 
+// `typedef`s to help with the fact that HLSL has been sorta-kinda case insensitive at various points
+typedef Texture2D texture2D;
 
 __intrinsic float dFdx(float v);
 __intrinsic float dFdy(float v);
