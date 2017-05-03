@@ -1203,6 +1203,12 @@ namespace Spire
                             sb << "T SampleBias(SamplerState s, ";
                             sb << "float" << kBaseTextureTypes[tt].coordCount + isArray << " location, float bias);\n";
 
+                            sb << "T SampleGrad(SamplerState s, ";
+                            sb << "float" << kBaseTextureTypes[tt].coordCount + isArray << " location, ";
+                            sb << "float" << kBaseTextureTypes[tt].coordCount << " gradX, ";
+                            sb << "float" << kBaseTextureTypes[tt].coordCount << " gradY, ";
+                            sb << ");\n";
+
                             if( baseShape != TextureType::ShapeCube )
                             {
                                 sb << "T Sample(SamplerState s, ";

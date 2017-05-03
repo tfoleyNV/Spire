@@ -120,21 +120,25 @@ enum TestResult
 {
     kTestResult_Fail,
     kTestResult_Pass,
+    kTestResult_Ignored,
 };
 
 bool match(char const** ioCursor, char const* expected)
 {
-    char const*& cursor = *ioCursor;
-    while(*expected && *cursor == *expected )
+    char const* cursor = *ioCursor;
+    while(*expected && *cursor == *expected)
     {
         cursor++;
         expected++;
     }
-    return *expected == 0;
+    if(*expected != 0) return false;
+
+    *ioCursor = cursor;
+    return true;
 }
 
 // Try to read command-line options from the test file itself
-void gatherOptionsFromTestFile(
+TestResult gatherOptionsFromTestFile(
     String				filePath,
     OSProcessSpawner*	ioSpawner)
 {
@@ -145,15 +149,21 @@ void gatherOptionsFromTestFile(
     }
     catch (CoreLib::IO::IOException)
     {
-        return;
+        return kTestResult_Fail;
     }
 
     char const* cursor = fileContents.begin();
 
+    // should this test be ignored?
+    if(match(&cursor, "//SPIRE_TEST_IGNORE:"))
+    {
+        return kTestResult_Ignored;
+    }
+
     // check for our expected prefix
     if(!match(&cursor, "//SPIRE_TEST_OPTS:"))
     {
-        return;
+        return kTestResult_Fail;
     }
 
     // start consuming options
@@ -164,7 +174,7 @@ void gatherOptionsFromTestFile(
         {
         // end of line/file? done with options
         case '\r': case '\n': case 0:
-            return;
+            return kTestResult_Pass;
 
         // space? keep skipping
         case ' ':
@@ -249,7 +259,8 @@ TestResult runTestImpl(
     spawner.pushExecutableName("Source/Debug/SpireCompiler.exe");
     spawner.pushArgument(filePath);
 
-    gatherOptionsFromTestFile(filePath, &spawner);
+    if(gatherOptionsFromTestFile(filePath, &spawner) == kTestResult_Ignored)
+        return kTestResult_Ignored;
 
     if (spawnAndWait(filePath, spawner) != kOSError_None)
     {
@@ -296,14 +307,15 @@ TestResult runTestImpl(
 }
 
 #ifdef SPIRE_TEST_SUPPORT_HLSL
-void generateHLSLBaseline(
+TestResult generateHLSLBaseline(
     String	filePath)
 {
     OSProcessSpawner spawner;
     spawner.pushExecutableName("Source/Debug/SpireCompiler.exe");
     spawner.pushArgument(filePath);
 
-    gatherOptionsFromTestFile(filePath, &spawner);
+    if(gatherOptionsFromTestFile(filePath, &spawner) == kTestResult_Ignored)
+        return kTestResult_Ignored;
 
     spawner.pushArgument("-target");
     spawner.pushArgument("dxbc-assembly");
@@ -312,7 +324,7 @@ void generateHLSLBaseline(
 
     if (spawnAndWait(filePath, spawner) != kOSError_None)
     {
-        return;
+        return kTestResult_Fail;
     }
 
     String expectedOutput = getOutput(spawner);
@@ -323,7 +335,9 @@ void generateHLSLBaseline(
     }
     catch (CoreLib::IO::IOException)
     {
+        return kTestResult_Fail;
     }
+    return kTestResult_Pass;
 }
 
 TestResult runHLSLTestImpl(
@@ -345,7 +359,8 @@ TestResult runHLSLTestImpl(
     spawner.pushExecutableName("Source/Debug/SpireCompiler.exe");
     spawner.pushArgument(filePath);
 
-    gatherOptionsFromTestFile(filePath, &spawner);
+    if(gatherOptionsFromTestFile(filePath, &spawner) == kTestResult_Ignored)
+        return kTestResult_Ignored;
 
     // TODO: The compiler should probably define this automatically...
     spawner.pushArgument("-D");
@@ -437,9 +452,11 @@ void runTest(
         }
     }
 
+    TestResult result = runFunc(filePath);
+    if(result == kTestResult_Ignored)
+        return;
 
     context->totalTestCount++;
-    TestResult result = runFunc(filePath);
     if (result == kTestResult_Pass)
     {
         printf("passed");

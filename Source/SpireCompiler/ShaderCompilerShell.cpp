@@ -332,11 +332,6 @@ struct OptionsParser : Options
             fprintf(stderr, "error: no input file specified\n");
             exit(1);
         }
-        else if (inputPathCount > 1)
-        {
-            fprintf(stderr, "error: multiple input files specified\n");
-            exit(1);
-        }
 
         // No point in moving forward if there is nothing to compile
         if( options.translationUnits.Count() == 0 )
@@ -425,7 +420,9 @@ int wmain(int argc, wchar_t* argv[])
 
     // Invoke the compiler
 
+#ifndef _DEBUG
     try
+#endif
     {
         int result = SpireLib::executeCompilerDriverActions(options.options);
         if( result != 0 )
@@ -434,11 +431,13 @@ int wmain(int argc, wchar_t* argv[])
         }
 
     }
+#ifndef _DEBUG
     catch (Exception & e)
     {
         printf("internal compiler error: %S\n", e.Message.ToWString());
         return 1;
     }
+#endif
 
 #if 0
         int returnValue = -1;
