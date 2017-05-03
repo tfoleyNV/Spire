@@ -342,16 +342,6 @@ namespace Spire
                     }
                     break;
 
-                case CodeGenTarget::ReflectionJSON:
-                    {
-                        String reflectionJSON = context.compileResult->reflectionBlob->emitAsJSON();
-
-                        // HACK(tfoley): just print it out since that is what people probably expect.
-                        // TODO: need a way to control where output gets routed across all possible targets.
-                        fprintf(stdout, "%s", reflectionJSON.begin());
-                        return result;
-                    }
-
                 // Note(tfoley): We currently hit this case when compiling the stdlib
                 case CodeGenTarget::Unknown:
                     break;
@@ -363,6 +353,38 @@ namespace Spire
                 return result;
             }
 
+            void DoNewEmitLogic(
+                ExtraContext&                   context,
+                CollectionOfTranslationUnits*   collectionOfTranslationUnits)
+            {
+                switch (context.getOptions().Target)
+                {
+                default:
+                    // For most targets, we will do things per-translation-unit
+                    for( auto translationUnit : collectionOfTranslationUnits->translationUnits )
+                    {
+                        ExtraContext innerContext = context;
+                        innerContext.translationUnitOptions = &translationUnit.options;
+                        innerContext.programSyntax = translationUnit.SyntaxNode;
+                        innerContext.sourcePath = "spire"; // don't have this any more!
+                        innerContext.sourceText = "";
+
+                        TranslationUnitResult translationUnitResult = DoNewEmitLogic(innerContext);
+                        context.compileResult->translationUnits.Add(translationUnitResult);
+                    }
+                    break;
+
+                case CodeGenTarget::ReflectionJSON:
+                    {
+                        String reflectionJSON = context.compileResult->reflectionBlob->emitAsJSON();
+
+                        // HACK(tfoley): just print it out since that is what people probably expect.
+                        // TODO: need a way to control where output gets routed across all possible targets.
+                        fprintf(stdout, "%s", reflectionJSON.begin());
+                    }
+                    break;
+                }
+            }
 
             virtual void Compile(CompileResult & result, CompilationContext & /*context*/, List<CompileUnit> & units, const CompileOptions & options) override
             {
@@ -433,20 +455,11 @@ namespace Spire
                     //
                     // I'm going to bypass it for now and see what I can do:
 
-                    for( auto translationUnit : collectionOfTranslationUnits->translationUnits )
-                    {
-                        ExtraContext extra;
-                        extra.options = &options;
-                        extra.translationUnitOptions = &translationUnit.options;
-                        extra.programSyntax = translationUnit.SyntaxNode;
-                        extra.programLayout = collectionOfTranslationUnits->layout.Ptr();
-                        extra.sourcePath = "spire"; // don't have this any more!
-                        extra.sourceText = "";
-                        extra.compileResult = &result;
-
-                        TranslationUnitResult translationUnitResult = DoNewEmitLogic(extra);
-                        result.translationUnits.Add(translationUnitResult);
-                    }
+                    ExtraContext extra;
+                    extra.options = &options;
+                    extra.programLayout = collectionOfTranslationUnits->layout.Ptr();
+                    extra.compileResult = &result;
+                    DoNewEmitLogic(extra, collectionOfTranslationUnits.Ptr());
                 }
                 catch (int)
                 {
