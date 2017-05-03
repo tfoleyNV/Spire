@@ -1112,8 +1112,28 @@ static void EmitConstantBufferDecl(
                 Emit(context, ")");
             }
 
-            // Next handle any resources in the field...
-            emitHLSLRegisterSemantics(context, fieldLayout);
+            // Next handle any resources in the field, making sure to take
+            // the layout of the cbuffer into account too
+
+            if(fieldLayout && fieldLayout->resources.kind != LayoutResourceKind::Invalid)
+            {
+                for( auto rr = &fieldLayout->resources; rr; rr = rr->next.Ptr() )
+                {
+                    auto kind = rr->kind;
+
+                    // If the member of the cbuffer uses a resource, it had better
+                    // appear as part of the cubffer layout as well.
+                    auto cbufferResource = layout->FindResourceInfo(kind);
+                    assert(cbufferResource);
+
+                    // Add the base index from the cbuffer into the index of the field
+                    auto offsetResource = *rr;
+                    offsetResource.index += cbufferResource->index;
+                    offsetResource.space += cbufferResource->space;
+
+                    emitHLSLRegisterSemantic(context, &offsetResource);
+                }
+            }
 
             Emit(context, ";\n");
         }
