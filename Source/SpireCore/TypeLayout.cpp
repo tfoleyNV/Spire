@@ -540,7 +540,8 @@ LayoutInfo GetLayoutImpl(
                     RefPtr<VarLayout> fieldLayout = new VarLayout();
                     fieldLayout->varDecl = field;
                     fieldLayout->typeLayout = fieldTypeLayout;
-                    typeLayout->fields.Add(fieldLayout);
+                    typeLayout->fields999.Add(fieldLayout);
+                    typeLayout->mapVarToLayout.Add(field.GetDecl(), fieldLayout);
 
                     // Uniform-related information for the field
                     // is simple to set up.

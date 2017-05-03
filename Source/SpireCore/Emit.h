@@ -11,8 +11,11 @@ namespace Spire
         using namespace CoreLib::Basic;
 
         class ProgramSyntaxNode;
+        class ProgramLayout;
 
-        String EmitProgram(ProgramSyntaxNode* program);
+        String emitProgram(
+            ProgramSyntaxNode*  program,
+            ProgramLayout*      programLayout);
     }
 }
 #endif

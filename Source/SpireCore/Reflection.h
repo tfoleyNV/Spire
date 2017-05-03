@@ -9,6 +9,8 @@
 namespace Spire {
 namespace Compiler {
 
+class CollectionOfTranslationUnits;
+
 // The role of the reflection interface is to extract data from one or more program elements that
 // can later be used to assit in binding shader parameters, filling in buffers, etc.
 //
@@ -592,7 +594,8 @@ struct ReflectionBlob : ReflectionNode
     ReflectionSize parameterCount;
     ReflectionSize pad;
 
-    static ReflectionBlob* Create(RefPtr<ProgramSyntaxNode> program);
+    static ReflectionBlob* Create(
+        CollectionOfTranslationUnits*   program);
 
     uint32_t GetParameterCount() const { return parameterCount; }
     ReflectionParameterNode* GetParameterByIndex(uint32_t index) const

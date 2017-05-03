@@ -40,9 +40,8 @@ struct ArrayLayoutInfo : LayoutInfo
 
 enum class LayoutResourceKind
 {
-    Uniform = -2,
-    Invalid = -1,
-    Dummy,
+    Invalid = 0,
+    Uniform,            // HLSL `c` register
     //
     ConstantBuffer,     // HLSL `b` register
     ShaderResource,     // HLSL `t` register
@@ -142,6 +141,12 @@ public:
     }
 };
 
+typedef unsigned int VarLayoutFlags;
+enum VarLayoutFlag : VarLayoutFlags
+{
+    IsRedeclaration = 1 << 0, ///< This is a redeclaration of some shader parameter
+};
+
 // A reified layout for a particular variable, field, etc.
 class VarLayout : public RefObject
 {
@@ -154,6 +159,9 @@ public:
 
     // The offset of any uniforms, inside the parent
     size_t                  uniformOffset;
+
+    // Additional flags
+    VarLayoutFlags flags = 0;
 
     // The start register(s) for any resources
     struct ResourceInfo
@@ -229,12 +237,21 @@ public:
 class StructTypeLayout : public TypeLayout
 {
 public:
-    List<RefPtr<VarLayout>> fields;
+    // An ordered list of layouts for the known fields
+    List<RefPtr<VarLayout>> fields999;
+
+    // Map a variable to its layout directly
+    Dictionary<Decl*, RefPtr<VarLayout>> mapVarToLayout;
 };
 
 // Layout information for the global scope of a program
 class ProgramLayout : public StructTypeLayout
 {
+    // Note that a `ProgramLayout` may include entries in the
+    // `fields` array from multiple translation units, and in
+    // cases where multiple declarations of the same parameter
+    // occur, only one will appear in `fields`, while all of
+    // them will be reflected in `mapVarToLayout`.
 };
 
 // Layout information for a particular shader entry point

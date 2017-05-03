@@ -1,6 +1,7 @@
 // Reflection.cpp
 #include "Reflection.h"
 
+#include "ShaderCompiler.h"
 #include "TypeLayout.h"
 
 #include <assert.h>
@@ -392,7 +393,7 @@ static NodePtr<ReflectionTypeLayoutNode> GenerateReflectionTypeLayout(
             auto structTypeNode = typeNode.Cast<ReflectionStructTypeNode>();
 
             size_t fieldCount = structTypeNode->GetFieldCount();
-            assert(fieldCount == structLayout->fields.Count());
+            assert(fieldCount == structLayout->fields999.Count());
 
             auto fieldLayoutNodes = AllocateNodes<ReflectionVariableLayoutNode>(context, fieldCount);
             for( size_t ff = 0; ff < fieldCount; ++ff )
@@ -400,7 +401,7 @@ static NodePtr<ReflectionTypeLayoutNode> GenerateReflectionTypeLayout(
                 auto fieldNode = MakeNodePtr(context, structTypeNode->GetFieldByIndex(ff));
                 auto fieldLayoutNode = fieldLayoutNodes + ff;
 
-                auto fieldVarLayout = structLayout->fields[int(ff)];
+                auto fieldVarLayout = structLayout->fields999[int(ff)];
                 auto fieldTypeLayout = fieldVarLayout->typeLayout;
 
                 auto fieldTypeLayoutNode = GenerateReflectionTypeLayout(
@@ -622,17 +623,10 @@ static void GenerateReflectionParameter(
 
 static ReflectionBlob* GenerateReflectionBlob(
     ReflectionGenerationContext*    context,
-    RefPtr<ProgramSyntaxNode>       program)
+    CollectionOfTranslationUnits*   program)
 {
     // We need the program to already have had parameter binding performed.
-
-    auto programLayoutMod = program->FindModifier<ComputedLayoutModifier>();
-    if (!programLayoutMod)
-    {
-        // TODO: error message
-        return nullptr;
-    }
-    auto programLayout = programLayoutMod->typeLayout.As<ProgramLayout>();
+    auto programLayout = program->layout;
     if (!programLayout)
     {
         // TODO: error message
@@ -644,13 +638,13 @@ static ReflectionBlob* GenerateReflectionBlob(
     blob->flavor = ReflectionNodeFlavor::Blob;
 
     // First let's count how many parameters there are to consider
-    size_t parameterCount = programLayout->fields.Count();
+    size_t parameterCount = programLayout->fields999.Count();
     blob->parameterCount = (ReflectionSize) parameterCount;
 
     // Now allocate space for the parameters (to go right after the blob itself) and fill them in
     NodePtr<ReflectionParameterNode> parameters = AllocateNodes<ReflectionParameterNode>(context, parameterCount);
     size_t parameterIndex = 0;
-    for( auto paramLayout : programLayout->fields )
+    for( auto paramLayout : programLayout->fields999 )
     {
         GenerateReflectionParameter(context, paramLayout, parameters + parameterIndex);
         parameterIndex++;
@@ -1199,7 +1193,8 @@ static void emitReflectionBlobJSON(PrettyWriter& writer, ReflectionBlob* blob)
     write(writer, "\n}\n");
 }
 
-ReflectionBlob* ReflectionBlob::Create(RefPtr<ProgramSyntaxNode> program)
+ReflectionBlob* ReflectionBlob::Create(
+    CollectionOfTranslationUnits*   program)
 {
     ReflectionGenerationContext context;
     ReflectionBlob* blob = GenerateReflectionBlob(&context, program);

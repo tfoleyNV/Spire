@@ -76,7 +76,8 @@ namespace Spire
 
                 CompileResult* compileResult = nullptr;
 
-                RefPtr<ProgramSyntaxNode> programSyntax;
+                RefPtr<ProgramSyntaxNode>   programSyntax;
+                ProgramLayout*              programLayout;
 
                 String sourceText;
                 String sourcePath;
@@ -95,7 +96,9 @@ namespace Spire
                 else
                 {
                     // TODO(tfoley): probably need a way to customize the emit logic...
-                    return EmitProgram(context.programSyntax.Ptr());
+                    return emitProgram(
+                        context.programSyntax.Ptr(),
+                        context.programLayout);
                 }
             }
 
@@ -420,11 +423,8 @@ namespace Spire
                     //
                     // TODO: actually make this global!
 
-                    for( auto translationUnit : collectionOfTranslationUnits->translationUnits )
-                    {
-                        GenerateParameterBindings(translationUnit.SyntaxNode.Ptr());
-                        result.reflectionBlob = ReflectionBlob::Create(translationUnit.SyntaxNode);
-                    }
+                    GenerateParameterBindings(collectionOfTranslationUnits.Ptr());
+                    result.reflectionBlob = ReflectionBlob::Create(collectionOfTranslationUnits.Ptr());
 
 
                     // HACK(tfoley): for right now I just want to pretty-print an AST
@@ -439,6 +439,7 @@ namespace Spire
                         extra.options = &options;
                         extra.translationUnitOptions = &translationUnit.options;
                         extra.programSyntax = translationUnit.SyntaxNode;
+                        extra.programLayout = collectionOfTranslationUnits->layout.Ptr();
                         extra.sourcePath = "spire"; // don't have this any more!
                         extra.sourceText = "";
                         extra.compileResult = &result;

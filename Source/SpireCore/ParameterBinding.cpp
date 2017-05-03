@@ -1,6 +1,7 @@
 // ParameterBinding.cpp
 #include "ParameterBinding.h"
 
+#include "ShaderCompiler.h"
 #include "TypeLayout.h"
 
 #include "../../Spire.h"
@@ -89,12 +90,43 @@ struct UsedRanges
     }
 };
 
+struct ParameterBindingInfo
+{
+    size_t              space;
+    size_t              index;
+    size_t              count;
+};
+
+// Information on a single parameter
+struct ParameterInfo : RefObject
+{
+    // Layout info for the concrete variables that will make up this parameter
+    List<RefPtr<VarLayout>> varLayouts;
+
+    ParameterBindingInfo    bindingInfo[(int)LayoutResourceKind::Count];
+
+    // The next parameter that has the same name...
+    ParameterInfo* nextOfSameName;
+
+    ParameterInfo()
+    {
+        // Make sure we aren't claiming any resources yet
+        for( int ii = 0; ii < (int) LayoutResourceKind::Count; ++ii )
+        {
+            bindingInfo[ii].count = 0;
+        }
+    }
+};
+
 struct SharedParameterBindingContext
 {
     LayoutRulesImpl* defaultLayoutRules;
 
-    // Parameters that we've discovered and started to lay out...
-    List<RefPtr<VarLayout>> varLayouts;
+    // All shader parameters we've discovered so far, and started to lay out...
+    List<RefPtr<ParameterInfo>> parameters;
+
+    // A dictionary to accellerate looking up parameters by name
+    Dictionary<String, ParameterInfo*> mapNameToParameterInfo;
 };
 
 struct ParameterBindingContext
@@ -121,6 +153,10 @@ static bool IsGlobalVariableAShaderParameter(
         return false;
 
     // TODO(tfoley): there may be other cases that we need to handle here
+
+    // TODO(tfoley): GLSL rules are almost completely flipped from HLSL.
+    // A GLSL global is "just a global" unless it is specifically decorated
+    // as a shader parameter...
 
     return true;
 }
@@ -197,8 +233,17 @@ LayoutSemanticInfo ExtractLayoutSemanticInfo(
     return info;
 }
 
-// Generate the binding information for a shader parameter.
-static void GenerateBindingsForParameter(
+static bool doesParameterMatch(
+    ParameterBindingContext*    context,
+    RefPtr<VarLayout>           varLayout,
+    ParameterInfo*              parameterInfo)
+{
+    // TODO: need to implement this eventually
+    return true;
+}
+
+// Collect a single declaration into our set of parameters
+static void collectParameter(
     ParameterBindingContext*    context,
     RefPtr<VarDeclBase>         varDecl)
 {
@@ -212,95 +257,185 @@ static void GenerateBindingsForParameter(
     varLayout->typeLayout = typeLayout;
     varLayout->varDecl = DeclRef(varDecl.Ptr(), nullptr).As<VarDeclBaseRef>();
 
-    context->shared->varLayouts.Add(varLayout);
-
-    // If the parameter has explicit binding modifiers, then
-    // here is where we want to extract and apply them...
-
-    // Look for HLSL `register` or `packoffset` semantics.
-    for (auto semantic : varDecl->GetModifiersOfType<HLSLLayoutSemantic>())
+    // This declaration may represent the same logical parameter
+    // as a declaration that came from a different translation unit.
+    // If that is the case, we want to re-use the same `VarLayout`
+    // across both parameters.
+    //
+    // First we look for an existing entry matching the name
+    // of this parameter:
+    auto parameterName = varDecl->Name.Content;
+    ParameterInfo* parameterInfo = nullptr;
+    if( context->shared->mapNameToParameterInfo.TryGetValue(parameterName, parameterInfo) )
     {
-        // Need to extract the information encoded in the semantic
-        LayoutSemanticInfo semanticInfo = ExtractLayoutSemanticInfo(context, semantic);
-        if (semanticInfo.kind == LayoutResourceKind::Invalid)
-            continue;
-
-        // TODO: need to special-case when this is a `c` register binding...
-
-        // Find the appropriate resource-binding information
-        // inside the type, to see if we even use any resources
-        // of the given kind.
-
-        auto typeRes = typeLayout->FindResourceInfo(semanticInfo.kind);
-        int count = 0;
-        if (typeRes)
+        // If the parameters have the same name, but don't "match" according to some reasonable rules,
+        // then we need to bail out.
+        if( !doesParameterMatch(context, varLayout, parameterInfo) )
         {
-            count = typeRes->count;
+            parameterInfo = nullptr;
         }
-        else
-        {
-            // TODO: warning here!
-        }
+    }
 
-        // Now we need to add the appropriate binding
-        // to the variable layout
-        auto varRes = varLayout->FindResourceInfo(semanticInfo.kind);
-        if (varRes)
-        {
-            // TODO: error: we are trying to bind the same thing twice!?!?!
+    // If we didn't find a matching parameter, then we need to create one here
+    if( !parameterInfo )
+    {
+        parameterInfo = new ParameterInfo();
+        context->shared->parameters.Add(parameterInfo);
+        context->shared->mapNameToParameterInfo.Add(parameterName, parameterInfo);
+    }
+    else
+    {
+        varLayout->flags |= VarLayoutFlag::IsRedeclaration;
+    }
 
-            // TODO(tfoley): `register` semantics can technically be
-            // profile-specific (not sure if anybody uses that)...
-        }
-        varRes = varLayout->AddResourceInfo(semanticInfo.kind);
-        varRes->space = semanticInfo.space;
-        varRes->index = semanticInfo.index;
+    // Add this variable declaration to the list of declarations for the parameter
+    parameterInfo->varLayouts.Add(varLayout);
+}
 
-        // If things are bound in `space0` (the default), then we need
-        // to lay claim to the register range used, so that automatic
-        // assignment doesn't go and use the same registers.
-        if (semanticInfo.space == 0)
+// Given a single parameter, collect whatever information we have on
+// how it has been explicitly bound, which may come from multiple declarations
+void generateParameterBindings(
+    ParameterBindingContext*    context,
+    RefPtr<ParameterInfo>       parameterInfo)
+{
+    // There must be at least one declaration for the parameter.
+    assert(parameterInfo->varLayouts.Count() != 0);
+
+    // Iterate over all declarations looking for explicit binding information.
+    for( auto& varLayout : parameterInfo->varLayouts )
+    {
+        auto typeLayout = varLayout->typeLayout;
+        auto varDecl = varLayout->varDecl;
+
+        // If the declaration has explicit binding modifiers, then
+        // here is where we want to extract and apply them...
+
+        // Look for HLSL `register` or `packoffset` semantics.
+        for (auto semantic : varDecl.GetDecl()->GetModifiersOfType<HLSLLayoutSemantic>())
         {
-            context->usedResourceRanges[(int)semanticInfo.kind].Add(
-                semanticInfo.index,
-                semanticInfo.index + count);
+            // Need to extract the information encoded in the semantic
+            LayoutSemanticInfo semanticInfo = ExtractLayoutSemanticInfo(context, semantic);
+            auto kind = semanticInfo.kind;
+            if (kind == LayoutResourceKind::Invalid)
+                continue;
+
+            // TODO: need to special-case when this is a `c` register binding...
+
+            // Find the appropriate resource-binding information
+            // inside the type, to see if we even use any resources
+            // of the given kind.
+
+            auto typeRes = typeLayout->FindResourceInfo(kind);
+            int count = 0;
+            if (typeRes)
+            {
+                count = typeRes->count;
+            }
+            else
+            {
+                // TODO: warning here!
+            }
+
+            auto& bindingInfo = parameterInfo->bindingInfo[(int)kind];
+            if( bindingInfo.count != 0 )
+            {
+                // We already have a binding here, so we want to
+                // confirm that it matches the new one that is
+                // incoming...
+                if( bindingInfo.count != count
+                    || bindingInfo.index != semanticInfo.index
+                    || bindingInfo.space != semanticInfo.space )
+                {
+                    // TODO: diagnose!
+                }
+
+                // TODO(tfoley): `register` semantics can technically be
+                // profile-specific (not sure if anybody uses that)...
+            }
+            else
+            {
+                bindingInfo.count = count;
+                bindingInfo.index = semanticInfo.index;
+                bindingInfo.space = semanticInfo.space;
+
+                // If things are bound in `space0` (the default), then we need
+                // to lay claim to the register range used, so that automatic
+                // assignment doesn't go and use the same registers.
+                if (semanticInfo.space == 0)
+                {
+                    context->usedResourceRanges[(int)semanticInfo.kind].Add(
+                        semanticInfo.index,
+                        semanticInfo.index + count);
+                }
+            }
         }
     }
 }
 
 // Generate the binding information for a shader parameter.
-static void CompleteBindingsForParameter(
+static void completeBindingsForParameter(
     ParameterBindingContext*    context,
-    RefPtr<VarLayout>           varLayout)
+    RefPtr<ParameterInfo>       parameterInfo)
 {
-    // For any resource kind used by the variable,
+    // For any resource kind used by the parameter
     // we need to update its layout information
     // to include a binding for that resource kind.
+    //
+    // We will use the first declaration of the parameter as
+    // a stand-in for all the declarations, so it is important
+    // that earlier code has validated that the declarations
+    // "match".
 
-    auto typeLayout = varLayout->typeLayout;
+    assert(parameterInfo->varLayouts.Count() != 0);
+    auto firstVarLayout = parameterInfo->varLayouts.First();
+    auto firstTypeLayout = firstVarLayout->typeLayout;
 
-    for (auto typeRes = &typeLayout->resources;
+    for (auto typeRes = &firstTypeLayout->resources;
         typeRes && IsResourceKind(typeRes->kind);
         typeRes = typeRes->next.Ptr())
     {
-        // check if the variable already has a binding applied
-        // for this resource kind...
-        auto varRes = varLayout->FindResourceInfo(typeRes->kind);
-        if (varRes)
+        // Did we already apply some explicit binding information
+        // for this resource kind?
+        auto kind = typeRes->kind;
+        auto& bindingInfo = parameterInfo->bindingInfo[(int)kind];
+        if( bindingInfo.count != 0 )
         {
             // If things have already been bound, our work is done.
             continue;
         }
 
-        // Otherwise, allocate a resource-info node, and then
-        // allocate a range of registers to use when binding
-        // this parameter.
-        varRes = varLayout->AddResourceInfo(typeRes->kind);
-        varRes->index = context->usedResourceRanges[(int)typeRes->kind].Allocate(typeRes->count);
+        auto count = typeRes->count;
+        bindingInfo.count = count;
+        bindingInfo.index = context->usedResourceRanges[(int)kind].Allocate(count);
+
+        // For now we only auto-generate bindings in space zero
+        bindingInfo.space = 0;
+    }
+
+    // At this point we should have explicit binding locations chosen for
+    // all the relevant resource kinds, so we can apply these to the
+    // declarations:
+
+    for(auto& varLayout : parameterInfo->varLayouts)
+    {
+        for(auto k = 0; k < (int)LayoutResourceKind::Count; ++k)
+        {
+            auto kind = LayoutResourceKind(k);
+            auto& bindingInfo = parameterInfo->bindingInfo[k];
+
+            // skip resources we aren't consuming
+            if(bindingInfo.count == 0)
+                continue;
+
+            // Add a record to the variable layout
+            auto varRes = varLayout->AddResourceInfo(kind);
+            varRes->space = (int) bindingInfo.space;
+            varRes->index = (int) bindingInfo.index;
+        }
     }
 }
 
-static void GenerateParameterBindings(
+static void collectParameters(
     ParameterBindingContext*    context,
     ProgramSyntaxNode*          program)
 {
@@ -317,7 +452,7 @@ static void GenerateParameterBindings(
         if (!IsGlobalVariableAShaderParameter(context, varDecl))
             continue;
 
-        GenerateBindingsForParameter(context, varDecl);
+        collectParameter(context, varDecl);
     }
 
     // Next, we need to enumerate the parameters of
@@ -329,8 +464,18 @@ static void GenerateParameterBindings(
     // to global-scope function declarations.
 }
 
+static void collectParameters(
+    ParameterBindingContext*        context,
+    CollectionOfTranslationUnits*   program)
+{
+    for( auto& translationUnit : program->translationUnits )
+    {
+        collectParameters(context, translationUnit.SyntaxNode.Ptr());
+    }
+}
+
 void GenerateParameterBindings(
-    ProgramSyntaxNode* program)
+    CollectionOfTranslationUnits*   program)
 {
     // Create a context to hold shared state during the process
     // of generating parameter bindings
@@ -343,35 +488,41 @@ void GenerateParameterBindings(
     context.shared = &sharedContext;
     context.layoutRules = sharedContext.defaultLayoutRules;
 
-    // Walk through global scope to create binding nodes for everything
-    GenerateParameterBindings(&context, program);
+    // Walk through global scope to discover all the parameters
+    collectParameters(&context, program);
+
+    // Now walk through the parameters to generate initial binding information
+    for( auto& parameter : sharedContext.parameters )
+    {
+        generateParameterBindings(&context, parameter);
+    }
 
     // Now walk through again to actually give everything
     // ranges of registers...
-    for (auto varLayout : sharedContext.varLayouts)
+    for( auto& parameter : sharedContext.parameters )
     {
-        CompleteBindingsForParameter(&context, varLayout);
-
-        assert(varLayout->typeLayout->resources.kind != LayoutResourceKind::Dummy);
-        assert(varLayout->resources.kind != LayoutResourceKind::Dummy);
+        completeBindingsForParameter(&context, parameter);
     }
 
     // We now have a bunch of layout information, which we should
     // record into a suitable object that represents the program
     RefPtr<ProgramLayout> programLayout = new ProgramLayout;
     programLayout->rules = context.layoutRules;
-    for (auto varLayout : sharedContext.varLayouts)
+
+    for( auto& parameterInfo : sharedContext.parameters )
     {
-        programLayout->fields.Add(varLayout);
+        assert(parameterInfo->varLayouts.Count() != 0);
+        auto firstVarLayout = parameterInfo->varLayouts.First();
+
+        programLayout->fields999.Add(firstVarLayout);
+
+        for( auto& varLayout : parameterInfo->varLayouts )
+        {
+            programLayout->mapVarToLayout.Add(varLayout->varDecl.GetDecl(), varLayout);
+        }
     }
 
-    // We'd like to attach this layout to the program now,
-    // as a modifier node...
-
-    RefPtr<ComputedLayoutModifier> modifier = new ComputedLayoutModifier();
-    modifier->typeLayout = programLayout;
-    modifier->next = program->modifiers.first;
-    program->modifiers.first = modifier;
+    program->layout = programLayout;
 }
 
 }}

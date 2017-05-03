@@ -2,10 +2,12 @@
 #define RASTER_SHADER_COMPILER_H
 
 #include "../CoreLib/Basic.h"
+
+#include "CodeGenBackend.h"
 #include "Diagnostics.h"
 #include "CompiledProgram.h"
 #include "Syntax.h"
-#include "CodeGenBackend.h"
+#include "TypeLayout.h"
 
 #include "../../Spire.h"
 
@@ -177,6 +179,8 @@ namespace Spire
         {
         public:
             List<CompileUnit> translationUnits;
+
+            RefPtr<ProgramLayout> layout;
         };
 
         class CompilationContext

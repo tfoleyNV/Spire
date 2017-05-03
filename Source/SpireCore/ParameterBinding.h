@@ -9,6 +9,8 @@
 namespace Spire {
 namespace Compiler {
 
+class CollectionOfTranslationUnits;
+
 // The parameter-binding interface is responsible for assigning
 // binding locations/registers to every parameter of a shader
 // program. This can include both parameters declared on a
@@ -18,11 +20,12 @@ namespace Compiler {
 
 
 // Generate binding information for the given program,
+// represented as a collection of different translation units,
 // and attach that information to the syntax nodes
 // of the program.
 
 void GenerateParameterBindings(
-    ProgramSyntaxNode* program);
+    CollectionOfTranslationUnits*   program);
 
 }}
 

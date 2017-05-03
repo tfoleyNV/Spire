@@ -910,15 +910,12 @@ static void EmitDeclsInContainerUsingLayout(
     RefPtr<ContainerDecl>       container,
     RefPtr<StructTypeLayout>    containerLayout)
 {
-    auto fieldCount = containerLayout->fields.Count();
-    int fieldIndex = 0;
-
     for (auto member : container->Members)
     {
-        if(fieldIndex < fieldCount && containerLayout->fields[fieldIndex]->varDecl.GetDecl() == member.Ptr())
+        RefPtr<VarLayout> memberLayout;
+        if( containerLayout->mapVarToLayout.TryGetValue(member.Ptr(), memberLayout) )
         {
-            EmitDeclUsingLayout(context, member, containerLayout->fields[fieldIndex]);
-            fieldIndex++;
+            EmitDeclUsingLayout(context, member, memberLayout);
         }
         else
         {
@@ -926,7 +923,6 @@ static void EmitDeclsInContainerUsingLayout(
             EmitDecl(context, member);
         }
     }
-    assert(fieldIndex == fieldCount);
 }
 
 static void EmitTypeDefDecl(EmitContext* context, RefPtr<TypeDefDecl> decl)
@@ -1057,17 +1053,13 @@ static void EmitConstantBufferDecl(
     Emit(context, "\n{\n");
     if (auto structRef = declRefType->declRef.As<StructDeclRef>())
     {
-        int fieldCount = structTypeLayout->fields.Count();
-        int fieldIndex = 0;
-
         for (auto field : structRef.GetMembersOfType<FieldDeclRef>())
         {
-            assert(fieldIndex < fieldCount);
-
             EmitVarDeclCommon(context, field);
 
-            auto fieldLayout = structTypeLayout->fields[fieldIndex];
-            assert(fieldLayout->varDecl.GetDecl() == field.GetDecl());
+            RefPtr<VarLayout> fieldLayout;
+            structTypeLayout->mapVarToLayout.TryGetValue(field.GetDecl(), fieldLayout);
+            assert(fieldLayout);
 
             // How many bytes of uniform data does this field need to occupy?
             size_t uniformSize = fieldLayout->typeLayout->uniforms.size;
@@ -1123,11 +1115,8 @@ static void EmitConstantBufferDecl(
             // Next handle any resources in the field...
             emitHLSLRegisterSemantics(context, fieldLayout);
 
-            fieldIndex++;
-
             Emit(context, ";\n");
         }
-        assert(fieldIndex == fieldCount);
     }
     Emit(context, "}\n");
 }
@@ -1274,24 +1263,8 @@ static void EmitDecl(EmitContext* context, RefPtr<DeclBase> declBase)
     }
 }
 
-String EmitProgram(ProgramSyntaxNode* program)
+String emitProgram(ProgramSyntaxNode* program, ProgramLayout* programLayout)
 {
-
-    auto programLayoutMod = program->FindModifier<ComputedLayoutModifier>();
-    if (!programLayoutMod)
-    {
-        // TODO: error message
-        return nullptr;
-    }
-    auto programLayout = programLayoutMod->typeLayout.As<ProgramLayout>();
-    if (!programLayout)
-    {
-        // TODO: error message
-        return nullptr;
-    }
-
-
-
     // TODO(tfoley): only emit symbols on-demand, as needed by a particular entry point
 
     EmitContext context;
