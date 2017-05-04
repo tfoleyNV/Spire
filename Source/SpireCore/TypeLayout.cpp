@@ -84,26 +84,9 @@ struct DefaultLayoutRulesImpl : LayoutRulesImpl
         }
     }
 
-    virtual ObjectLayoutInfo GetObjectLayout(spire::TypeReflection::Kind kind) override
+    virtual ObjectLayoutInfo GetObjectLayout(LayoutResourceKind kind) override
     {
-        switch (kind)
-        {
-        case spire::TypeReflection::Kind::ConstantBuffer:
-            return ObjectLayoutInfo(LayoutResourceKind::ConstantBuffer);
-
-        case spire::TypeReflection::Kind::Texture:
-            return ObjectLayoutInfo(LayoutResourceKind::ShaderResource);
-
-        case spire::TypeReflection::Kind::SamplerState:
-            return ObjectLayoutInfo(LayoutResourceKind::SamplerState);
-
-        // TODO: what about unordered access views?
-
-        default:
-            assert(!"unimplemented");
-            return ObjectLayoutInfo();
-        }
-
+        return ObjectLayoutInfo(kind);
     }
 
     ArrayLayoutInfo GetArrayLayout( LayoutInfo elementInfo, size_t elementCount) override
@@ -312,7 +295,7 @@ LayoutInfo GetLayoutImpl(
         // different from a `Texture2D<U>` in terms of how it
         // should be handled as a member of a container.
         //
-        auto info = rules->GetObjectLayout(spire::TypeReflection::Kind::ConstantBuffer);
+        auto info = rules->GetObjectLayout(LayoutResourceKind::ConstantBuffer);
 
         // The more interesting case, though, is when the user
         // is requesting us to actually create a `TypeLayout`,
@@ -401,7 +384,7 @@ LayoutInfo GetLayoutImpl(
     else if (auto samplerStateType = type->As<SamplerStateType>())
     {
         return GetSimpleLayoutImpl(
-            rules->GetObjectLayout(spire::TypeReflection::Kind::SamplerState),
+            rules->GetObjectLayout(LayoutResourceKind::SamplerState),
             type,
             rules,
             outTypeLayout);
@@ -409,11 +392,31 @@ LayoutInfo GetLayoutImpl(
     else if (auto textureType = type->As<TextureType>())
     {
         return GetSimpleLayoutImpl(
-            rules->GetObjectLayout(spire::TypeReflection::Kind::Texture),
+            rules->GetObjectLayout(LayoutResourceKind::ShaderResource),
             type,
             rules,
             outTypeLayout);
     }
+
+    // TODO: need a better way to handle this stuff...
+#define CASE(TYPE, KIND)                                        \
+    else if(type->As<TYPE>()) do {                              \
+        return GetSimpleLayoutImpl(                             \
+            rules->GetObjectLayout(LayoutResourceKind::KIND),   \
+            type, rules, outTypeLayout);                        \
+    } while(0)
+
+    CASE(HLSLBufferType,                    ShaderResource);
+    CASE(HLSLRWBufferType,                  UnorderedAccess);
+    CASE(HLSLStructuredBufferType,          ShaderResource);
+    CASE(HLSLRWStructuredBufferType,        UnorderedAccess);
+    CASE(HLSLByteAddressBufferType,         ShaderResource);
+    CASE(HLSLRWByteAddressBufferType,       UnorderedAccess);
+    CASE(HLSLAppendStructuredBufferType,    UnorderedAccess);
+    CASE(HLSLConsumeStructuredBufferType,   UnorderedAccess);
+
+#undef CASE
+
     //
     // TODO(tfoley): Need to recognize any UAV types here
     //

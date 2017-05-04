@@ -241,6 +241,43 @@ static NodePtr<ReflectionTypeNode> GenerateReflectionType(
         info->elementType = GenerateReflectionType(context, textureType->elementType);
         return info;
     }
+
+    // TODO: need a better way to handle this stuff...
+#define CASE(TYPE, FLAVOR)                                                              \
+    else if(type->As<TYPE>()) do {                                                      \
+    auto info = AllocateNode<ReflectionTextureTypeNode>(context);                       \
+    info->flavor = ReflectionNodeFlavor::Type;                                          \
+    info->SetKind(SPIRE_TYPE_KIND_TEXTURE);                                             \
+    info->SetShape(FLAVOR);                                                             \
+    info->elementType = GenerateReflectionType(context, type->As<TYPE>()->elementType); \
+    return info;                                                                        \
+    } while(0)
+
+    CASE(HLSLBufferType,                    SPIRE_TEXTURE_BUFFER);
+    CASE(HLSLRWBufferType,                  SPIRE_TEXTURE_BUFFER | SPIRE_TEXTURE_READ_WRITE_FLAG);
+    CASE(HLSLStructuredBufferType,          SPIRE_TEXTURE_STRUCTURE_BUFFER);
+    CASE(HLSLRWStructuredBufferType,        SPIRE_TEXTURE_STRUCTURE_BUFFER | SPIRE_TEXTURE_READ_WRITE_FLAG);
+
+    // TODO: need to add flags for these cases too...
+    CASE(HLSLAppendStructuredBufferType,    SPIRE_TEXTURE_STRUCTURE_BUFFER | SPIRE_TEXTURE_READ_WRITE_FLAG);
+    CASE(HLSLConsumeStructuredBufferType,   SPIRE_TEXTURE_STRUCTURE_BUFFER | SPIRE_TEXTURE_READ_WRITE_FLAG);
+#undef CASE
+
+#define CASE(TYPE, FLAVOR)                                                              \
+    else if(type->As<TYPE>()) do {                                                      \
+    auto info = AllocateNode<ReflectionTextureTypeNode>(context);                       \
+    info->flavor = ReflectionNodeFlavor::Type;                                          \
+    info->SetKind(SPIRE_TYPE_KIND_TEXTURE);                                             \
+    info->SetShape(FLAVOR);                                                             \
+    info->elementType.raw = 0;                                                          \
+    return info;                                                                        \
+    } while(0)
+
+    CASE(HLSLByteAddressBufferType,         SPIRE_TEXTURE_BYTE_ADDRESS_BUFFER);
+    CASE(HLSLRWByteAddressBufferType,       SPIRE_TEXTURE_BYTE_ADDRESS_BUFFER | SPIRE_TEXTURE_READ_WRITE_FLAG);
+#undef CASE
+
+
     else if (auto arrayType = type->As<ArrayExpressionType>())
     {
         auto info = AllocateNode<ReflectionArrayTypeNode>(context);

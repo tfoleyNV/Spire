@@ -276,7 +276,7 @@ struct LayoutRulesImpl
     virtual LayoutInfo GetScalarLayout(spire::TypeReflection::ScalarType scalarType) = 0;
 
     // Compute layout info for an object type
-    virtual ObjectLayoutInfo GetObjectLayout(spire::TypeReflection::Kind kind) = 0;
+    virtual ObjectLayoutInfo GetObjectLayout(LayoutResourceKind kind) = 0;
 
     // Get size and alignment for an array of elements
     virtual ArrayLayoutInfo GetArrayLayout(LayoutInfo elementInfo, size_t elementCount) = 0;
