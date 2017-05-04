@@ -1021,6 +1021,11 @@ namespace spire
         {
             return spReflectionParameter_GetBindingSpace((SpireReflectionParameter*) this);
         }
+
+        size_t getOffset(SpireParameterCategory category = SPIRE_PARAMETER_CATEGORY_UNIFORM)
+        {
+            return spReflectionVariable_GetOffset((SpireReflectionVariable*) this, category);
+        }
     };
 
     struct BufferReflection : ParameterReflection

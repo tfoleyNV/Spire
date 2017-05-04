@@ -1240,6 +1240,51 @@ size_t ReflectionTypeLayoutNode::GetSize(SpireParameterCategory category) const
 }
 
 
+uint32_t ReflectionParameterNode::GetOffset(SpireParameterCategory category)
+{
+    auto thisCategory = GetCategory();
+    if( thisCategory == SPIRE_PARAMETER_CATEGORY_MIXED )
+    {
+        // Need to search for it!
+        ReflectionSize bindingCount = binding.bindingCount;
+        ReflectionParameterBindingInfo const* bindings = binding.bindings;
+        for( ReflectionSize bb = 0; bb < bindingCount; ++bb )
+        {
+            if(bindings[bb].category == category)
+                return bindings[bb].index;
+        }
+    }
+    else if( category == thisCategory )
+    {
+        return binding.index;
+    }
+
+    return 0;
+}
+
+uint32_t ReflectionParameterNode::GetSpace(SpireParameterCategory category)
+{
+    auto thisCategory = GetCategory();
+    if( thisCategory == SPIRE_PARAMETER_CATEGORY_MIXED )
+    {
+        // Need to search for it!
+        ReflectionSize bindingCount = binding.bindingCount;
+        ReflectionParameterBindingInfo const* bindings = binding.bindings;
+        for( ReflectionSize bb = 0; bb < bindingCount; ++bb )
+        {
+            if(bindings[bb].category == category)
+                return bindings[bb].space;
+        }
+    }
+    else if( category == thisCategory )
+    {
+        return binding.space;
+    }
+
+    return 0;
+}
+
+
 
 size_t ReflectionVariableLayoutNode::GetOffset(SpireParameterCategory category) const
 {

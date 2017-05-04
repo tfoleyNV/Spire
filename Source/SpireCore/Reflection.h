@@ -585,6 +585,9 @@ struct ReflectionParameterNode : ReflectionVariableLayoutBaseNode
 
 //    uint32_t GetBindingIndex() const { return bindingIndex; }
 //    uint32_t GetBindingSpace() const { return bindingSpace; }
+
+    uint32_t GetOffset(SpireParameterCategory category);
+    uint32_t GetSpace(SpireParameterCategory category);
 };
 
 struct ReflectionBlob : ReflectionNode

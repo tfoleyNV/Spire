@@ -1555,9 +1555,19 @@ SpireReflectionType* spReflectionVariable_GetType(SpireReflectionVariable* inVar
 
 size_t spReflectionVariable_GetOffset(SpireReflectionVariable* inVar, SpireParameterCategory category)
 {
-    auto var = ((ReflectionNode*) inVar)->AsVariableLayout();
-    if(!var) return 0;
-    return var->GetOffset(category);
+    auto node = (ReflectionNode*) inVar;
+    if(!node) return 0;
+    switch( node->GetFlavor() )
+    {
+    default:
+        return 0;
+
+    case ReflectionNodeFlavor::Parameter:
+        return node->AsParameter()->GetOffset(category);
+
+    case ReflectionNodeFlavor::VariableLayout:
+        return node->AsVariableLayout()->GetOffset(category);
+    }
 }
 
 // shader parameter reflection
