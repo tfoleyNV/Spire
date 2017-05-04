@@ -52,6 +52,11 @@ __generic<T> __magic_type(HLSLRWStructuredBufferType) struct RWStructuredBuffer
 {
 };
 
+__generic<T> __magic_type(HLSLPointStreamType) struct PointStream {};
+__generic<T> __magic_type(HLSLLineStreamType) struct LineStream {};
+__generic<T> __magic_type(HLSLLineStreamType) struct TriangleStream {};
+
+
 // Note(tfoley): Trying to systematically add all the HLSL builtins
 
 // A type that can be used as an operand for builtins

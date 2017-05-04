@@ -758,6 +758,13 @@ namespace Spire
         class HLSLInputPatchType : public ArrayLikeType {};
         class HLSLOutputPatchType : public ArrayLikeType {};
 
+        // HLSL geometry shader output stream types
+
+        class HLSLStreamOutputType : public BuiltinGenericType {};
+        class HLSLPointStreamType : public HLSLStreamOutputType {};
+        class HLSLLineStreamType : public HLSLStreamOutputType {};
+        class HLSLTriangleStreamType : public HLSLStreamOutputType {};
+
         // Type for HLSL `cbuffer` declarations, and `ConstantBuffer<T>`
         class ConstantBufferType : public PointerLikeType {};
 
@@ -2433,6 +2440,14 @@ namespace Spire
             Token nameToken;
             List<RefPtr<ExpressionSyntaxNode>> args;
         };
+
+        // HLSL modifiers for geometry shader input topology
+        class HLSLGeometryShaderInputPrimitiveTypeModifier : public Modifier {};
+        class HLSLPointModifier         : public HLSLGeometryShaderInputPrimitiveTypeModifier {};
+        class HLSLLineModifier          : public HLSLGeometryShaderInputPrimitiveTypeModifier {};
+        class HLSLTriangleModifier      : public HLSLGeometryShaderInputPrimitiveTypeModifier {};
+        class HLSLLineAdjModifier       : public HLSLGeometryShaderInputPrimitiveTypeModifier {};
+        class HLSLTriangleAdjModifier   : public HLSLGeometryShaderInputPrimitiveTypeModifier {};
 
         //
 

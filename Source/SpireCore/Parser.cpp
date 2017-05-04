@@ -687,6 +687,13 @@ namespace Spire
                 CASE(uniform, HLSLUniformModifier);
                 CASE(volatile, HLSLVolatileModifier);
 
+                // Modifiers for geometry shader input
+                CASE(point,         HLSLPointModifier);
+                CASE(line,          HLSLLineModifier);
+                CASE(triangle,      HLSLTriangleModifier);
+                CASE(lineadj,       HLSLLineAdjModifier);
+                CASE(triangleadj,   HLSLTriangleAdjModifier);
+
                 #undef CASE
 
                 else if (AdvanceIf(parser, "layout"))

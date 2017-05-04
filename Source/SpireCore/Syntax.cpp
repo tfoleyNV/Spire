@@ -883,6 +883,10 @@ namespace Spire
                 CASE(HLSLInputPatchType, HLSLInputPatchType)
                 CASE(HLSLOutputPatchType, HLSLOutputPatchType)
 
+                CASE(HLSLPointStreamType, HLSLPointStreamType)
+                CASE(HLSLLineStreamType, HLSLPointStreamType)
+                CASE(HLSLTriangleStreamType, HLSLPointStreamType)
+
                 #undef CASE
 
                 // "magic" builtin types which have no generic parameters

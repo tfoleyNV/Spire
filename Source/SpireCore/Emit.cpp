@@ -799,6 +799,12 @@ static void EmitModifiers(EmitContext* context, RefPtr<Decl> decl)
         CASE(HLSLUniformModifier, uniform);
         CASE(HLSLVolatileModifier, volatile);
 
+        CASE(HLSLPointModifier, point);
+        CASE(HLSLLineModifier, line);
+        CASE(HLSLTriangleModifier, triangle);
+        CASE(HLSLLineAdjModifier, lineadj);
+        CASE(HLSLTriangleAdjModifier, triangleadj);
+
         #undef CASE
 
         // TODO: eventually we should be checked these modifiers, but for
