@@ -609,7 +609,9 @@ static void EmitUnparsedStmt(EmitContext* context, RefPtr<UnparsedStmt> stmt)
     {
         if(token.flags & TokenFlag::AtStartOfLine)
             Emit(context, "\n");
-        else if(token.flags & TokenFlag::AfterWhitespace)
+        // TODO(tfoley): macro expansion can currently lead to whitespace getting dropped,
+        // so we will just insert it aggressively, to play it safe.
+        else //  if(token.flags & TokenFlag::AfterWhitespace)
             Emit(context, " ");
         Emit(context, token.Content);
     }
