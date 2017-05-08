@@ -136,6 +136,22 @@ static void formatDiagnosticMessage(StringBuilder& sb, char const* format, int a
     }
 }
 
+static void formatDiagnostic(
+    StringBuilder&      sb,
+    Diagnostic const&   diagnostic)
+{
+    sb << diagnostic.Position.FileName;
+    sb << "(";
+    sb << diagnostic.Position.Line;
+    sb << "): ";
+    sb << getSeverityName(diagnostic.severity);
+    sb << " ";
+    sb << diagnostic.ErrorID;
+    sb << ": ";
+    sb << diagnostic.Message;
+    sb << "\n";
+}
+
 void DiagnosticSink::diagnoseImpl(CodePosition const& pos, DiagnosticInfo const& info, int argCount, DiagnosticArg const* const* args)
 {
     StringBuilder sb;
@@ -147,11 +163,27 @@ void DiagnosticSink::diagnoseImpl(CodePosition const& pos, DiagnosticInfo const&
     diagnostic.Position = pos;
     diagnostic.severity = info.severity;
 
-    diagnostics.Add(diagnostic);
     if (diagnostic.severity >= Severity::Error)
     {
         errorCount++;
     }
+
+    // Did the client supply a callback for us to use?
+    if( callback )
+    {
+        // If so, pass the error string along to them
+        StringBuilder sb;
+        formatDiagnostic(sb, diagnostic);
+
+        callback(sb.ProduceString().begin(), callbackUserData);
+    }
+    else
+    {
+        // If the user doesn't have a callback, then just
+        // collect our diagnostic messages into a buffer
+        formatDiagnostic(outputBuffer, diagnostic);
+    }
+
     if (diagnostic.severity >= Severity::Fatal)
     {
         // TODO: figure out a better policy for aborting compilation

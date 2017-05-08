@@ -43,7 +43,8 @@ namespace Spire
         class CompileResult
         {
         public:
-            DiagnosticSink sink;
+            DiagnosticSink* mSink = nullptr;
+
             String ScheduleFile;
             RefPtr<ILProgram> Program;
             EnumerableDictionary<String, CompiledShaderSource> CompiledSource; // shader -> stage -> code
@@ -54,7 +55,7 @@ namespace Spire
             // Reflection info that spans all translation units
             ReflectionBlob* reflectionBlob = nullptr;
 
-
+#if 0
             void PrintDiagnostics()
             {
                 for (int i = 0; i < sink.diagnostics.Count(); i++)
@@ -67,6 +68,8 @@ namespace Spire
                         sink.diagnostics[i].Message.ToWString());
                 }
             }
+#endif
+
             CompileResult()
             {}
             ~CompileResult()
@@ -75,11 +78,11 @@ namespace Spire
             }
             DiagnosticSink * GetErrorWriter()
             {
-                return &sink;
+                return mSink;
             }
             int GetErrorCount()
             {
-                return sink.GetErrorCount();
+                return mSink->GetErrorCount();
             }
         };
 

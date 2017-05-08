@@ -34,31 +34,21 @@ Profile TranslateProfileName(char const* name)
     return Profile::Unknown;
 }
 
-struct Options
+struct OptionsParser
 {
-    String outputDir;
-    CompileOptions options;
+    SpireSession*           session = nullptr;
+    SpireCompileRequest*    compileRequest = nullptr;
 
-    Options()
+    struct RawEntryPoint
     {
-        options.Target = CodeGenTarget::HLSL;
-        options.outputName = "out";
-    }
-};
-
-struct OptionsParser : Options
-{
-    struct RawEntryPoint : EntryPointOption
-    {
-        int translationUnitIndex = -1;
+        String          name;
+        SpireProfileID  profileID = SPIRE_PROFILE_UNKNOWN;
+        int             translationUnitIndex = -1;
     };
 
     // Collect entry point names, so that we can associate them
     // with entry points later...
     List<RawEntryPoint> rawEntryPoints;
-
-    // The translation unit we are currently working on (or `-1` if none so far)
-    int currentTranslationUnitIndex = -1;
 
     // The number of input files that have been specified
     int inputPathCount = 0;
@@ -67,6 +57,13 @@ struct OptionsParser : Options
     // If not, it will be `-1`.
     int spireTranslationUnit = -1;
 
+    int translationUnitCount = 0;
+    int currentTranslationUnitIndex = -1;
+
+    SpireProfileID currentProfileID = SPIRE_PROFILE_UNKNOWN;
+
+    SpireCompileFlags flags = 0;
+
     void addInputSpirePath(
         String const& path)
     {
@@ -74,30 +71,36 @@ struct OptionsParser : Options
         // which we create lazily when the first .spire file is encountered.
         if( spireTranslationUnit == -1 )
         {
-            spireTranslationUnit = options.translationUnits.Count();
-
-            TranslationUnitOptions translationUnit;
-            translationUnit.flavor = TranslationUnitFlavor::SpireCode;
-            options.translationUnits.Add(translationUnit);
+            translationUnitCount++;
+            spireTranslationUnit = spAddTranslationUnit(
+                compileRequest,
+                SPIRE_SOURCE_LANGUAGE_SPIRE,
+                nullptr);
         }
-        options.translationUnits[spireTranslationUnit].sourceFilePaths.Add(path);
+
+        spAddTranslationUnitSourceFile(
+            compileRequest,
+            spireTranslationUnit,
+            path.begin());
 
         // Set the translation unit to be used by subsequent entry points
         currentTranslationUnitIndex = spireTranslationUnit;
     }
 
     void addInputForeignShaderPath(
-        String const& path)
+        String const&           path,
+        SpireSourceLanguage     language)
     {
-        // Set the translation unit to be used by subsequent entry points
-        currentTranslationUnitIndex = options.translationUnits.Count();
+        translationUnitCount++;
+        currentTranslationUnitIndex = spAddTranslationUnit(
+                compileRequest,
+                language,
+                nullptr);
 
-        // Each foreign shader file is assumed to form its own translation unit, since
-        // the existing shading langauges we need to support are all C-derived.
-        TranslationUnitOptions translationUnit;
-        translationUnit.flavor = TranslationUnitFlavor::ForeignShaderCode;
-        translationUnit.sourceFilePaths.Add(path);
-        options.translationUnits.Add(translationUnit);
+        spAddTranslationUnitSourceFile(
+            compileRequest,
+            currentTranslationUnitIndex,
+            path.begin());
     }
 
     void addInputPath(
@@ -117,7 +120,12 @@ struct OptionsParser : Options
         else if( path.EndsWith(".hlsl") )
         {
             // HLSL for rewriting
-            addInputForeignShaderPath(path);
+            addInputForeignShaderPath(path, SPIRE_SOURCE_LANGUAGE_HLSL);
+        }
+        else if( path.EndsWith(".glsl") )
+        {
+            // HLSL for rewriting
+            addInputForeignShaderPath(path, SPIRE_SOURCE_LANGUAGE_GLSL);
         }
         else
         {
@@ -140,54 +148,59 @@ struct OptionsParser : Options
                 String argStr = String::FromWString(arg);
 
                 // The argument looks like an option, so try to parse it.
-                if (argStr == "-outdir")
-                    outputDir = tryReadCommandLineArgument(arg, &argCursor, argEnd);
-                if (argStr == "-out")
-                    options.outputName = tryReadCommandLineArgument(arg, &argCursor, argEnd);
-                else if (argStr == "-symbo")
-                    options.SymbolToCompile = tryReadCommandLineArgument(arg, &argCursor, argEnd);
-                else if (argStr == "-no-checking")
-                    options.flags |= SPIRE_COMPILE_FLAG_NO_CHECKING;
+//                if (argStr == "-outdir")
+//                    outputDir = tryReadCommandLineArgument(arg, &argCursor, argEnd);
+//                if (argStr == "-out")
+//                    options.outputName = tryReadCommandLineArgument(arg, &argCursor, argEnd);
+//                else if (argStr == "-symbo")
+//                    options.SymbolToCompile = tryReadCommandLineArgument(arg, &argCursor, argEnd);
+                //else
+                if (argStr == "-no-checking")
+                    flags |= SPIRE_COMPILE_FLAG_NO_CHECKING;
                 else if (argStr == "-backend" || argStr == "-target")
                 {
                     String name = tryReadCommandLineArgument(arg, &argCursor, argEnd);
+                    SpireCompileTarget target = SPIRE_TARGET_UNKNOWN;
+
                     if (name == "glsl")
                     {
-                        options.Target = CodeGenTarget::GLSL;
+                        target = SPIRE_GLSL;
                     }
                     else if (name == "glsl_vk")
                     {
-                        options.Target = CodeGenTarget::GLSL_Vulkan;
+                        target = SPIRE_GLSL_VULKAN;
                     }
-                    else if (name == "glsl_vk_onedesc")
-                    {
-                        options.Target = CodeGenTarget::GLSL_Vulkan_OneDesc;
-                    }
+//                    else if (name == "glsl_vk_onedesc")
+//                    {
+//                        options.Target = CodeGenTarget::GLSL_Vulkan_OneDesc;
+//                    }
                     else if (name == "hlsl")
                     {
-                        options.Target = CodeGenTarget::HLSL;
+                        target = SPIRE_HLSL;
                     }
                     else if (name == "spriv")
                     {
-                        options.Target = CodeGenTarget::SPIRV;
+                        target = SPIRE_SPIRV;
                     }
                     else if (name == "dxbc")
                     {
-                        options.Target = CodeGenTarget::DXBytecode;
+                        target = SPIRE_DXBC;
                     }
                     else if (name == "dxbc-assembly")
                     {
-                        options.Target = CodeGenTarget::DXBytecodeAssembly;
+                        target = SPIRE_DXBC_ASM;
                     }
                     else if (name == "reflection-json")
                     {
-                        options.Target = CodeGenTarget::ReflectionJSON;
+                        target = SPIRE_REFLECTION_JSON;
                     }
                     else
                     {
                         fprintf(stderr, "unknown code generation target '%S'\n", name.ToWString());
                         exit(1);
                     }
+
+                    spSetCodeGenTarget(compileRequest, target);
                 }
                 // A "profile" specifies both a specific target stage and a general level
                 // of capability required by the program.
@@ -195,14 +208,14 @@ struct OptionsParser : Options
                 {
                     String name = tryReadCommandLineArgument(arg, &argCursor, argEnd);
 
-                    Profile profile = TranslateProfileName(name.begin());
-                    if( profile.raw == Profile::Unknown )
+                    SpireProfileID profileID = spFindProfile(session, name.begin());
+                    if( profileID == SPIRE_PROFILE_UNKNOWN )
                     {
                         fprintf(stderr, "unknown profile '%s'\n", name.begin());
                     }
                     else
                     {
-                        options.profile = profile;
+                        currentProfileID = profileID;
                     }
                 }
                 else if (argStr == "-entry")
@@ -218,10 +231,11 @@ struct OptionsParser : Options
                     //
                     // For now, just use the last profile set on the command-line to specify this
 
-                    entry.profile = options.profile;
+                    entry.profileID = currentProfileID;
 
                     rawEntryPoints.Add(entry);
                 }
+#if 0
                 else if (argStr == "-stage")
                 {
                     String name = tryReadCommandLineArgument(arg, &argCursor, argEnd);
@@ -237,20 +251,24 @@ struct OptionsParser : Options
                     }
                     options.stage = stage;
                 }
+#endif
                 else if (argStr == "-pass-through")
                 {
                     String name = tryReadCommandLineArgument(arg, &argCursor, argEnd);
-                    PassThroughMode passThrough = PassThroughMode::None;
-                    if (name == "fxc") { passThrough = PassThroughMode::HLSL; }
+                    SpirePassThrough passThrough = SPIRE_PASS_THROUGH_NONE;
+                    if (name == "fxc") { passThrough = SPIRE_PASS_THROUGH_FXC; }
                     else
                     {
                         fprintf(stderr, "unknown pass-through target '%S'\n", name.ToWString());
                         exit(1);
                     }
-                    options.passThrough = passThrough;
+
+                    spSetPassThrough(
+                        compileRequest,
+                        passThrough);
                 }
-                else if (argStr == "-genchoice")
-                    options.Mode = CompilerMode::GenerateChoice;
+//                else if (argStr == "-genchoice")
+//                    options.Mode = CompilerMode::GenerateChoice;
                 else if (argStr[1] == 'D')
                 {
                     // The value to be defined might be part of the same option, as in:
@@ -280,12 +298,20 @@ struct OptionsParser : Options
                     if (eqPos)
                     {
                         // If we found an `=`, we split the string...
-                        options.PreprocessorDefinitions[String::FromWString(defineStr, eqPos)] = String::FromWString(eqPos+1);
+
+                        spAddPreprocessorDefine(
+                            compileRequest,
+                            String::FromWString(defineStr, eqPos).begin(),
+                            String::FromWString(eqPos+1).begin());
                     }
                     else
                     {
                         // If there was no `=`, then just #define it to an empty string
-                        options.PreprocessorDefinitions[String::FromWString(defineStr)] = String();
+
+                        spAddPreprocessorDefine(
+                            compileRequest,
+                            String::FromWString(defineStr).begin(),
+                            "");
                     }
                 }
                 else if (argStr[1] == 'I')
@@ -302,7 +328,9 @@ struct OptionsParser : Options
                         includeDirStr = tryReadCommandLineArgumentRaw(arg, &argCursor, argEnd);
                     }
 
-                    options.SearchDirectories.Add(String::FromWString(includeDirStr));
+                    spAddSearchPath(
+                        compileRequest,
+                        String::FromWString(includeDirStr).begin());
                 }
                 else if (argStr == "--")
                 {
@@ -327,6 +355,8 @@ struct OptionsParser : Options
             }
         }
 
+        spSetCompileFlags(compileRequest, flags);
+
         if (inputPathCount == 0)
         {
             fprintf(stderr, "error: no input file specified\n");
@@ -334,7 +364,7 @@ struct OptionsParser : Options
         }
 
         // No point in moving forward if there is nothing to compile
-        if( options.translationUnits.Count() == 0 )
+        if( translationUnitCount == 0 )
         {
             fprintf(stderr, "error: no compilation requested\n");
             exit(1);
@@ -344,7 +374,7 @@ struct OptionsParser : Options
         // the profile that was given to them.
         if( rawEntryPoints.Count() != 0 )
         {
-            if( options.profile.raw == Profile::Unknown )
+            if( currentProfileID == SPIRE_PROFILE_UNKNOWN )
             {
                 fprintf(stderr, "error: no profile specified; use the '-profile <profile name>' option");
                 exit(1);
@@ -355,9 +385,9 @@ struct OptionsParser : Options
             {
                 for( auto& e : rawEntryPoints )
                 {
-                    if( e.profile.raw == Profile::Unknown )
+                    if( e.profileID == SPIRE_PROFILE_UNKNOWN )
                     {
-                        e.profile = options.profile;
+                        e.profileID = currentProfileID;
                     }
                 }
             }
@@ -377,7 +407,7 @@ struct OptionsParser : Options
                 entryPoint.translationUnitIndex = 0;
             }
 
-            if( anyEntryPointWithoutTranslationUnit && options.translationUnits.Count() != 1 )
+            if( anyEntryPointWithoutTranslationUnit && translationUnitCount != 1 )
             {
                 fprintf(stderr, "error: when using multiple translation units, entry points must be specified after their translation unit file(s)");
                 exit(1);
@@ -386,10 +416,15 @@ struct OptionsParser : Options
             // Now place all those entry points where they belong
             for( auto& entryPoint : rawEntryPoints )
             {
-                options.translationUnits[entryPoint.translationUnitIndex].entryPoints.Add(entryPoint);
+                spAddTranslationUnitEntryPoint(
+                    compileRequest,
+                    entryPoint.translationUnitIndex,
+                    entryPoint.name.begin(),
+                    entryPoint.profileID);
             }
         }
 
+#if 0
         // Automatically derive an output directory based on the first file specified.
         //
         // TODO: require manual specification if there are multiple input files, in different directories
@@ -398,25 +433,43 @@ struct OptionsParser : Options
         {
             outputDir = Path::GetDirectoryName(fileName);
         }
-
+#endif
     }
 
 };
 
 
-Options parseOptions(
-    int         argc,
-    wchar_t**   argv)
+void parseOptions(
+    SpireCompileRequest*    compileRequest,
+    int                     argc,
+    wchar_t**               argv)
 {
     OptionsParser parser;
+    parser.compileRequest = compileRequest;
     parser.parse(argc, argv);
-    return parser;
+}
+
+static void diagnosticCallback(
+    char const* message,
+    void*       userData)
+{
+    fputs(message, stderr);
+    fflush(stderr);
 }
 
 int wmain(int argc, wchar_t* argv[])
 {
     // Parse any command-line options
-    Options options = parseOptions(argc, argv);
+
+    SpireSession* session = spCreateSession(nullptr);
+    SpireCompileRequest* compileRequest = spCreateCompileRequest(session);
+
+    parseOptions(compileRequest, argc, argv);
+
+    spSetDiagnosticCallback(
+        compileRequest,
+        &diagnosticCallback,
+        nullptr);
 
     // Invoke the compiler
 
@@ -424,12 +477,19 @@ int wmain(int argc, wchar_t* argv[])
     try
 #endif
     {
-        int result = SpireLib::executeCompilerDriverActions(options.options);
+        int result = spCompile(compileRequest);
         if( result != 0 )
         {
+            // TODO: emit the diagnostics here!!!
+
             exit(-1);
         }
 
+        // TODO: generate all the required outputs here!!!
+
+
+        spDestroyCompileRequest(compileRequest);
+        spDestroySession(session);
     }
 #ifndef _DEBUG
     catch (Exception & e)

@@ -21,12 +21,14 @@ namespace SpireLib
         void Load(CoreLib::Basic::String fileName);
     };
     
+#if 0
     CoreLib::Basic::List<ShaderLibFile> CompileShaderSourceFromFile(Spire::Compiler::CompileResult & result,
         const CoreLib::Basic::String & sourceFileName,
         Spire::Compiler::CompileOptions &options);
 
     CoreLib::Basic::List<ShaderLibFile> CompileShaderSource(Spire::Compiler::CompileResult & result,
         const CoreLib::Basic::String &source, const CoreLib::Basic::String & sourceFileName, Spire::Compiler::CompileOptions &options);
+#endif
 
     class ShaderLib : public ShaderLibFile
     {

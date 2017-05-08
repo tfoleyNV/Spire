@@ -4,6 +4,8 @@
 #include "../CoreLib/Basic.h"
 #include "../CoreLib/Tokenizer.h"
 
+#include "../../Spire.h"
+
 namespace Spire
 {
     namespace Compiler
@@ -129,8 +131,13 @@ namespace Spire
         class DiagnosticSink
         {
         public:
-            List<Diagnostic> diagnostics;
+            StringBuilder outputBuffer;
+//            List<Diagnostic> diagnostics;
             int errorCount = 0;
+
+            SpireDiagnosticCallback callback            = nullptr;
+            void*                   callbackUserData    = nullptr;
+
 /*
             void Error(int id, const String & msg, const CodePosition & pos)
             {
@@ -189,6 +196,7 @@ namespace Spire
                 int errorCount;
             };
 
+#if 0
             // Save the state of the sink so that it can be restored later.
             State saveState()
             {
@@ -204,6 +212,7 @@ namespace Spire
                 errorCount = state.errorCount;
                 diagnostics.SetSize(state.diagnosticCount);
             }
+#endif
         };
 
         namespace Diagnostics

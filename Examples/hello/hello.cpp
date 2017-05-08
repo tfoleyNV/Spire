@@ -69,7 +69,7 @@ ID3DBlob* compileHLSLShader(
 // We use a utility routine to print out any diagnostic (error/warning) output
 // from the Spire compiler.
 void emitSpireDiagnostics(
-    SpireDiagnosticSink* sink);
+    SpireCompileRequest* request);
 
 //
 // At initialization time, we are going to load and compile our Spire shader
@@ -77,21 +77,21 @@ void emitSpireDiagnostics(
 //
 HRESULT initialize( ID3D11Device* dxDevice )
 {
+#if 0
     //
     // First, we will load and compile our Spire source code.
     //
 
     // The argument here is an optional directory where the Spire compiler
     // can cache files to speed up compilation of many kernels.
-    SpireCompilationContext* spireContext = spCreateCompilationContext(NULL);
+    SpireSession* spireSession = spCreateSession(NULL);
 
-    // A diagnostic sink is used to collect output messages from the Spire
-    // compiler, so that we can easily iterate over them if an operation
-    // fails.
-    SpireDiagnosticSink* spireSink = spCreateDiagnosticSink(spireContext);
+    // A compile request represents a single invocation of the compiler,
+    // to process some inputs and produce outputs (or errors).
+    SpireCompileRequest* spireRequest = spCreateCompileRequest(spireSession);
 
     // Instruct Spire to generate code as HLSL
-    spSetCodeGenTarget(spireContext, SPIRE_HLSL);
+    spSetCodeGenTarget(spireRequest, SPIRE_HLSL);
 
     // Load a file of Spire source code, which defines our modules
     spLoadModuleLibrary(spireContext, "hello.spire", spireSink);
@@ -218,13 +218,15 @@ HRESULT initialize( ID3D11Device* dxDevice )
         &dxPixelShader);
     dxPixelShaderBlob->Release();
     if(FAILED(hr)) return hr;
+#endif
 
     return S_OK;
 }
 
 void emitSpireDiagnostics(
-    SpireDiagnosticSink* spireSink)
+    SpireCompileRequest* request)
 {
+#if 0
     int diagnosticCount = spGetDiagnosticCount(spireSink);
     for(int jj = 0; jj < diagnosticCount; ++jj)
     {
@@ -252,7 +254,7 @@ void emitSpireDiagnostics(
 
         OutputDebugStringA(buffer);
     }
-
+#endif
 }
 
 void renderFrame(ID3D11DeviceContext* dxContext)

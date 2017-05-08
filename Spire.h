@@ -60,6 +60,7 @@ extern "C"
         SPIRE_STORAGE_BUFFER,
     };
 
+    typedef int SpireCompileTarget;
     enum
     {
         SPIRE_TARGET_UNKNOWN,
@@ -70,6 +71,16 @@ extern "C"
         SPIRE_SPIRV,
         SPIRE_DXBC,
         SPIRE_DXBC_ASM,
+        SPIRE_REFLECTION_JSON,
+    };
+
+    typedef int SpirePassThrough;
+    enum
+    {
+        SPIRE_PASS_THROUGH_NONE,
+        SPIRE_PASS_THROUGH_FXC,
+        SPIRE_PASS_THROUGH_DXC,
+        SPIRE_PASS_THROUGH_GLSLANG,
     };
 
     /*!
@@ -79,6 +90,21 @@ extern "C"
     enum
     {
         SPIRE_COMPILE_FLAG_NO_CHECKING = 1 << 0, /**< Disable semantic checking as much as possible. */
+    };
+
+    typedef int SpireSourceLanguage;
+    enum
+    {
+        SPIRE_SOURCE_LANGUAGE_UNKNOWN,
+        SPIRE_SOURCE_LANGUAGE_SPIRE,
+        SPIRE_SOURCE_LANGUAGE_HLSL,
+        SPIRE_SOURCE_LANGUAGE_GLSL,
+    };
+
+    typedef unsigned int SpireProfileID;
+    enum
+    {
+        SPIRE_PROFILE_UNKNOWN,
     };
 
 //#define SPIRE_LAYOUT_UNIFORM 0
@@ -143,6 +169,19 @@ extern "C"
         SpireCompileRequest*    request,
         int target);
 
+    SPIRE_API void spSetPassThrough(
+        SpireCompileRequest*    request,
+        SpirePassThrough        passThrough);
+
+    typedef void(*SpireDiagnosticCallback)(
+        char const* message,
+        void*       userData);
+
+    SPIRE_API void spSetDiagnosticCallback(
+        SpireCompileRequest*    request,
+        SpireDiagnosticCallback callback,
+        void const*             userData);
+
     /*!
     @brief Add a path in which source files are being search. When the programmer specifies @code using <file_name> @endcode in code, the compiler searches the file
     in all search pathes in order.
@@ -171,7 +210,8 @@ extern "C"
     */
     SPIRE_API int spAddTranslationUnit(
         SpireCompileRequest*    request,
-        char const* name);
+        SpireSourceLanguage     language,
+        char const*             name);
 
     /** Add a source file to the given translation unit
     */
@@ -190,6 +230,22 @@ extern "C"
         char const*             path,
         char const*             source);
 
+    /** Look up a compilation profile by name.
+
+    For example, one could look up the string `"ps_5_0"` to find the corresponding target ID.
+    */
+    SPIRE_API SpireProfileID spFindProfile(
+        SpireSession*   session,
+        char const*     name);
+
+    /** Add an entry point in a particular translation unit
+    */
+    SPIRE_API int spAddTranslationUnitEntryPoint(
+        SpireCompileRequest*    request,
+        int                     translationUnitIndex,
+        char const*             name,
+        SpireProfileID          profile);
+
     /** Execute the compilation request.
 
     Returns zero on success, non-zero on failure.
@@ -200,11 +256,25 @@ extern "C"
 
     /** Get any diagnostic messages reported by the compiler.
     */
-    SPIRE_API int spGetDiagnosticOutput(
-        SpireCompileRequest*    request,
-        char*                   buffer,
-        int                     bufferSize);
+    SPIRE_API char const* spGetDiagnosticOutput(
+        SpireCompileRequest*    request);
 
+    /** Get the number of files that this compilation depended on.
+    
+    This includes both the explicit source files, as well as any
+    additional files that were transitively referenced (e.g., via
+    a `#include` directive).
+    */
+    SPIRE_API int
+    spGetDependencyFileCount(
+        SpireCompileRequest*    request);
+
+    /** Get the path to a file this compilation dependend on.
+    */
+    SPIRE_API char const*
+    spGetDependencyFilePath(
+        SpireCompileRequest*    request,
+        int                     index);
 
 
     /** Get the output code associated with a specific translation unit

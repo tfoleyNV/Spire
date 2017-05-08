@@ -98,7 +98,7 @@ namespace Spire
             SPIRV               = SPIRE_SPIRV,
             DXBytecode          = SPIRE_DXBC,
             DXBytecodeAssembly  = SPIRE_DXBC_ASM,
-            ReflectionJSON, // TODO: Add to `Spire.h`
+            ReflectionJSON      = SPIRE_REFLECTION_JSON,
         };
 
         // Describes an entry point that we've been requested to compile
@@ -108,23 +108,23 @@ namespace Spire
             Profile profile;
         };
 
-        enum class PassThroughMode
+        enum class PassThroughMode : SpirePassThrough
         {
-            None,	// don't pass through: use Spire compiler
-            HLSL,	// pass through HLSL to `D3DCompile` API
+            None = SPIRE_PASS_THROUGH_NONE,	// don't pass through: use Spire compiler
+            HLSL = SPIRE_PASS_THROUGH_FXC,	// pass through HLSL to `D3DCompile` API
 //			GLSL,	// pass through GLSL to `glslang` library
         };
 
         // Flavors of translation unit
-        enum class TranslationUnitFlavor
+        enum class SourceLanguage : SpireSourceLanguage
         {
-            Invalid, // Invalid: should not occur
+            Unknown = SPIRE_SOURCE_LANGUAGE_UNKNOWN, // should not occur
+            Spire = SPIRE_SOURCE_LANGUAGE_SPIRE,
+            HLSL = SPIRE_SOURCE_LANGUAGE_HLSL,
+            GLSL = SPIRE_SOURCE_LANGUAGE_GLSL,
 
-            SpireCode, // One or more Spire files to be compiled together into a PACKAGE
-
-            ImportedSpireCode, // A separate PACKAGE of Spire code that has been imported
-
-            ForeignShaderCode, // A translation unit of HLSL, GLSL, or other foreign shader code
+            // A separate PACKAGE of Spire code that has been imported
+            ImportedSpireCode,
         };
 
         // Represents a single source file (either an on-disk file, or a
@@ -143,7 +143,7 @@ namespace Spire
         class TranslationUnitOptions
         {
         public:
-            TranslationUnitFlavor flavor = TranslationUnitFlavor::Invalid;
+            SourceLanguage sourceLanguage = SourceLanguage::Unknown;
 
             // All entry points we've been asked to compile for this translation unit
             List<EntryPointOption> entryPoints;
