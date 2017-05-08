@@ -129,39 +129,6 @@ namespace SpireLib
         return resultFiles;
     }
 
-
-    struct IncludeHandlerImpl : IncludeHandler
-    {
-        List<String> searchDirs;
-
-        virtual bool TryToFindIncludeFile(
-        CoreLib::String const& pathToInclude,
-        CoreLib::String const& pathIncludedFrom,
-        CoreLib::String* outFoundPath,
-        CoreLib::String* outFoundSource) override
-        {
-            String path = Path::Combine(Path::GetDirectoryName(pathIncludedFrom), pathToInclude);
-            if (File::Exists(path))
-            {
-                *outFoundPath = path;
-                *outFoundSource = File::ReadAllText(path);
-                return true;
-            }
-
-            for (auto & dir : searchDirs)
-            {
-                path = Path::Combine(dir, pathToInclude);
-                if (File::Exists(path))
-                {
-                    *outFoundPath = path;
-                    *outFoundSource = File::ReadAllText(path);
-                    return true;
-                }
-            }
-            return false;
-        }
-    };
-
 #if 0
     List<ShaderLibFile> CompileShaderSource(Spire::Compiler::CompileResult & compileResult,
         const CoreLib::String & src, const CoreLib::String & fileName, Spire::Compiler::CompileOptions & options)
@@ -435,48 +402,6 @@ namespace SpireLib
         }
     };
 
-    CompileUnit parseTranslationUnit(
-        Spire::Compiler::CompileResult& result,
-        CompileOptions&                 options,
-        TranslationUnitOptions const&   translationUnitOptions,
-        ProgramSyntaxNode*              predefUnit = nullptr)
-    {
-        IncludeHandlerImpl includeHandler;
-
-        CompileUnit translationUnit;
-
-
-        auto& preprocesorDefinitions = options.PreprocessorDefinitions;
-
-        RefPtr<ProgramSyntaxNode> translationUnitSyntax = new ProgramSyntaxNode();
-
-        for( auto sourceFile : translationUnitOptions.sourceFiles )
-        {
-            auto sourceFilePath = sourceFile->path;
-
-            auto searchDirs = options.SearchDirectories;
-            searchDirs.Reverse();
-            searchDirs.Add(Path::GetDirectoryName(sourceFilePath));
-            searchDirs.Reverse();
-            includeHandler.searchDirs = searchDirs;
-
-            String source = sourceFile->content;
-//                File::ReadAllText(sourceFilePath);
-
-
-            auto tokens = PreprocessSource(source, sourceFilePath, result.GetErrorWriter(), &includeHandler, preprocesorDefinitions);
-
-            parseSourceFile(
-                translationUnitSyntax.Ptr(), options, tokens, result.GetErrorWriter(), sourceFilePath,
-                predefUnit);
-        }
-
-        translationUnit.options = translationUnitOptions;
-        translationUnit.SyntaxNode = translationUnitSyntax;
-
-        return translationUnit;
-    }
-
     static void stdlibDiagnosticCallback(
         char const* message,
         void*       userData)
@@ -526,24 +451,48 @@ namespace SpireLib
 
             TranslationUnitOptions translationUnitOptions;
 
-            RefPtr<SourceFile> stdlibFile = new SourceFile();
-            stdlibFile->path = "stdlib";
-            stdlibFile->content = SpireStdLib::GetCode();
+            RefPtr<SourceFile> sourceFile = new SourceFile();
+            sourceFile->path = "stdlib";
+            sourceFile->content = SpireStdLib::GetCode();
 
-            translationUnitOptions.sourceFiles.Add(stdlibFile);
+            translationUnitOptions.sourceFiles.Add(sourceFile);
 
             // Parse it!
-            auto unit = SpireLib::parseTranslationUnit(
-                compileResult,
-                options,
-                translationUnitOptions);
-            if(compileResult.GetErrorCount())
+
+            CompileUnit translationUnit;
+
+            auto& preprocesorDefinitions = options.PreprocessorDefinitions;
+
+
+            auto tokens = PreprocessSource(
+                sourceFile->content,
+                sourceFile->path,
+                &sink,
+                nullptr,
+                preprocesorDefinitions);
+            if(sink.GetErrorCount())
             {
                 assert(!"error in stdlib");
             }
 
+            RefPtr<ProgramSyntaxNode> translationUnitSyntax = new ProgramSyntaxNode();
+            parseSourceFile(
+                translationUnitSyntax.Ptr(),
+                options,
+                tokens,
+                &sink,
+                sourceFile->path,
+                nullptr);
+            if(sink.GetErrorCount())
+            {
+                assert(!"error in stdlib");
+            }
+
+            translationUnit.options = translationUnitOptions;
+            translationUnit.SyntaxNode = translationUnitSyntax;
+
             CollectionOfTranslationUnits collectionOfTranslationUnits;
-            collectionOfTranslationUnits.translationUnits.Add(unit);
+            collectionOfTranslationUnits.translationUnits.Add(translationUnit);
 
             CompilationContext compileContext;
 
@@ -804,15 +753,87 @@ namespace SpireLib
             }
         }
 
-
-        CompileUnit parseTranslationUnit(Spire::Compiler::CompileResult& result, TranslationUnitOptions const& translationUnitOptions)
+        struct IncludeHandlerImpl : IncludeHandler
         {
-            // Call out to global implementation, using our options
-            return SpireLib::parseTranslationUnit(
-                result,
-                Options,
-                translationUnitOptions,
-                mSession->predefUnit.SyntaxNode.Ptr());
+            CompileRequest* request;
+
+            List<String> searchDirs;
+
+            virtual bool TryToFindIncludeFile(
+                CoreLib::String const& pathToInclude,
+                CoreLib::String const& pathIncludedFrom,
+                CoreLib::String* outFoundPath,
+                CoreLib::String* outFoundSource) override
+            {
+                String path = Path::Combine(Path::GetDirectoryName(pathIncludedFrom), pathToInclude);
+                if (File::Exists(path))
+                {
+                    *outFoundPath = path;
+                    *outFoundSource = File::ReadAllText(path);
+
+                    request->mDependencyFilePaths.Add(path);
+
+                    return true;
+                }
+
+                for (auto & dir : searchDirs)
+                {
+                    path = Path::Combine(dir, pathToInclude);
+                    if (File::Exists(path))
+                    {
+                        *outFoundPath = path;
+                        *outFoundSource = File::ReadAllText(path);
+
+                        request->mDependencyFilePaths.Add(path);
+
+                        return true;
+                    }
+                }
+                return false;
+            }
+        };
+
+
+        CompileUnit parseTranslationUnit(
+            Spire::Compiler::CompileResult& result,
+            TranslationUnitOptions const&   translationUnitOptions)
+        {
+            auto& options = Options;
+            auto predefUnit = mSession->predefUnit.SyntaxNode.Ptr();
+
+            IncludeHandlerImpl includeHandler;
+            includeHandler.request = this;
+
+            CompileUnit translationUnit;
+
+
+            auto& preprocesorDefinitions = options.PreprocessorDefinitions;
+
+            RefPtr<ProgramSyntaxNode> translationUnitSyntax = new ProgramSyntaxNode();
+
+            for( auto sourceFile : translationUnitOptions.sourceFiles )
+            {
+                auto sourceFilePath = sourceFile->path;
+
+                auto searchDirs = options.SearchDirectories;
+                searchDirs.Reverse();
+                searchDirs.Add(Path::GetDirectoryName(sourceFilePath));
+                searchDirs.Reverse();
+                includeHandler.searchDirs = searchDirs;
+
+                String source = sourceFile->content;
+
+                auto tokens = PreprocessSource(source, sourceFilePath, result.GetErrorWriter(), &includeHandler, preprocesorDefinitions);
+
+                parseSourceFile(
+                    translationUnitSyntax.Ptr(), options, tokens, result.GetErrorWriter(), sourceFilePath,
+                    predefUnit);
+            }
+
+            translationUnit.options = translationUnitOptions;
+            translationUnit.SyntaxNode = translationUnitSyntax;
+
+            return translationUnit;
         }
 
         int executeCompilerDriverActions(
