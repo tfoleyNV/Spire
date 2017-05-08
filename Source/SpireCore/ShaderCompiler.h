@@ -127,6 +127,18 @@ namespace Spire
             ForeignShaderCode, // A translation unit of HLSL, GLSL, or other foreign shader code
         };
 
+        // Represents a single source file (either an on-disk file, or a
+        // "virtual" file passed in as a string)
+        class SourceFile : public RefObject
+        {
+        public:
+            // The file path for a real file, or the nominal path for a virtual file
+            String path;
+
+            // The actual contents of the file
+            String content;
+        };
+
         // Options for a single translation unit being requested by the user
         class TranslationUnitOptions
         {
@@ -137,7 +149,7 @@ namespace Spire
             List<EntryPointOption> entryPoints;
 
             // The source file(s) that will be compiled to form this translation unit
-            List<String> sourceFilePaths;
+            List<RefPtr<SourceFile> > sourceFiles;
         };
 
         class CompileOptions

@@ -13,53 +13,6 @@ using namespace CoreLib::IO;
 using namespace CoreLib::Text;
 using namespace Spire::Compiler;
 
-struct SpireDiagnosticSink
-{
-    int errorCount;
-    CoreLib::List<Spire::Compiler::Diagnostic> diagnostics;
-};
-
-struct SpireParameterSet
-{
-    ILModuleParameterSet * paramSet = nullptr;
-    int bindingSlotCount = 0;
-    int uniformBufferLegacyBindingPoint = -1;
-    List<SpireResourceBindingInfo> bindings;
-};
-
-class ComponentMetaData
-{
-public:
-    RefPtr<ExpressionType> Type;
-    String TypeName;
-    String Name;
-    bool IsSpecialize = false;
-    List<int> Values;
-    int Offset = 0;
-    int Alignment = 0;
-    int Size = 0;
-    int GetHashCode()
-    {
-        return Name.GetHashCode();
-    }
-    bool operator == (const ComponentMetaData & other)
-    {
-        return Name == other.Name;
-    }
-};
-
-struct SpireModule
-{
-    String Name;
-    int Id = 0;
-    List<ComponentMetaData> Parameters;
-    List<ComponentMetaData> Requirements;
-    Dictionary<String, String> Attribs;
-    static int IdAllocator;
-};
-
-int SpireModule::IdAllocator = 0;
-
 namespace SpireLib
 {
     void ReadSource(EnumerableDictionary<String, StageSource> & sources, CoreLib::Text::TokenReader & parser, String src)
@@ -469,6 +422,7 @@ namespace SpireLib
         }
     };
 
+#if 0
     class CompileResult
     {
     public:
@@ -483,17 +437,59 @@ namespace SpireLib
             if(reflectionBlob) free(reflectionBlob);
         }
     };
+#endif
 
-    class CompilationContext
+    CompileUnit parseTranslationUnit(
+        Spire::Compiler::CompileResult& result,
+        CompileOptions&                 options,
+        TranslationUnitOptions const&   translationUnitOptions,
+        ProgramSyntaxNode*              predefUnit = nullptr)
     {
-    private:
+        IncludeHandlerImpl includeHandler;
+
+        CompileUnit translationUnit;
+
+
+        auto& preprocesorDefinitions = options.PreprocessorDefinitions;
+
+        RefPtr<ProgramSyntaxNode> translationUnitSyntax = new ProgramSyntaxNode();
+
+        for( auto sourceFile : translationUnitOptions.sourceFiles )
+        {
+            auto sourceFilePath = sourceFile->path;
+
+            auto searchDirs = options.SearchDirectories;
+            searchDirs.Reverse();
+            searchDirs.Add(Path::GetDirectoryName(sourceFilePath));
+            searchDirs.Reverse();
+            includeHandler.searchDirs = searchDirs;
+
+            String source = sourceFile->content;
+//                File::ReadAllText(sourceFilePath);
+
+
+            auto tokens = PreprocessSource(source, sourceFilePath, result.GetErrorWriter(), &includeHandler, preprocesorDefinitions);
+
+            parseSourceFile(
+                translationUnitSyntax.Ptr(), options, tokens, result.GetErrorWriter(), sourceFilePath,
+                predefUnit);
+        }
+
+        translationUnit.options = translationUnitOptions;
+        translationUnit.SyntaxNode = translationUnitSyntax;
+
+        return translationUnit;
+    }
+
+    class Session
+    {
+    public:
         bool useCache = false;
         CoreLib::String cacheDir;
         struct State
         {
             List<CompileUnit> moduleUnits;
             HashSet<String> processedModuleUnits;
-            EnumerableDictionary<String, RefPtr<SpireModule>> modules;
             int errorCount = 0;
         };
         Array<State, 128> states;
@@ -501,24 +497,64 @@ namespace SpireLib
         RefPtr<ShaderCompiler> compiler;
         CompileUnit predefUnit;
 
-        IncludeHandlerImpl includeHandler;
 
-    public:
-        CompileOptions Options;
-
-        CompilationContext(bool /*pUseCache*/, CoreLib::String /*pCacheDir*/)
+        Session(bool /*pUseCache*/, CoreLib::String /*pCacheDir*/)
         {
             compiler = CreateShaderCompiler();
             compileContext.Add(new Spire::Compiler::CompilationContext());
             states.Add(State());
-            LoadModuleSource(SpireStdLib::GetCode(), "stdlib", NULL);
+
+            predefUnit = loadPredefUnit();
         }
 
-        ~CompilationContext()
+        CompileUnit loadPredefUnit()
+        {
+            CompileResult compileResult;
+            CompileOptions options;
+
+            TranslationUnitOptions translationUnitOptions;
+
+            RefPtr<SourceFile> stdlibFile = new SourceFile();
+            stdlibFile->path = "stdlib";
+            stdlibFile->content = SpireStdLib::GetCode();
+
+            translationUnitOptions.sourceFiles.Add(stdlibFile);
+
+            // Parse it!
+            auto unit = SpireLib::parseTranslationUnit(
+                compileResult,
+                options,
+                translationUnitOptions);
+            if(compileResult.GetErrorCount())
+            {
+                assert(!"error in stdlib");
+            }
+
+            CollectionOfTranslationUnits collectionOfTranslationUnits;
+            collectionOfTranslationUnits.translationUnits.Add(unit);
+
+            CompilationContext compileContext;
+
+            // Now perform semantic checks, emit output, etc.
+            compiler->Compile(
+                compileResult,
+                compileContext,
+                collectionOfTranslationUnits.translationUnits,
+                options);
+            if(compileResult.GetErrorCount())
+            {
+                assert(!"error in stdlib");
+            }
+
+            return collectionOfTranslationUnits.translationUnits.First();
+        }
+
+        ~Session()
         {
             SpireStdLib::Finalize();
         }
 
+#if 0
         SpireModule * FindModule(CoreLib::String moduleName)
         {
             auto ptr = states.Last().modules.TryGetValue(moduleName);
@@ -626,6 +662,9 @@ namespace SpireLib
             }
             return result.GetErrorCount();
         }
+#endif
+
+#if 0
         Shader * NewShaderFromSource(const char * source, const char * fileName)
         {
             Spire::Compiler::CompileResult result;
@@ -648,18 +687,9 @@ namespace SpireLib
                 return nullptr;
             }
         }
-        void PushContext()
-        {
-            states.Add(states.Last());
-            compileContext.Add(new Spire::Compiler::CompilationContext(*compileContext.Last()));
-        }
-        void PopContext()
-        {
-            compileContext.Last() = nullptr;
-            compileContext.SetSize(compileContext.Count() - 1);
-            states.Last() = State();
-            states.SetSize(states.Count() - 1);
-        }
+#endif
+
+#if 0
         bool Compile(CompileResult & result, const Shader & shader, ArrayView<SpireModule*> modulesArgs, const char * additionalSource, SpireDiagnosticSink* sink)
         {
             Options.SymbolToCompile = shader.GetName();
@@ -668,6 +698,7 @@ namespace SpireLib
                 Options.TemplateShaderArguments.Add(module->Name);
             return Compile(result, additionalSource + shader.GetSource(), shader.GetName(), sink);
         }
+
         bool Compile(CompileResult & result, CoreLib::String source, CoreLib::String fileName, SpireDiagnosticSink* sink)
         {
             if (states.Last().errorCount != 0)
@@ -725,35 +756,40 @@ namespace SpireLib
             PopContext();
             return succ;
         }
+#endif
+
+
+
+
+    };
+
+    struct CompileRequest
+    {
+        // Pointer to parent session
+        Session* mSession;
+
+        // Input options
+        CompileOptions Options;
+
+        // Output stuff
+        DiagnosticSink mSink;
+        ReflectionBlob* mReflectionBlob = nullptr;
+        List<String> mTranslationUnitSources;
+
+
+        CompileRequest(Session* session)
+            : mSession(session)
+        {}
+
 
         CompileUnit parseTranslationUnit(Spire::Compiler::CompileResult& result, TranslationUnitOptions const& translationUnitOptions)
         {
-            CompileUnit translationUnit;
-
-            auto& preprocesorDefinitions = Options.PreprocessorDefinitions;
-
-            RefPtr<ProgramSyntaxNode> translationUnitSyntax = new ProgramSyntaxNode();
-
-            for( auto sourceFilePath : translationUnitOptions.sourceFilePaths )
-            {
-                auto searchDirs = Options.SearchDirectories;
-                searchDirs.Reverse();
-                searchDirs.Add(Path::GetDirectoryName(sourceFilePath));
-                searchDirs.Reverse();
-                includeHandler.searchDirs = searchDirs;
-
-                String source = File::ReadAllText(sourceFilePath);
-
-
-                auto tokens = PreprocessSource(source, sourceFilePath, result.GetErrorWriter(), &includeHandler, preprocesorDefinitions);
-
-                parseSourceFile(translationUnitSyntax.Ptr(), Options, tokens, result.GetErrorWriter(), sourceFilePath, predefUnit.SyntaxNode.Ptr());
-            }
-
-            translationUnit.options = translationUnitOptions;
-            translationUnit.SyntaxNode = translationUnitSyntax;
-
-            return translationUnit;
+            // Call out to global implementation, using our options
+            return SpireLib::parseTranslationUnit(
+                result,
+                Options,
+                translationUnitOptions,
+                mSession->predefUnit.SyntaxNode.Ptr());
         }
 
         int executeCompilerDriverActions(
@@ -767,10 +803,11 @@ namespace SpireLib
                     if(translationUnitOptions.flavor != TranslationUnitFlavor::ForeignShaderCode)
                         continue;
 
-                    auto sourceFilePath = translationUnitOptions.sourceFilePaths[0];
-                    String source = File::ReadAllText(sourceFilePath);
+                    auto sourceFile = translationUnitOptions.sourceFiles[0];
+                    auto sourceFilePath = sourceFile->path;
+                    String source = sourceFile->content;
 
-                    compiler->PassThrough(
+                    mSession->compiler->PassThrough(
                         result,
                         source,
                         sourceFilePath,
@@ -779,7 +816,6 @@ namespace SpireLib
                 }
                 return 0;
             }
-
 
             // TODO: load the stdlib
 
@@ -796,14 +832,18 @@ namespace SpireLib
             if( result.GetErrorCount() != 0 )
                 return 1;
 
+            // TODO(tfoley): Probably get rid of this type for now...
+            CompilationContext compileContext;
 
             // Now perform semantic checks, emit output, etc.
-            compiler->Compile(result, *compileContext.Last(), collectionOfTranslationUnits.translationUnits, Options);
+            mSession->compiler->Compile(
+                result, compileContext, collectionOfTranslationUnits.translationUnits, Options);
             if(result.GetErrorCount() != 0)
                 return 1;
 
             return 0;
         }
+
 
         // Act as exepcted of the command-line compiler
         int executeCompilerDriverActions()
@@ -815,20 +855,16 @@ namespace SpireLib
         }
 
         // Act as expected of the API-based compiler
-        SpireLib::CompileResult* executeAPIActions(SpireDiagnosticSink* sink)
+        int executeAPIActions()
         {
             Spire::Compiler::CompileResult result;
 
             int err = executeCompilerDriverActions(result);
-            sink->diagnostics = result.sink.diagnostics;
-            sink->errorCount = result.sink.errorCount;
-
-            SpireLib::CompileResult* rs = new SpireLib::CompileResult();
-
-            // TODO: what to copy into `rs` here?
+            mSink.diagnostics = result.sink.diagnostics;
+            mSink.errorCount = result.sink.errorCount;
 
             // Move the reflection blob over (so it doesn't get deleted)
-            rs->reflectionBlob = result.reflectionBlob;
+            mReflectionBlob = result.reflectionBlob;
             result.reflectionBlob = NULL;
 
             // Copy over the per-translation-unit results
@@ -836,21 +872,21 @@ namespace SpireLib
             for( int tt = 0; tt < translationUnitCount; ++tt )
             {
                 auto source = result.translationUnits[tt].outputSource;
-                rs->translationUnitSources.Add(source);
+                mTranslationUnitSources.Add(source);
             }
 
-            return rs;
+            return err;
         }
-
 
     };
 
     int executeCompilerDriverActions(Spire::Compiler::CompileOptions const& options)
     {
-        CompilationContext context(false, "");
-        context.Options = options;
+        Session session(false, "");
+        CompileRequest request(&session);
+        request.Options = options;
 
-        return context.executeCompilerDriverActions();
+        return request.executeCompilerDriverActions();
     }
 
 }
@@ -859,268 +895,70 @@ using namespace SpireLib;
 
 // implementation of C interface
 
-#define CTX(x) reinterpret_cast<SpireLib::CompilationContext *>(x)
-#define SHADER(x) reinterpret_cast<SpireLib::Shader*>(x)
-#define RS(x) reinterpret_cast<SpireLib::CompileResult*>(x)
+#define SESSION(x) reinterpret_cast<SpireLib::Session *>(x)
+#define REQ(x) reinterpret_cast<SpireLib::CompileRequest*>(x)
 
-SpireCompilationContext * spCreateCompilationContext(const char * cacheDir)
+SPIRE_API SpireSession* spCreateSession(const char * cacheDir)
 {
-    return reinterpret_cast<SpireCompilationContext *>(new SpireLib::CompilationContext((cacheDir ? true : false), cacheDir));
+    return reinterpret_cast<SpireSession *>(new SpireLib::Session((cacheDir ? true : false), cacheDir));
 }
 
-void spSetCompileFlags(
-    SpireCompilationContext*    context,
-    SpireCompileFlags           flags)
+SPIRE_API void spDestroySession(
+    SpireSession*   session)
 {
-    CTX(context)->Options.flags = flags;
+    if(!session) return;
+    delete SESSION(session);
 }
 
-void spAddEntryPoint(
-    SpireCompilationContext*    context,
-    char const*                 name,
-    char const*                 profile)
+SPIRE_API SpireCompileRequest* spCreateCompileRequest(
+    SpireSession* session)
 {
-    auto ctx = CTX(context);
-    if( ctx->Options.translationUnits.Count() == 0 )
-    {
-        ctx->Options.translationUnits.Add(TranslationUnitOptions());
-    }
-
-    EntryPointOption entryPoint;
-    entryPoint.name = name;
-    entryPoint.profile = Profile::LookUp(profile);
-
-    CTX(context)->Options.translationUnits[0].entryPoints.Add(entryPoint);
+    auto s = SESSION(session);
+    auto req = new SpireLib::CompileRequest(s);
+    return reinterpret_cast<SpireCompileRequest*>(req);
 }
 
-
-void spSetCodeGenTarget(SpireCompilationContext * ctx, int target)
+/*!
+@brief Destroy a compile request.
+*/
+SPIRE_API void spDestroyCompileRequest(
+    SpireCompileRequest*    request)
 {
-    CTX(ctx)->Options.Target = (CodeGenTarget)target;
+    if(!request) return;
+    delete REQ(request);
+
 }
 
-void spAddSearchPath(SpireCompilationContext * ctx, const char * searchDir)
+SPIRE_API void spSetCompileFlags(
+    SpireCompileRequest*    request,
+    SpireCompileFlags       flags)
 {
-    CTX(ctx)->Options.SearchDirectories.Add(searchDir);
+    REQ(request)->Options.flags = flags;
 }
 
-void spAddPreprocessorDefine(SpireCompilationContext * ctx, const char * key, const char * value)
+SPIRE_API void spSetCodeGenTarget(
+        SpireCompileRequest*    request,
+        int target)
 {
-    CTX(ctx)->Options.PreprocessorDefinitions[key] = value;
+    REQ(request)->Options.Target = (CodeGenTarget)target;
 }
 
-void spSetBackendParameter(SpireCompilationContext * ctx, const char * paramName, const char * value)
+SPIRE_API void spAddSearchPath(
+        SpireCompileRequest*    request,
+        const char*             searchDir)
 {
-    CTX(ctx)->Options.BackendArguments[paramName] = value;
+    REQ(request)->Options.SearchDirectories.Add(searchDir);
 }
 
-void spSetShaderToCompile(SpireCompilationContext * ctx, const char * shaderName)
+SPIRE_API void spAddPreprocessorDefine(
+    SpireCompileRequest*    request,
+    const char*             key,
+    const char*             value)
 {
-    CTX(ctx)->Options.SymbolToCompile = shaderName;
+    REQ(request)->Options.PreprocessorDefinitions[key] = value;
 }
 
-void spDestroyCompilationContext(SpireCompilationContext * ctx)
-{
-    delete CTX(ctx);
-}
-
-// `SpireDiagnosticSink` implementation
-
-SpireDiagnosticSink* spCreateDiagnosticSink(SpireCompilationContext * /*ctx*/)
-{
-    SpireDiagnosticSink* sink = new SpireDiagnosticSink();
-    sink->errorCount = 0;
-    return sink;
-}
-
-void spClearDiagnosticSink(SpireDiagnosticSink* sink)
-{
-    if (!sink) return;
-
-    sink->errorCount = 0;
-    sink->diagnostics.Clear();
-}
-
-void spDestroyDiagnosticSink(SpireDiagnosticSink* sink)
-{
-    delete sink;
-}
-
-//
-
-void spLoadModuleLibrary(SpireCompilationContext * ctx, const char * fileName, SpireDiagnosticSink* sink)
-{
-    CTX(ctx)->LoadModuleSource(File::ReadAllText(fileName), fileName, sink);
-}
-
-void spLoadModuleLibraryFromSource(SpireCompilationContext * ctx, const char * source, const char * fileName, SpireDiagnosticSink* sink)
-{
-    CTX(ctx)->LoadModuleSource(source, fileName, sink);
-}
-
-void spPushContext(SpireCompilationContext * ctx)
-{
-    CTX(ctx)->PushContext();
-}
-
-void spPopContext(SpireCompilationContext * ctx)
-{
-    CTX(ctx)->PopContext();
-}
-
-SpireShader* spCreateShaderFromSource(SpireCompilationContext * ctx, const char * source)
-{
-    return reinterpret_cast<SpireShader*>(CTX(ctx)->NewShaderFromSource(source, ""));
-}
-
-SpireShader* spCreateShaderFromFile(SpireCompilationContext * ctx, const char * fileName)
-{
-    return reinterpret_cast<SpireShader*>(CTX(ctx)->NewShaderFromFile(fileName));
-}
-
-unsigned int spShaderGetId(SpireShader * shader)
-{
-    return SHADER(shader)->Id;
-}
-
-const char* spShaderGetName(SpireShader * shader)
-{
-    return SHADER(shader)->GetName().Buffer();
-}
-
-SpireModule * spFindModule(SpireCompilationContext * ctx, const char * moduleName)
-{
-    return CTX(ctx)->FindModule(moduleName);
-}
-
-unsigned int spGetModuleUID(SpireModule * module)
-{
-    return module->Id;
-}
-
-const char * spGetModuleName(SpireModule * module)
-{
-    if (!module) return nullptr;
-    auto moduleNode = module;
-    return moduleNode->Name.Buffer();
-}
-
-SpireModule * spSpecializeModule(SpireCompilationContext * ctx, SpireModule * module, int * paramValues, int numParams, SpireDiagnosticSink * sink)
-{
-    return CTX(ctx)->SpecializeModule(module, paramValues, numParams, sink);
-}
-
-int spModuleGetParameterCount(SpireModule * module)
-{
-    auto moduleNode = module;
-    return moduleNode->Parameters.Count();
-}
-int spModuleGetParameterBufferSize(SpireModule * module)
-{
-    auto moduleNode = module;
-    int size = 0;
-    for (auto & param : moduleNode->Parameters)
-        size = Math::Max(size, param.Size + param.Offset);
-    return size;
-}
-int spModuleHasAttrib(SpireModule * module, const char * name)
-{
-    return module->Attribs.ContainsKey(name);
-}
-
-int spModuleGetParameter(SpireModule * module, int index, SpireComponentInfo * result)
-{
-    auto moduleNode = module;
-    auto & param = moduleNode->Parameters[index];
-    result->TypeName = param.TypeName.Buffer();
-    result->Size = param.Size;
-    result->Offset = param.Offset;
-    result->Alignment = param.Alignment;
-    result->Name = param.Name.Buffer();
-    result->BindableResourceType = (int)param.Type->GetBindableResourceType();
-    result->Specialize = param.IsSpecialize;
-    return 0;
-}
-
-int spModuleGetRequiredComponents(SpireModule * module, SpireComponentInfo * buffer, int bufferSize)
-{
-    auto moduleNode = module;
-    auto & components = moduleNode->Requirements;
-    if (!buffer)
-        return components.Count();
-    if (bufferSize < components.Count())
-        return SPIRE_ERROR_INSUFFICIENT_BUFFER;
-    int ptr = 0;
-    for (auto & comp : components)
-    {
-        buffer[ptr].Name = comp.Name.Buffer();
-        buffer[ptr].TypeName = comp.TypeName.Buffer();
-        buffer[ptr].Alignment = (int)GetTypeAlignment(comp.Type.Ptr());
-        buffer[ptr].Size = (int)GetTypeSize(comp.Type.Ptr());
-        buffer[ptr].Offset = comp.Offset;
-        ptr++;
-    }
-    return ptr;
-}
-
-void spDestroyShader(SpireShader * shader)
-{
-    delete SHADER(shader);
-}
-
-SpireCompilationResult * spCompileShader(SpireCompilationContext * ctx, SpireShader * shader,
-    SpireModule** args,
-    int argCount,
-    const char * additionalSource,
-    SpireDiagnosticSink* sink)
-{
-    SpireLib::CompileResult * rs = new SpireLib::CompileResult();
-    CTX(ctx)->Compile(*rs, *SHADER(shader), ArrayView<SpireModule*>(args, argCount), additionalSource, sink);
-    return reinterpret_cast<SpireCompilationResult*>(rs);
-}
-
-SpireCompilationResult * spCompileShaderFromSource(SpireCompilationContext * ctx, const char * source, const char * fileName, SpireDiagnosticSink* sink)
-{
-    SpireLib::CompileResult * rs = new SpireLib::CompileResult();
-    CTX(ctx)->Compile(*rs, source, fileName, sink);
-    return reinterpret_cast<SpireCompilationResult*>(rs);
-}
-
-int spDiagnosticSinkHasAnyErrors(SpireDiagnosticSink* sink)
-{
-    if (!sink) return false;
-    return sink->errorCount != 0;
-}
-
-int spGetDiagnosticCount(SpireDiagnosticSink* sink)
-{
-    return sink->diagnostics.Count();
-}
-
-int spGetDiagnosticByIndex(SpireDiagnosticSink* sink, int index, SpireDiagnostic * outDiagnostic)
-{
-    if (!sink)          return SPIRE_ERROR_INVALID_PARAMETER;
-    if (!outDiagnostic) return SPIRE_ERROR_INVALID_PARAMETER;
-    if (index < 0)      return SPIRE_ERROR_INVALID_PARAMETER;
-
-    auto & diagnostics = sink->diagnostics;
-    if (index >= diagnostics.Count())
-        return SPIRE_ERROR_INVALID_PARAMETER;
-
-    auto & msg = diagnostics[index];
-    outDiagnostic->Message = msg.Message.Buffer();
-    outDiagnostic->ErrorId = msg.ErrorID;
-    outDiagnostic->FileName = msg.Position.FileName.Buffer();
-    outDiagnostic->Line = msg.Position.Line;
-    outDiagnostic->Col = msg.Position.Col;
-    // Note: we rely here on the `SpireSeverity` and `Spire::Compiler::Severity`
-    // enums having the same members. Realistically, we should probably just
-    // use the external enum internally too.
-    outDiagnostic->severity = (SpireSeverity)msg.severity;
-    return 1;
-}
-
-int ReturnStr(const char * content, char * buffer, int bufferSize)
+static int returnStr(const char * content, char * buffer, int bufferSize)
 {
     int len = (int)strlen(content);
     if (buffer)
@@ -1137,8 +975,15 @@ int ReturnStr(const char * content, char * buffer, int bufferSize)
         return len + 1;
 }
 
-int spGetDiagnosticOutput(SpireDiagnosticSink* sink, char * buffer, int bufferSize)
+SPIRE_API int spGetDiagnosticOutput(
+    SpireCompileRequest*    request,
+    char*                   buffer,
+    int                     bufferSize)
 {
+    if(!request) return 0;
+    auto req = REQ(request);
+    auto sink = &req->mSink;
+
     StringBuilder sb;
     for (auto & x : sink->diagnostics)
     {
@@ -1150,215 +995,111 @@ int spGetDiagnosticOutput(SpireDiagnosticSink* sink, char * buffer, int bufferSi
         sb << ": " << x.Message << "\n";
     }
     auto str = sb.ProduceString();
-    return ReturnStr(str.Buffer(), buffer, bufferSize);
-}
-
-int spGetCompiledShaderNames(SpireCompilationResult * result, char * buffer, int bufferSize)
-{
-    StringBuilder sb;
-    auto rs = RS(result);
-    bool first = true;
-    for (auto x : rs->Sources)
-    {
-        if (!first)
-            sb << "\n";
-        sb << x.Key;
-        first = false;
-    }
-    auto str = sb.ProduceString();
-    return ReturnStr(str.Buffer(), buffer, bufferSize);
-}
-
-int spGetCompiledShaderStageNames(SpireCompilationResult * result, const char * shaderName, char * buffer, int bufferSize)
-{
-    auto rs = RS(result);
-    if (auto src = rs->Sources.TryGetValue(shaderName))
-    {
-        StringBuilder sb;
-        bool first = true;
-        for (auto x : src->Stages)
-        {
-            if (!first)
-                sb << "\n";
-            sb << x.Key;
-            first = false;
-        }
-        auto str = sb.ProduceString();
-        return ReturnStr(str.Buffer(), buffer, bufferSize);
-    }
-    else
-    {
-        return SPIRE_ERROR_INVALID_PARAMETER;
-    }
-}
-
-const char * spGetShaderStageSource(SpireCompilationResult * result, const char * shaderName, const char * stage, int * length)
-{
-    auto rs = RS(result);
-    CompiledShaderSource * src = nullptr;
-    if (shaderName == nullptr)
-    {
-        if (rs->Sources.Count())
-            src = &rs->Sources.First().Value;
-    }
-    else
-    {
-        src = rs->Sources.TryGetValue(shaderName);
-    }
-    if (src)
-    {
-        if (auto state = src->Stages.TryGetValue(stage))
-        {
-            if (state->MainCode.Length())
-            {
-                if (length)
-                    *length = state->MainCode.Length() + 1;
-                return state->MainCode.Buffer();
-            }
-            else
-            {
-                if (length)
-                    *length = state->BinaryCode.Count();
-                return (const char*)state->BinaryCode.Buffer();
-            }
-        }
-    }
-    return nullptr;
-}
-
-int spGetShaderParameterSetCount(SpireCompilationResult * result, const char * shaderName)
-{
-    auto rs = RS(result);
-    CompiledShaderSource * src = nullptr;
-    if (shaderName == nullptr)
-    {
-        if (rs->Sources.Count())
-            src = &rs->Sources.First().Value;
-    }
-    else
-    {
-        src = rs->Sources.TryGetValue(shaderName);
-    }
-    if (src)
-    {
-        return src->MetaData.ParameterSets.Count();
-    }
-    return 0;
-}
-SpireParameterSet * spGetShaderParameterSet(SpireCompilationResult * result, const char * shaderName, int index)
-{
-    auto rs = RS(result);
-    List<SpireParameterSet> * sets = nullptr;
-    if (shaderName == nullptr)
-    {
-        if (rs->ParamSets.Count())
-            sets = &rs->ParamSets.First().Value;
-    }
-    else
-    {
-        sets = rs->ParamSets.TryGetValue(shaderName);
-    }
-    if (sets)
-    {
-        return &(*sets)[index];
-    }
-    return nullptr;
-}
-int spParameterSetGetBufferSize(SpireParameterSet * set)
-{
-    return set->paramSet->BufferSize;
-}
-const char * spParameterSetGetBindingName(SpireParameterSet * set)
-{
-    return set->paramSet->BindingName.Buffer();
-}
-int spParameterSetGetBindingIndex(SpireParameterSet * set)
-{
-    return set->paramSet->DescriptorSetId;
-}
-int spParameterSetGetUniformBufferLegacyBindingPoint(SpireParameterSet * set)
-{
-    return set->paramSet->UniformBufferLegacyBindingPoint;
-}
-int spParameterSetGetBindingSlotCount(SpireParameterSet * set)
-{
-    return set->bindings.Count();
-}
-SpireResourceBindingInfo * spParameterSetGetBindingSlot(SpireParameterSet * set, int index)
-{
-    return &set->bindings[index];
-}
-void spDestroyCompilationResult(SpireCompilationResult * result)
-{
-    delete RS(result);
+    return returnStr(str.Buffer(), buffer, bufferSize);
 }
 
 // New-fangled compilation API
 
-SPIRE_API int spAddTranslationUnit(SpireCompilationContext* context, char const* name)
+SPIRE_API int spAddTranslationUnit(
+    SpireCompileRequest*    request,
+    char const* name)
 {
-    auto ctx = CTX(context);
-    int result = ctx->Options.translationUnits.Count();
+    auto req = REQ(request);
+    int result = req->Options.translationUnits.Count();
 
     TranslationUnitOptions translationUnit;
 
     // TODO: need to deduce this, or expect it via API
     translationUnit.flavor = TranslationUnitFlavor::ForeignShaderCode;
 
-    ctx->Options.translationUnits.Add(translationUnit);
+    req->Options.translationUnits.Add(translationUnit);
 
     return result;
 }
 
 SPIRE_API void spAddTranslationUnitSourceFile(
-    SpireCompilationContext*    context,
-    int                         translationUnitIndex,
-    char const*                 path)
+    SpireCompileRequest*    request,
+    int                     translationUnitIndex,
+    char const*             path)
 {
-    auto ctx = CTX(context);
-    if(!ctx) return;
+    if(!request) return;
+    auto req = REQ(request);
     if(!path) return;
     if(translationUnitIndex < 0) return;
-    if(translationUnitIndex >= ctx->Options.translationUnits.Count()) return;
+    if(translationUnitIndex >= req->Options.translationUnits.Count()) return;
 
-    ctx->Options.translationUnits[translationUnitIndex].sourceFilePaths.Add(path);
+    String content;
+    try
+    {
+        content = File::ReadAllText(path);
+    }
+    catch( ... )
+    {
+        // Emit a diagnostic!
+        req->mSink.diagnose(
+            CodePosition(0,0,0,path),
+            Diagnostics::cannotOpenFile,
+            path);
+        return;
+    }
+
+    RefPtr<SourceFile> sourceFile = new SourceFile();
+    sourceFile->path = path;
+    sourceFile->content = content;
+
+    req->Options.translationUnits[translationUnitIndex].sourceFiles.Add(sourceFile);
 }
 
 // Add a source string to the given translation unit
 SPIRE_API void spAddTranslationUnitSourceString(
-    SpireCompilationContext*    context,
-    int                         translationUnitIndex,
-    char const*                 path,
-    char const*                 source)
+    SpireCompileRequest*    request,
+    int                     translationUnitIndex,
+    char const*             path,
+    char const*             source)
 {
-    // TODO: Need to have `TranslationUnitOptions` support having source come in as a string...
-    assert(!"unimplemented");
+    if(!request) return;
+    auto req = REQ(request);
+    if(!source) return;
+    if(translationUnitIndex < 0) return;
+    if(translationUnitIndex >= req->Options.translationUnits.Count()) return;
+
+    if(!path) path = "";
+
+    RefPtr<SourceFile> sourceFile = new SourceFile();
+    sourceFile->path = path;
+    sourceFile->content = source;
+
+    req->Options.translationUnits[translationUnitIndex].sourceFiles.Add(sourceFile);
 }
 
 // Compile in a context that already has its translation units specified
-SPIRE_API SpireCompilationResult* spCompile(SpireCompilationContext* context, SpireDiagnosticSink* sink)
+SPIRE_API int spCompile(
+    SpireCompileRequest*    request)
 {
-    auto ctx = CTX(context);
+    auto req = REQ(request);
 
-    SpireLib::CompileResult* rs = ctx->executeAPIActions(sink);
-    return reinterpret_cast<SpireCompilationResult*>(rs);
+    int anyErrors = req->executeAPIActions();
+    return anyErrors;
 }
 
 // Get the output code associated with a specific translation unit
-SPIRE_API char const* spGetTranslationUnitSource(SpireCompilationResult* result, int translationUnitIndex)
+SPIRE_API char const* spGetTranslationUnitSource(
+    SpireCompileRequest*    request,
+    int                     translationUnitIndex)
 {
-    auto rs = RS(result);
-    return rs->translationUnitSources[translationUnitIndex].begin();
+    auto req = REQ(request);
+    return req->mTranslationUnitSources[translationUnitIndex].begin();
 }
 
 // Reflection API
 
-SpireReflection* spGetReflection(SpireCompilationResult* result)
+SPIRE_API SpireReflection* spGetReflection(
+    SpireCompileRequest*    request)
 {
-    if(!result) return 0;
+    if(!request) return 0;
 
-    auto rs = RS(result);
-    return (SpireReflection*) rs->reflectionBlob;
+    auto req = REQ(request);
+    return (SpireReflection*) req->mReflectionBlob;
 }
 
 SpireTypeKind spReflectionType_GetKind(SpireReflectionType* inType)
