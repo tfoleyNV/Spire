@@ -31,8 +31,8 @@ standard output = {
                         {
                             "name": "myTexture",
                             "type": {
-                                "kind": "texture",
-                                "baseShape": "2D"
+                                "kind": "resource",
+                                "baseShape": "texture2D"
                             },
                             "binding": {"kind": "shaderResource", "index": 0}
                         },

@@ -234,47 +234,70 @@ static NodePtr<ReflectionTypeNode> GenerateReflectionType(
     }
     else if (auto textureType = type->As<TextureType>())
     {
-        auto info = AllocateNode<ReflectionTextureTypeNode>(context);
+        auto info = AllocateNode<ReflectionResourceTypeNode>(context);
         info->flavor = ReflectionNodeFlavor::Type;
-        info->SetKind(SPIRE_TYPE_KIND_TEXTURE);
-        info->SetShape(textureType->flavor);
+        info->SetKind(SPIRE_TYPE_KIND_RESOURCE);
+        info->SetShape(textureType->getShape());
+        info->SetAccess(textureType->getAccess());
         info->elementType = GenerateReflectionType(context, textureType->elementType);
         return info;
     }
 
     // TODO: need a better way to handle this stuff...
-#define CASE(TYPE, FLAVOR)                                                              \
+#define CASE(TYPE, SHAPE, ACCESS)                                                       \
     else if(type->As<TYPE>()) do {                                                      \
-    auto info = AllocateNode<ReflectionTextureTypeNode>(context);                       \
+    auto info = AllocateNode<ReflectionResourceTypeNode>(context);                      \
     info->flavor = ReflectionNodeFlavor::Type;                                          \
-    info->SetKind(SPIRE_TYPE_KIND_TEXTURE);                                             \
-    info->SetShape(FLAVOR);                                                             \
+    info->SetKind(SPIRE_TYPE_KIND_RESOURCE);                                            \
+    info->SetShape(SHAPE);                                                              \
+    info->SetAccess(ACCESS);                                                            \
     info->elementType = GenerateReflectionType(context, type->As<TYPE>()->elementType); \
     return info;                                                                        \
     } while(0)
 
-    CASE(HLSLBufferType,                    SPIRE_TEXTURE_BUFFER);
-    CASE(HLSLRWBufferType,                  SPIRE_TEXTURE_BUFFER | SPIRE_TEXTURE_READ_WRITE_FLAG);
-    CASE(HLSLStructuredBufferType,          SPIRE_TEXTURE_STRUCTURE_BUFFER);
-    CASE(HLSLRWStructuredBufferType,        SPIRE_TEXTURE_STRUCTURE_BUFFER | SPIRE_TEXTURE_READ_WRITE_FLAG);
-
-    // TODO: need to add flags for these cases too...
-    CASE(HLSLAppendStructuredBufferType,    SPIRE_TEXTURE_STRUCTURE_BUFFER | SPIRE_TEXTURE_READ_WRITE_FLAG);
-    CASE(HLSLConsumeStructuredBufferType,   SPIRE_TEXTURE_STRUCTURE_BUFFER | SPIRE_TEXTURE_READ_WRITE_FLAG);
+    CASE(HLSLBufferType,                    SPIRE_TEXTURE_BUFFER, SPIRE_RESOURCE_ACCESS_READ);
+    CASE(HLSLRWBufferType,                  SPIRE_TEXTURE_BUFFER, SPIRE_RESOURCE_ACCESS_READ_WRITE);
 #undef CASE
 
-#define CASE(TYPE, FLAVOR)                                                              \
+    // TODO: need a better way to handle this stuff...
+#define CASE(TYPE, SHAPE, ACCESS)                                                               \
+    else if(type->As<TYPE>()) do {                                                              \
+    auto info = AllocateNode<ReflectionResourceTypeNode>(context);                              \
+    info->flavor = ReflectionNodeFlavor::Type;                                                  \
+    info->SetKind(SPIRE_TYPE_KIND_RESOURCE);                                                    \
+    info->SetShape(SHAPE);                                                                      \
+    info->SetAccess(ACCESS);                                                                    \
+    auto elementTypeLayout = CreateTypeLayout(                                                  \
+        type->As<TYPE>()->elementType.Ptr(),                                                    \
+        GetLayoutRulesImpl(LayoutRule::HLSLStructuredBuffer));                                  \
+    info->elementType = GenerateReflectionTypeLayout(context, elementTypeLayout);               \
+    return info;                                                                                \
+    } while(0)
+
+    CASE(HLSLBufferType,                    SPIRE_TEXTURE_BUFFER, SPIRE_RESOURCE_ACCESS_READ);
+    CASE(HLSLRWBufferType,                  SPIRE_TEXTURE_BUFFER, SPIRE_RESOURCE_ACCESS_READ_WRITE);
+
+    CASE(HLSLStructuredBufferType,          SPIRE_STRUCTURED_BUFFER, SPIRE_RESOURCE_ACCESS_READ);
+    CASE(HLSLRWStructuredBufferType,        SPIRE_STRUCTURED_BUFFER, SPIRE_RESOURCE_ACCESS_READ_WRITE);
+
+    // TODO: need to add flags for these cases too...
+    CASE(HLSLAppendStructuredBufferType,    SPIRE_STRUCTURED_BUFFER, SPIRE_RESOURCE_ACCESS_APPEND);
+    CASE(HLSLConsumeStructuredBufferType,   SPIRE_STRUCTURED_BUFFER, SPIRE_RESOURCE_ACCESS_CONSUME);
+#undef CASE
+
+#define CASE(TYPE, SHAPE, ACCESS)                                                       \
     else if(type->As<TYPE>()) do {                                                      \
-    auto info = AllocateNode<ReflectionTextureTypeNode>(context);                       \
+    auto info = AllocateNode<ReflectionResourceTypeNode>(context);                      \
     info->flavor = ReflectionNodeFlavor::Type;                                          \
-    info->SetKind(SPIRE_TYPE_KIND_TEXTURE);                                             \
-    info->SetShape(FLAVOR);                                                             \
+    info->SetKind(SPIRE_TYPE_KIND_RESOURCE);                                            \
+    info->SetShape(SHAPE);                                                              \
+    info->SetAccess(ACCESS);                                                            \
     info->elementType.raw = 0;                                                          \
     return info;                                                                        \
     } while(0)
 
-    CASE(HLSLByteAddressBufferType,         SPIRE_TEXTURE_BYTE_ADDRESS_BUFFER);
-    CASE(HLSLRWByteAddressBufferType,       SPIRE_TEXTURE_BYTE_ADDRESS_BUFFER | SPIRE_TEXTURE_READ_WRITE_FLAG);
+    CASE(HLSLByteAddressBufferType,         SPIRE_BYTE_ADDRESS_BUFFER, SPIRE_RESOURCE_ACCESS_READ);
+    CASE(HLSLRWByteAddressBufferType,       SPIRE_BYTE_ADDRESS_BUFFER, SPIRE_RESOURCE_ACCESS_READ_WRITE);
 #undef CASE
 
 
@@ -390,7 +413,7 @@ static NodePtr<ReflectionTypeLayoutNode> GenerateReflectionTypeLayout(
     case spire::TypeReflection::Kind::Vector:
     case spire::TypeReflection::Kind::Matrix:
     case SPIRE_TYPE_KIND_SAMPLER_STATE:
-    case SPIRE_TYPE_KIND_TEXTURE:
+    case SPIRE_TYPE_KIND_RESOURCE:
         info = AllocateNode<ReflectionTypeLayoutNode>(context);
         break;
 
@@ -930,26 +953,27 @@ static void emitReflectionTypeInfoJSON(PrettyWriter& writer, ReflectionTypeNode*
         write(writer, "\"kind\": \"samplerState\"");
         break;
 
-    case SPIRE_TYPE_KIND_TEXTURE:
+    case SPIRE_TYPE_KIND_RESOURCE:
         {
             auto shape = type->type.resource.shape;
-            write(writer, "\"kind\": \"texture\"");
+            auto access = type->type.resource.access;
+            write(writer, "\"kind\": \"resource\"");
             write(writer, ",\n");
             write(writer, "\"baseShape\": \"");
-            switch (shape & SPIRE_TEXTURE_BASE_SHAPE_MASK)
+            switch (shape & SPIRE_RESOURCE_BASE_SHAPE_MASK)
             {
             default:
                 write(writer, "unknown");
                 assert(!"unexpected");
                 break;
 
-#define CASE(SHAPE, NAME) case SPIRE_TEXTURE_##SHAPE: write(writer, #NAME); break
-                CASE(1D, 1D);
-                CASE(2D, 2D);
-                CASE(3D, 3D);
-                CASE(CUBE, cube);
-                CASE(BUFFER, buffer);
-                CASE(STRUCTURE_BUFFER, structuredBuffer);
+#define CASE(SHAPE, NAME) case SPIRE_##SHAPE: write(writer, #NAME); break
+                CASE(TEXTURE_1D, texture1D);
+                CASE(TEXTURE_2D, texture2D);
+                CASE(TEXTURE_3D, texture3D);
+                CASE(TEXTURE_CUBE, textureCube);
+                CASE(TEXTURE_BUFFER, textureBuffer);
+                CASE(STRUCTURED_BUFFER, structuredBuffer);
                 CASE(BYTE_ADDRESS_BUFFER, byteAddressBuffer);
 #undef CASE
             }
@@ -964,15 +988,26 @@ static void emitReflectionTypeInfoJSON(PrettyWriter& writer, ReflectionTypeNode*
                 write(writer, ",\n");
                 write(writer, "\"multisample\": true");
             }
-            if (shape & SPIRE_TEXTURE_READ_WRITE_FLAG)
+
+            if( access != SPIRE_RESOURCE_ACCESS_READ )
             {
-                write(writer, ",\n");
-                write(writer, "\"readWrite\": true");
-            }
-            if (shape & SPIRE_TEXTURE_RASTER_ORDERED_FLAG)
-            {
-                write(writer, ",\n");
-                write(writer, "\"rasterOrdered\": true");
+                write(writer, ",\n\"access\": \"");
+                switch(access)
+                {
+                default:
+                    write(writer, "unknown");
+                    assert(!"unexpected");
+                    break;
+
+                case SPIRE_RESOURCE_ACCESS_READ:
+                    break;
+
+                case SPIRE_RESOURCE_ACCESS_READ_WRITE:      write(writer, "readWrite"); break;
+                case SPIRE_RESOURCE_ACCESS_RASTER_ORDERED:  write(writer, "rasterOrdered"); break;
+                case SPIRE_RESOURCE_ACCESS_APPEND:          write(writer, "append"); break;
+                case SPIRE_RESOURCE_ACCESS_CONSUME:         write(writer, "consume"); break;
+                }
+                write(writer, "\"");
             }
         }
         break;

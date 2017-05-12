@@ -655,23 +655,22 @@ namespace Spire
             // (e.g., `Texture2DMS` vs. `TextureCubeArray`)
             typedef uint16_t Flavor;
             Flavor flavor;
+
             enum
             {
                 // Mask for the overall "shape" of the texture
-                ShapeMask		= SPIRE_TEXTURE_BASE_SHAPE_MASK,
+                ShapeMask		= SPIRE_RESOURCE_BASE_SHAPE_MASK,
 
                 // Flag for whether the shape has "array-ness"
                 ArrayFlag		= SPIRE_TEXTURE_ARRAY_FLAG,
 
                 // Whether or not the texture stores multiple samples per pixel
                 MultisampleFlag	= SPIRE_TEXTURE_MULTISAMPLE_FLAG,
-                ReadWriteFlag = SPIRE_TEXTURE_READ_WRITE_FLAG,
-                RasterOrderedFlag = SPIRE_TEXTURE_RASTER_ORDERED_FLAG,
 
                 // Whether or not this is a shadow texture
                 //
                 // TODO(tfoley): is this even meaningful/used?
-                ShadowFlag		= 0x80, 
+                // ShadowFlag		= 0x80, 
             };
 
             enum Shape : uint8_t
@@ -686,13 +685,15 @@ namespace Spire
                 // No Shape3DArray
                 ShapeCubeArray	= ShapeCube | ArrayFlag,
             };
-
             
 
             Shape GetBaseShape() const { return Shape(flavor & ShapeMask); }
             bool isArray() const { return (flavor & ArrayFlag) != 0; }
             bool isMultisample() const { return (flavor & MultisampleFlag) != 0; }
-            bool isShadow() const { return (flavor & ShadowFlag) != 0; }
+//            bool isShadow() const { return (flavor & ShadowFlag) != 0; }
+
+            SpireResourceShape getShape() const { return flavor & 0xFF; }
+            SpireResourceAccess getAccess() const { return (flavor >> 8) & 0xFF; }
 
             TextureType(
                 Flavor flavor,

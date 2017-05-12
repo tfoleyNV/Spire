@@ -161,7 +161,8 @@ struct ReflectionNode
                 } matrix;
                 struct
                 {
-                    uint16_t        shape;
+                    uint8_t        shape;
+                    uint8_t        access;
                 } resource;
             };
         } type;
@@ -234,9 +235,14 @@ struct ReflectionNode
     }
 };
 
+// Base case for both types and type layouts
+struct ReflectionTypeBaseNode : ReflectionNode
+{
+};
+
 // A type node represents a (canonical for now) type in the user's program,
 // which can be one of several different *kinds* of types (arrays, scalars, structs, etc.)
-struct ReflectionTypeNode : ReflectionNode
+struct ReflectionTypeNode : ReflectionTypeBaseNode
 {
     // We store the kind of  type in one of the "extra" fields
     SpireTypeKind GetKind() const
@@ -292,7 +298,7 @@ struct ReflectionTypeSizeInfo
 // out in memory, using particular layout rules (e.g., `std140`). For all types this
 // includes the size of the type as laid out. More specialized node types can be used
 // for specific kinds of types (e.g., a struct type layout will also record field offsets)
-struct ReflectionTypeLayoutNode : ReflectionNode
+struct ReflectionTypeLayoutNode : ReflectionTypeBaseNode
 {
     ReflectionPtr<ReflectionTypeNode> type;
 
@@ -528,14 +534,17 @@ struct ReflectionConstantBufferTypeNode : ReflectionTypeNode
     ReflectionTypeLayoutNode* GetElementType() const { return elementType; }
 };
 
-struct ReflectionTextureTypeNode : ReflectionTypeNode
+struct ReflectionResourceTypeNode : ReflectionTypeNode
 {
-    ReflectionPtr<ReflectionTypeNode> elementType;
+    ReflectionPtr<ReflectionTypeBaseNode> elementType;
 
-    SpireTextureShape GetShape() const { return type.resource.shape; }
-    void SetShape(SpireTextureShape shape) { type.resource.shape = shape; }
+    SpireResourceShape GetShape() const { return type.resource.shape; }
+    void SetShape(SpireResourceShape shape) { type.resource.shape = shape; }
 
-    ReflectionTypeNode* GetElementType() const { return elementType; }
+    SpireResourceAccess GetAccess() const { return type.resource.access; }
+    void SetAccess(SpireResourceAccess access) { type.resource.access = access; }
+
+    ReflectionTypeBaseNode* GetElementType() const { return elementType; }
 };
 
 struct ReflectionSamplerStateTypeNode : ReflectionTypeNode

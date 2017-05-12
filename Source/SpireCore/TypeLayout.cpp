@@ -209,6 +209,11 @@ struct HLSLConstantBufferLayoutRulesImpl : DefaultConstantBufferLayoutRulesImpl
     }
 };
 
+struct HLSLStructuredBufferLayoutRulesImpl : DefaultLayoutRulesImpl
+{
+    // TODO: customize these to be correct...
+};
+
 struct Std430LayoutRulesImpl : DefaultLayoutRulesImpl
 {
 };
@@ -221,15 +226,17 @@ Std140LayoutRulesImpl kStd140LayoutRulesImpl;
 Std430LayoutRulesImpl kStd430LayoutRulesImpl;
 PackedLayoutRulesImpl kPackedLayoutRulesImpl;
 HLSLConstantBufferLayoutRulesImpl kHLSLConstantBufferLayoutRulesImpl;
+HLSLStructuredBufferLayoutRulesImpl kHLSLStructuredBufferLayoutRulesImpl;
 
 LayoutRulesImpl* GetLayoutRulesImpl(LayoutRule rule)
 {
     switch (rule)
     {
-    case LayoutRule::Std140: return &kStd140LayoutRulesImpl;
-    case LayoutRule::Std430: return &kStd430LayoutRulesImpl;
-    case LayoutRule::Packed: return &kPackedLayoutRulesImpl;
-    case LayoutRule::HLSLConstantBuffer: return &kHLSLConstantBufferLayoutRulesImpl;
+    case LayoutRule::Std140:                return &kStd140LayoutRulesImpl;
+    case LayoutRule::Std430:                return &kStd430LayoutRulesImpl;
+    case LayoutRule::Packed:                return &kPackedLayoutRulesImpl;
+    case LayoutRule::HLSLConstantBuffer:    return &kHLSLConstantBufferLayoutRulesImpl;
+    case LayoutRule::HLSLStructuredBuffer:  return &kHLSLStructuredBufferLayoutRulesImpl;
     default:
         return nullptr;
     }

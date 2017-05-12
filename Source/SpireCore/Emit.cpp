@@ -328,7 +328,23 @@ static void EmitExprWithPrecedence(EmitContext* context, RefPtr<ExpressionSyntax
     {
         needClose = MaybeEmitParens(context, outerPrec, kPrecedence_Atomic);
 
-        EmitDeclRef(context, varExpr->declRef);
+        // Because of the "rewriter" use case, it is possible that we will
+        // be trying to emit an expression that hasn't been wired up to
+        // any associated declaration. In that case, we will just emit
+        // the variable name.
+        //
+        // TODO: A better long-term solution here is to have a distinct
+        // case for an "unchecked" `NameExpr` that doesn't include
+        // a declaration reference.
+
+        if(varExpr->declRef)
+        {
+            EmitDeclRef(context, varExpr->declRef);
+        }
+        else
+        {
+            Emit(context, varExpr->Variable);
+        }
     }
     else if (auto derefExpr = expr.As<DerefExpr>())
     {

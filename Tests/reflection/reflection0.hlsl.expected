@@ -8,8 +8,8 @@ standard output = {
             "name": "t",
             "binding": {"kind": "shaderResource", "index": 0},
             "type": {
-                "kind": "texture",
-                "baseShape": "2D"
+                "kind": "resource",
+                "baseShape": "texture2D"
             }
         },
         {

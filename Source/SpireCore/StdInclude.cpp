@@ -888,10 +888,10 @@ __intrinsic vec4 Sample(Texture3D tex, SamplerState sampler, vec3 uv);
 __intrinsic vec4 SampleLevel(Texture2D tex, SamplerState sampler, vec2 uv, float lod);
 __intrinsic vec4 SampleLevel(TextureCube tex, SamplerState sampler, vec3 uv, float lod);
 __intrinsic vec4 SampleLevel(Texture3D tex, SamplerState sampler, vec3 uv, float lod);
-__intrinsic float SampleCmp(Texture2DShadow tex, SamplerComparisonState s, vec2 location, float compareValue, ivec2 offset);
-__intrinsic float SampleCmp(Texture2DShadow tex, SamplerComparisonState s, vec2 location, float compareValue);
-__intrinsic float SampleCmp(Texture2DArrayShadow tex, SamplerComparisonState s, vec3 location, float compareValue, ivec2 offset);
-__intrinsic float SampleCmp(Texture2DArrayShadow tex, SamplerComparisonState s, vec3 location, float compareValue);
+__intrinsic float SampleCmp(Texture2D tex, SamplerComparisonState s, vec2 location, float compareValue, ivec2 offset);
+__intrinsic float SampleCmp(Texture2D tex, SamplerComparisonState s, vec2 location, float compareValue);
+__intrinsic float SampleCmp(Texture2DArray tex, SamplerComparisonState s, vec3 location, float compareValue, ivec2 offset);
+__intrinsic float SampleCmp(Texture2DArray tex, SamplerComparisonState s, vec3 location, float compareValue);
 __intrinsic vec4 SampleGrad(Texture2D tex, SamplerState sampler, vec2 uv, vec2 ddx, vec2 ddy);
 __intrinsic vec4 SampleGrad(Texture2D tex, SamplerState sampler, vec2 uv, vec2 ddx, vec2 ddy, ivec2 offset);
 __intrinsic vec4 SampleGrad(TextureCube tex, SamplerState sampler, vec3 uv, vec3 ddx, vec3 ddy);
@@ -1167,6 +1167,18 @@ namespace Spire
                 { "TextureCube",	TextureType::ShapeCube,	3 },
             };
             static const int kBaseTextureTypeCount = sizeof(kBaseTextureTypes) / sizeof(kBaseTextureTypes[0]);
+
+
+            static const struct {
+                char const*         name;
+                SpireResourceAccess access;
+            } kBaseTextureAccessLevels[] = {
+                { "",                   SPIRE_RESOURCE_ACCESS_READ },
+                { "RW",                 SPIRE_RESOURCE_ACCESS_READ_WRITE },
+                { "RasterizerOrdered",  SPIRE_RESOURCE_ACCESS_RASTER_ORDERED },
+            };
+            static const int kBaseTextureAccessLevelCount = sizeof(kBaseTextureAccessLevels) / sizeof(kBaseTextureAccessLevels[0]);
+
             for (int tt = 0; tt < kBaseTextureTypeCount; ++tt)
             {
                 char const* name = kBaseTextureTypes[tt].name;
@@ -1178,23 +1190,30 @@ namespace Spire
                     if (isArray && baseShape == TextureType::Shape3D) continue;
 
                     for (int isMultisample = 0; isMultisample < 2; ++isMultisample)
-                    for (int isShadow = 0; isShadow < 2; ++isShadow)
+                    for (int accessLevel = 0; accessLevel < kBaseTextureAccessLevelCount; ++accessLevel)
                     {
+                        auto access = kBaseTextureAccessLevels[accessLevel].access;
+
                         // TODO: any constraints to enforce on what gets to be multisampled?
 
                         unsigned flavor = baseShape;
                         if (isArray)		flavor |= TextureType::ArrayFlag;
                         if (isMultisample)	flavor |= TextureType::MultisampleFlag;
-                        if (isShadow)		flavor |= TextureType::ShadowFlag;
+//                        if (isShadow)		flavor |= TextureType::ShadowFlag;
+
+                        flavor |= (access << 8);
+
 
                         // emit a generic signature
                         // TODO: allow for multisample count to come in as well...
                         sb << "__generic<T = float4> ";
 
-                        sb << "__magic_type(Texture," << int(flavor) << ") struct " << name;
+                        sb << "__magic_type(Texture," << int(flavor) << ") struct ";
+                        sb << kBaseTextureAccessLevels[accessLevel].name;
+                        sb << name;
                         if (isMultisample) sb << "MS";
                         if (isArray) sb << "Array";
-                        if (isShadow) sb << "Shadow";
+//                        if (isShadow) sb << "Shadow";
                         sb << "\n{";
 
                         // TODO(tfoley): properly list operations and their signatures

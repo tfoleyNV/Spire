@@ -1199,10 +1199,10 @@ SPIRE_API char const* spGetTranslationUnitSource(
 SPIRE_API SpireReflection* spGetReflection(
     SpireCompileRequest*    request)
 {
-    if(!request) return 0;
+if( !request ) return 0;
 
-    auto req = REQ(request);
-    return (SpireReflection*) req->mReflectionBlob;
+auto req = REQ(request);
+return (SpireReflection*) req->mReflectionBlob;
 }
 
 SpireTypeKind spReflectionType_GetKind(SpireReflectionType* inType)
@@ -1213,7 +1213,7 @@ SpireTypeKind spReflectionType_GetKind(SpireReflectionType* inType)
 SpireParameterCategory spReflectionType_GetParameterCategory(SpireReflectionType* inType)
 {
     auto type = ((ReflectionNode*) inType)->AsTypeLayout();
-    if(!type) return SPIRE_PARAMETER_CATEGORY_NONE;
+    if( !type ) return SPIRE_PARAMETER_CATEGORY_NONE;
     return type->GetParameterCategory();
 }
 
@@ -1225,8 +1225,8 @@ unsigned int spReflectionType_GetFieldCount(SpireReflectionType* inType)
 SpireReflectionVariable* spReflectionType_GetFieldByIndex(SpireReflectionType* inType, unsigned int index)
 {
     auto node = (ReflectionNode*) inType;
-    if(!node) return nullptr;
-    switch(node->GetFlavor())
+    if( !node ) return nullptr;
+    switch( node->GetFlavor() )
     {
     default:
         return nullptr;
@@ -1255,19 +1255,67 @@ size_t spReflectionType_GetElementStride(SpireReflectionType* inType, SpireParam
 SpireReflectionType* spReflectionType_GetElementType(SpireReflectionType* inType)
 {
     auto node = (ReflectionNode*) inType;
-    if(!node) return nullptr;
-    switch(node->GetFlavor())
+    if( !node ) return nullptr;
+
+    // First check if we are an array type layout
+    switch( node->GetFlavor() )
+    {
+    default:
+        return nullptr;
+
+    case ReflectionNodeFlavor::TypeLayout:
+        {
+            auto typeLayout = node->AsTypeLayout();
+            switch( typeLayout->GetKind() )
+            {
+            case SPIRE_TYPE_KIND_ARRAY:
+                return (SpireReflectionType*) typeLayout->AsArray()->GetElementTypeLayout();
+
+            default:
+                node = typeLayout->GetType();
+                assert(node);
+                break;
+            }
+        }
+        break;
+    }
+
+    // Next check for non-layout types with element type info
+    switch( node->GetFlavor() )
     {
     default:
         return nullptr;
 
     case ReflectionNodeFlavor::Type:
-        return (SpireReflectionType*) node->AsType()->AsArray()->GetElementType();
-        break;
+        {
+            auto type = node->AsType();
+            switch( type->GetKind() )
+            {
+            case SPIRE_TYPE_KIND_ARRAY:
+                return (SpireReflectionType*) type->AsArray()->GetElementType();
 
+            case SPIRE_TYPE_KIND_CONSTANT_BUFFER:
+                return (SpireReflectionType*) ((ReflectionConstantBufferTypeNode*) type)->GetElementType();
 
-    case ReflectionNodeFlavor::TypeLayout:
-        return (SpireReflectionType*) node->AsTypeLayout()->AsArray()->GetElementTypeLayout();
+            case SPIRE_TYPE_KIND_RESOURCE:
+                {
+                    auto textureType = (ReflectionResourceTypeNode*) type;
+                    switch( textureType->GetShape() & SPIRE_RESOURCE_BASE_SHAPE_MASK )
+                    {
+                    default:
+                        return nullptr;
+
+                    case SPIRE_STRUCTURED_BUFFER:
+                        return  (SpireReflectionType*) textureType->GetElementType();
+                        break;
+                    }
+                }
+                break;
+
+            default:
+                return nullptr;
+            }
+        }
         break;
     }
 }
@@ -1330,21 +1378,38 @@ SpireScalarType spReflectionType_GetScalarType(SpireReflectionType* inType)
     }
 }
 
-SPIRE_API SpireTextureShape spReflectionType_GetTextureShape(SpireReflectionType* inType)
+SPIRE_API SpireResourceShape spReflectionType_GetResourceShape(SpireReflectionType* inType)
 {
     auto type = ((ReflectionNode*) inType)->AsType()->UnwrapArrays();
-    if(!type) return SPIRE_TEXTURE_NONE;
+    if(!type) return SPIRE_RESOURCE_NONE;
     switch( type->GetKind() )
     {
     default:
-        return SPIRE_TEXTURE_NONE;
+        return SPIRE_RESOURCE_NONE;
 
-    case SPIRE_TYPE_KIND_TEXTURE:
-        return ((ReflectionTextureTypeNode*) type)->GetShape();
+    case SPIRE_TYPE_KIND_RESOURCE:
+        return ((ReflectionResourceTypeNode*) type)->GetShape();
     }
+
 }
 
-SPIRE_API SpireReflectionType* spReflectionType_GetTextureResultType(SpireReflectionType* inType)
+SPIRE_API SpireResourceAccess spReflectionType_GetResourceAccess(SpireReflectionType* inType)
+{
+    auto type = ((ReflectionNode*) inType)->AsType()->UnwrapArrays();
+    if(!type) return SPIRE_RESOURCE_ACCESS_NONE;
+    switch( type->GetKind() )
+    {
+    default:
+        return SPIRE_RESOURCE_ACCESS_NONE;
+
+    case SPIRE_TYPE_KIND_RESOURCE:
+        return ((ReflectionResourceTypeNode*) type)->GetAccess();
+    }
+
+}
+
+
+SPIRE_API SpireReflectionType* spReflectionType_GetResourceResultType(SpireReflectionType* inType)
 {
     auto type = ((ReflectionNode*) inType)->AsType()->UnwrapArrays();
     if(!type) return 0;
@@ -1353,8 +1418,8 @@ SPIRE_API SpireReflectionType* spReflectionType_GetTextureResultType(SpireReflec
     default:
         return 0;
 
-    case SPIRE_TYPE_KIND_TEXTURE:
-        return (SpireReflectionType*) ((ReflectionTextureTypeNode*) type)->GetElementType();
+    case SPIRE_TYPE_KIND_RESOURCE:
+        return (SpireReflectionType*) ((ReflectionResourceTypeNode*) type)->GetElementType();
     }
 }
 

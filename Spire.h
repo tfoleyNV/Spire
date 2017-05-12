@@ -310,7 +310,7 @@ extern "C"
         SPIRE_TYPE_KIND_VECTOR,
         SPIRE_TYPE_KIND_SCALAR,
         SPIRE_TYPE_KIND_CONSTANT_BUFFER,
-        SPIRE_TYPE_KIND_TEXTURE,
+        SPIRE_TYPE_KIND_RESOURCE,
         SPIRE_TYPE_KIND_SAMPLER_STATE,
     
         SPIRE_TYPE_KIND_COUNT,
@@ -331,30 +331,43 @@ extern "C"
         SPIRE_SCALAR_TYPE_FLOAT64,
     };
 
-    typedef unsigned int SpireTextureShape;
+    typedef unsigned int SpireResourceShape;
     enum
     {
-        SPIRE_TEXTURE_NONE                  = 0x00,
+        SPIRE_RESOURCE_BASE_SHAPE_MASK      = 0x3F,
+
+        SPIRE_RESOURCE_NONE                 = 0x00,
+
         SPIRE_TEXTURE_1D                    = 0x01,
         SPIRE_TEXTURE_2D                    = 0x02,
         SPIRE_TEXTURE_3D                    = 0x03,
         SPIRE_TEXTURE_CUBE                  = 0x04,
         SPIRE_TEXTURE_BUFFER                = 0x05,
-        SPIRE_TEXTURE_STRUCTURE_BUFFER      = 0x06,
-        SPIRE_TEXTURE_BYTE_ADDRESS_BUFFER   = 0x07,
 
-        SPIRE_TEXTURE_BASE_SHAPE_MASK       = 0x0F,
-        SPIRE_TEXTURE_ARRAY_FLAG            = 0x10,
-        SPIRE_TEXTURE_MULTISAMPLE_FLAG      = 0x20,
-        SPIRE_TEXTURE_READ_WRITE_FLAG       = 0x40,
-        SPIRE_TEXTURE_RASTER_ORDERED_FLAG   = 0x80 | SPIRE_TEXTURE_READ_WRITE_FLAG,
+        SPIRE_STRUCTURED_BUFFER             = 0x06,
+        SPIRE_BYTE_ADDRESS_BUFFER           = 0x07,
 
-        SPIRE_TEXTURE_1D_ARRAY          = SPIRE_TEXTURE_1D   | SPIRE_TEXTURE_ARRAY_FLAG,
-        SPIRE_TEXTURE_2D_ARRAY          = SPIRE_TEXTURE_2D   | SPIRE_TEXTURE_ARRAY_FLAG,
-        SPIRE_TEXTURE_CUBE_ARRAY        = SPIRE_TEXTURE_CUBE | SPIRE_TEXTURE_ARRAY_FLAG,
+        SPIRE_RESOURCE_EXT_SHAPE_MASK       = 0xC0,
+        SPIRE_TEXTURE_ARRAY_FLAG            = 0x40,
+        SPIRE_TEXTURE_MULTISAMPLE_FLAG      = 0x80,
+
+        SPIRE_TEXTURE_1D_ARRAY              = SPIRE_TEXTURE_1D   | SPIRE_TEXTURE_ARRAY_FLAG,
+        SPIRE_TEXTURE_2D_ARRAY              = SPIRE_TEXTURE_2D   | SPIRE_TEXTURE_ARRAY_FLAG,
+        SPIRE_TEXTURE_CUBE_ARRAY            = SPIRE_TEXTURE_CUBE | SPIRE_TEXTURE_ARRAY_FLAG,
 
         SPIRE_TEXTURE_2D_MULTISAMPLE        = SPIRE_TEXTURE_2D | SPIRE_TEXTURE_MULTISAMPLE_FLAG,
         SPIRE_TEXTURE_2D_MULTISAMPLE_ARRAY  = SPIRE_TEXTURE_2D | SPIRE_TEXTURE_MULTISAMPLE_FLAG | SPIRE_TEXTURE_ARRAY_FLAG,
+    };
+
+    typedef unsigned int SpireResourceAccess;
+    enum
+    {
+        SPIRE_RESOURCE_ACCESS_NONE,
+        SPIRE_RESOURCE_ACCESS_READ,
+        SPIRE_RESOURCE_ACCESS_READ_WRITE,
+        SPIRE_RESOURCE_ACCESS_RASTER_ORDERED,
+        SPIRE_RESOURCE_ACCESS_APPEND,
+        SPIRE_RESOURCE_ACCESS_CONSUME,
     };
 
     typedef unsigned int SpireParameterCategory;
@@ -385,8 +398,9 @@ extern "C"
     SPIRE_API unsigned int spReflectionType_GetColumnCount(SpireReflectionType* type);
     SPIRE_API SpireScalarType spReflectionType_GetScalarType(SpireReflectionType* type);
 
-    SPIRE_API SpireTextureShape spReflectionType_GetTextureShape(SpireReflectionType* type);
-    SPIRE_API SpireReflectionType* spReflectionType_GetTextureResultType(SpireReflectionType* type);
+    SPIRE_API SpireResourceShape spReflectionType_GetResourceShape(SpireReflectionType* type);
+    SPIRE_API SpireResourceAccess spReflectionType_GetResourceAccess(SpireReflectionType* type);
+    SPIRE_API SpireReflectionType* spReflectionType_GetResourceResultType(SpireReflectionType* type);
 
     SPIRE_API SpireParameterCategory spReflectionType_GetParameterCategory(SpireReflectionType* type);
 
@@ -452,7 +466,7 @@ namespace spire
             Vector  = SPIRE_TYPE_KIND_VECTOR,
             Scalar  = SPIRE_TYPE_KIND_SCALAR,
             ConstantBuffer = SPIRE_TYPE_KIND_CONSTANT_BUFFER,
-            Texture = SPIRE_TYPE_KIND_TEXTURE,
+            Resource = SPIRE_TYPE_KIND_RESOURCE,
             SamplerState = SPIRE_TYPE_KIND_SAMPLER_STATE,
         };
 
@@ -544,14 +558,19 @@ namespace spire
             return (ScalarType) spReflectionType_GetScalarType((SpireReflectionType*) this);
         }
 
-        TypeReflection* getTextureResultType()
+        TypeReflection* getResourceResultType()
         {
-            return (TypeReflection*) spReflectionType_GetTextureResultType((SpireReflectionType*) this);
+            return (TypeReflection*) spReflectionType_GetResourceResultType((SpireReflectionType*) this);
         }
 
-        SpireTextureShape getTextureShape()
+        SpireResourceShape getResourceShape()
         {
-            return spReflectionType_GetTextureShape((SpireReflectionType*) this);
+            return spReflectionType_GetResourceShape((SpireReflectionType*) this);
+        }
+
+        SpireResourceAccess getResourceAccess()
+        {
+            return spReflectionType_GetResourceAccess((SpireReflectionType*) this);
         }
     };
 
@@ -592,19 +611,6 @@ namespace spire
         }
     };
 
-    struct VariableLayoutReflection : VariableReflection
-    {
-        size_t getOffset(SpireParameterCategory category = SPIRE_PARAMETER_CATEGORY_UNIFORM)
-        {
-            return spReflectionVariable_GetOffset((SpireReflectionVariable*) this, category);
-        }
-
-        TypeLayoutReflection* getType()
-        {
-            return (TypeLayoutReflection*) spReflectionVariable_GetType((SpireReflectionVariable*) this);
-        }
-    };
-
     enum ParameterCategory : SpireParameterCategory
     {
         None = SPIRE_PARAMETER_CATEGORY_NONE,
@@ -618,12 +624,31 @@ namespace spire
         Mixed = SPIRE_PARAMETER_CATEGORY_MIXED,
     };
 
-    /** A "top-level" shader input parameter */
-    struct ParameterReflection : ReflectionBase
+    struct VariableLayoutReflection : VariableReflection
     {
         ParameterCategory getCategory()
         {
             return (ParameterCategory)spReflectionParameter_GetCategory((SpireReflectionParameter*) this);
+        }
+
+        size_t getOffset(SpireParameterCategory category = SPIRE_PARAMETER_CATEGORY_UNIFORM)
+        {
+            return spReflectionVariable_GetOffset((SpireReflectionVariable*) this, category);
+        }
+
+        TypeLayoutReflection* getType()
+        {
+            return (TypeLayoutReflection*) spReflectionVariable_GetType((SpireReflectionVariable*) this);
+        }
+
+        unsigned getBindingIndex()
+        {
+            return spReflectionParameter_GetBindingIndex((SpireReflectionParameter*) this);
+        }
+
+        unsigned getBindingSpace()
+        {
+            return spReflectionParameter_GetBindingSpace((SpireReflectionParameter*) this);
         }
 
         BufferReflection* asBuffer()
@@ -648,17 +673,15 @@ namespace spire
 
             return 0;
         }
+    };
 
-        char const* getName()
-        {
-            return spReflectionParameter_GetName((SpireReflectionParameter*) this);
-        }
 
-        TypeReflection* getType()
-        {
-            return (TypeReflection*) spReflectionVariable_GetType((SpireReflectionVariable*) this);
-        }
+    /** A "top-level" shader input parameter */
+    struct ParameterReflection : VariableLayoutReflection
+    {
 
+
+#if 0
         unsigned getBindingIndex()
         {
             return spReflectionParameter_GetBindingIndex((SpireReflectionParameter*) this);
@@ -673,9 +696,10 @@ namespace spire
         {
             return spReflectionVariable_GetOffset((SpireReflectionVariable*) this, category);
         }
+#endif
     };
 
-    struct BufferReflection : ParameterReflection
+    struct BufferReflection : VariableLayoutReflection
     {
         TypeLayoutReflection* getBufferType()
         {

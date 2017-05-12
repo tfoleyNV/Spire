@@ -23,6 +23,7 @@ enum class LayoutRule
     Std430,
     Packed,
     HLSLConstantBuffer,
+    HLSLStructuredBuffer,
 };
 
 // Layout appropriate to "just memory" scenarios,
