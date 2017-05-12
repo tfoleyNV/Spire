@@ -392,6 +392,16 @@ static void EmitExprWithPrecedence(EmitContext* context, RefPtr<ExpressionSyntax
         EmitExprWithPrecedence(context, selectExpr->Expr1, kPrecedence_Conditional);
     }
 #endif
+    else if(auto initExpr = expr.As<InitializerListExpr>())
+    {
+        Emit(context, "{ ");
+        for(auto& arg : initExpr->args)
+        {
+            EmitExpr(context, arg);
+            Emit(context, ", ");
+        }
+        Emit(context, "}");
+    }
     else
     {
         throw "unimplemented";

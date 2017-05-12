@@ -395,7 +395,7 @@ namespace Spire
                 }
 
                 
-                RefPtr<SyntaxVisitor> visitor = CreateSemanticsVisitor(result.GetErrorWriter());
+                RefPtr<SyntaxVisitor> visitor = CreateSemanticsVisitor(result.GetErrorWriter(), options);
                 try
                 {
                     for( auto& translationUnit : collectionOfTranslationUnits->translationUnits )

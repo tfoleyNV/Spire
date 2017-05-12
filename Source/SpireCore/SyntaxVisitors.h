@@ -10,6 +10,7 @@ namespace Spire
 {
     namespace Compiler
     {
+        class CompileOptions;
         class ShaderCompiler;
         class ShaderLinkInfo;
         class ShaderSymbol;
@@ -25,9 +26,8 @@ namespace Spire
             virtual void ProcessGlobalVar(VarDeclBase * var) = 0;
         };
 
-        SyntaxVisitor * CreateSemanticsVisitor(DiagnosticSink * err);
+        SyntaxVisitor * CreateSemanticsVisitor(DiagnosticSink * err, CompileOptions const& options);
         ICodeGenerator * CreateCodeGenerator(CompileResult & result);
-		class CompileOptions;
         SyntaxVisitor * CreateILCodeGenerator(DiagnosticSink * err, ILProgram * program, CompileOptions * options);
     }
 }

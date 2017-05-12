@@ -2854,6 +2854,35 @@ namespace Spire
                 }
                 rs = expr;
             }
+            else if( LookAheadToken(TokenType::LBrace) )
+            {
+                RefPtr<InitializerListExpr> initExpr = new InitializerListExpr();
+                FillPosition(initExpr.Ptr());
+
+                // Initializer list
+                ReadToken(TokenType::LBrace);
+
+                List<RefPtr<ExpressionSyntaxNode>> exprs;
+
+                for(;;)
+                {
+                    if(AdvanceIfMatch(this, TokenType::RBrace))
+                        break;
+
+                    auto expr = ParseArgExpr();
+                    if( expr )
+                    {
+                        initExpr->args.Add(expr);
+                    }
+
+                    if(AdvanceIfMatch(this, TokenType::RBrace))
+                        break;
+
+                    ReadToken(TokenType::Comma);
+                }
+                rs = initExpr;
+            }
+
             else if (LookAheadToken(TokenType::IntLiterial) ||
                 LookAheadToken(TokenType::DoubleLiterial))
             {

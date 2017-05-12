@@ -1,5 +1,7 @@
 #include "SyntaxVisitors.h"
 
+#include "ShaderCompiler.h"
+
 #include <assert.h>
 
 namespace Spire
@@ -56,14 +58,21 @@ namespace Spire
         {
             ProgramSyntaxNode * program = nullptr;
             FunctionSyntaxNode * function = nullptr;
+            CompileOptions const* options = nullptr;
 
             // lexical outer statements
             List<StatementSyntaxNode*> outerStmts;
         public:
-            SemanticsVisitor(DiagnosticSink * pErr)
-                :SyntaxVisitor(pErr)
+            SemanticsVisitor(
+                DiagnosticSink * pErr,
+                CompileOptions const& options)
+                : SyntaxVisitor(pErr)
+                , options(&options)
             {
             }
+
+            CompileOptions const& getOptions() { return *options; }
+
         public:
             // Translate Types
             RefPtr<ExpressionType> typeResult;
@@ -759,6 +768,12 @@ namespace Spire
                 RefPtr<ExpressionType>			toType,
                 RefPtr<ExpressionSyntaxNode>	fromExpr)
             {
+                // If semantic checking is being suppressed, then don't bother.
+                if( getOptions().flags & SPIRE_COMPILE_FLAG_NO_CHECKING )
+                {
+                    return fromExpr;
+                }
+
                 RefPtr<ExpressionSyntaxNode> expr;
                 if (!TryCoerceImpl(
                     toType,
@@ -4643,9 +4658,11 @@ namespace Spire
             SemanticsVisitor & operator = (const SemanticsVisitor &) = delete;
         };
 
-        SyntaxVisitor * CreateSemanticsVisitor(DiagnosticSink * err)
+        SyntaxVisitor * CreateSemanticsVisitor(
+            DiagnosticSink * err,
+            CompileOptions const& options)
         {
-            return new SemanticsVisitor(err);
+            return new SemanticsVisitor(err, options);
         }
 
     }

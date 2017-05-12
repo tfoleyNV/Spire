@@ -1869,6 +1869,16 @@ namespace Spire
             virtual ProjectExpressionSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
+        // An initializer list, e.g. `{ 1, 2, 3 }`
+        class InitializerListExpr : public ExpressionSyntaxNode
+        {
+        public:
+            List<RefPtr<ExpressionSyntaxNode>> args;
+
+            virtual InitializerListExpr * Clone(CloneContext & ctx) override;
+            virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
+        };
+
         // A base expression being applied to arguments: covers
         // both ordinary `()` function calls and `<>` generic application
         class AppExprBase : public ExpressionSyntaxNode

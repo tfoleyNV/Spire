@@ -1915,5 +1915,19 @@ namespace Spire
             return this;
         }
 
+        //
+
+        InitializerListExpr* InitializerListExpr::Clone(CloneContext & ctx)
+        {
+            return this;
+        }
+
+        RefPtr<SyntaxNode> InitializerListExpr::Accept(SyntaxVisitor * visitor)
+        {
+            // TODO(tfoley): This case obviously needs to be implemented...
+            return this;
+        }
+
+
     }
 }
