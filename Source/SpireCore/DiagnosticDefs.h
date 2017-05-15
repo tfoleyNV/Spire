@@ -52,8 +52,9 @@ DIAGNOSTIC(    4, Error, cannotWriteOutputFile, "cannot write output file '$0'."
 // 1xxxx - Lexical anaylsis
 //
 
-DIAGNOSTIC(10000, Error, illegalCharacter, "Illegal character '\\x$0'");
-DIAGNOSTIC(10001, Error, illegalCharacterLiteral, "Illegal character literial.");
+DIAGNOSTIC(10000, Error, illegalCharacterPrint, "illegal character '$0'");
+DIAGNOSTIC(10000, Error, illegalCharacterHex, "illegal character (0x$0)");
+DIAGNOSTIC(10001, Error, illegalCharacterLiteral, "illegal character literal");
 
 //
 // 15xxx - Preprocessing

@@ -88,7 +88,17 @@ namespace Spire
                 switch (errType)
                 {
                 case CoreLib::Text::TokenizeErrorType::InvalidCharacter:
-                    sink->diagnose(pos, Diagnostics::illegalCharacter, String((unsigned char)curChar, 16));
+                    // Check if inside the ASCII "printable" range
+                    if(curChar >= 0x20 && curChar <=  0x7E)
+                    {
+                        char buffer[] = { curChar, 0 };
+                        sink->diagnose(pos, Diagnostics::illegalCharacterPrint, buffer);
+                    }
+                    else
+                    {
+                        // Fallback: print as hexadecimal
+                        sink->diagnose(pos, Diagnostics::illegalCharacterHex, String((unsigned char)curChar, 16));
+                    }
                     break;
                 case CoreLib::Text::TokenizeErrorType::InvalidEscapeSequence:
                     sink->diagnose(pos, Diagnostics::illegalCharacterLiteral);
