@@ -512,6 +512,32 @@ static void EmitType(EmitContext* context, RefPtr<ExpressionType> type, EDeclara
     }
     else if (auto texType = type->As<TextureType>())
     {
+        switch(texType->getAccess())
+        {
+        case SPIRE_RESOURCE_ACCESS_READ:
+            break;
+
+        case SPIRE_RESOURCE_ACCESS_READ_WRITE:
+            Emit(context, "RW");
+            break;
+
+        case SPIRE_RESOURCE_ACCESS_RASTER_ORDERED:
+            Emit(context, "RasterizerOrdered");
+            break;
+
+        case SPIRE_RESOURCE_ACCESS_APPEND:
+            Emit(context, "Append");
+            break;
+
+        case SPIRE_RESOURCE_ACCESS_CONSUME:
+            Emit(context, "Consume");
+            break;
+
+        default:
+            assert(!"unreachable");
+            break;
+        }
+
         switch (texType->GetBaseShape())
         {
         case TextureType::Shape1D:		Emit(context, "Texture1D");		break;

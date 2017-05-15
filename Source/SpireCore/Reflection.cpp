@@ -590,20 +590,16 @@ static NodePtr<ReflectionTypeLayoutNode> GenerateReflectionTypeLayout(
     return GenerateReflectionTypeLayout(context, typeNode, typeLayout);
 }
 
+extern bool isGlobalVariableAShaderParameter(
+    VarDeclBase*    varDecl);
+
 static bool IsReflectionParameter(
     ReflectionGenerationContext*        context,
     RefPtr<Decl>                        decl)
 {
     if( auto varDecl = decl.As<VarDeclBase>() )
     {
-        // We need to determine if this variable represents a shader
-        // parameter, or just an ordinary global variable...
-        if(varDecl->HasModifier<HLSLStaticModifier>())
-            return false;
-
-        // TODO(tfoley): there may be other cases that we need to handle here
-
-        return true;
+        return isGlobalVariableAShaderParameter(varDecl.Ptr());
     }
     else
     {

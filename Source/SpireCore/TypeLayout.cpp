@@ -424,8 +424,22 @@ LayoutInfo GetLayoutImpl(
     }
     else if (auto textureType = type->As<TextureType>())
     {
+        // TODO: the logic here should really be defined by the rules,
+        // and not at this top level...
+        LayoutResourceKind kind = LayoutResourceKind::Invalid;
+        switch( textureType->getAccess() )
+        {
+        default:
+            kind = LayoutResourceKind::UnorderedAccess;
+            break;
+
+        case SPIRE_RESOURCE_ACCESS_READ:
+            kind = LayoutResourceKind::ShaderResource;
+            break;
+        }
+
         return GetSimpleLayoutImpl(
-            rules->GetObjectLayout(LayoutResourceKind::ShaderResource),
+            rules->GetObjectLayout(kind),
             type,
             rules,
             outTypeLayout);

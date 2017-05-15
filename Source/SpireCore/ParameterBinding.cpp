@@ -143,13 +143,20 @@ struct ParameterBindingContext
 
 // Check whether a global variable declaration represents
 // a shader parameter, or is there for some other purpose.
-static bool IsGlobalVariableAShaderParameter(
-    ParameterBindingContext*    /*context*/,
-    RefPtr<VarDeclBase>         varDecl)
+//
+// TODO: this *probably* needs to be parameterized on language rules.
+bool isGlobalVariableAShaderParameter(
+    VarDeclBase*    varDecl)
 {
     // We need to determine if this variable represents a shader
     // parameter, or just an ordinary global variable...
+
+    // HLSL `static` modifier indicates "thread local"
     if(varDecl->HasModifier<HLSLStaticModifier>())
+        return false;
+
+    // HLSL `groupshared` modifier indicates "thread-group local"
+    if(varDecl->HasModifier<HLSLGroupSharedModifier>())
         return false;
 
     // TODO(tfoley): there may be other cases that we need to handle here
@@ -159,6 +166,14 @@ static bool IsGlobalVariableAShaderParameter(
     // as a shader parameter...
 
     return true;
+}
+
+
+static bool IsGlobalVariableAShaderParameter(
+    ParameterBindingContext*    /*context*/,
+    RefPtr<VarDeclBase>         varDecl)
+{
+    return isGlobalVariableAShaderParameter(varDecl.Ptr());
 }
 
 struct LayoutSemanticInfo
