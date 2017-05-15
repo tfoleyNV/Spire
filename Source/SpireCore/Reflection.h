@@ -37,7 +37,7 @@ enum class ReflectionNodeFlavor : uint8_t
     Blob,
     Type,
     TypeLayout,
-    MultiTypeLayout,
+    ParameterBlockLayout,
     Parameter,
     Variable,
     VariableLayout,
@@ -363,7 +363,12 @@ struct ReflectionVariableNode : ReflectionVariableBaseNode
 };
 
 struct ReflectionVariableLayoutBaseNode : ReflectionVariableBaseNode
-{};
+{
+    char const* GetName() const;
+    ReflectionTypeLayoutNode* GetTypeLayout() const;
+    ReflectionTypeNode* GetType() const { return GetTypeLayout()->GetType(); }
+    SpireParameterCategory GetCategory() const;
+};
 
 
 struct ReflectionVariableLayoutNode : ReflectionVariableLayoutBaseNode
@@ -439,9 +444,10 @@ struct ReflectionStructTypeNode : ReflectionTypeNode
     }
 };
 
-// A layout node for a `struct` type is stored similarly, but it stores
-// variable layout nodes for the fields, instead of variable nodes.
-struct ReflectionStructTypeLayoutNode : ReflectionTypeLayoutNode
+// Base case for `struct` type layout nodes, which will be
+// refined based on whether full or partial parameter layout
+// information is needed per-field.
+struct ReflectionStructTypeLayoutBaseNode : ReflectionTypeLayoutNode
 {
     // Convenience routine to access the underlying type node as a struct type
     ReflectionStructTypeNode* GetType() const { return (ReflectionStructTypeNode*) type.Ptr(); }
@@ -449,6 +455,15 @@ struct ReflectionStructTypeLayoutNode : ReflectionTypeLayoutNode
     // Get field count from underlying type
     uint32_t GetFieldCount() const { return GetType()->GetFieldCount(); }
 
+    // Dynamic dispatch case for getting a field by index.
+    ReflectionVariableLayoutBaseNode* GetFieldByIndex(size_t index) const;
+};
+
+
+// A layout node for a `struct` type is stored similarly, but it stores
+// variable layout nodes for the fields, instead of variable nodes.
+struct ReflectionStructTypeLayoutNode : ReflectionStructTypeLayoutBaseNode
+{
     // Indexing logic for fields in a struct type layout matches the type case
     ReflectionVariableLayoutNode* GetFieldByIndex(size_t index) const
     {
@@ -599,22 +614,38 @@ struct ReflectionParameterNode : ReflectionVariableLayoutBaseNode
     uint32_t GetSpace(SpireParameterCategory category);
 };
 
+// A fully-general collection of parameters, stored similarly
+// to a `struct` type layout, but instead of the fields being
+// "variable layout" nodes, they are full-fledged parameter nodes.
+struct ReflectionParameterBlockLayoutNode : ReflectionStructTypeLayoutBaseNode
+{
+    // Indexing logic for fields in a struct type layout matches the type case
+    ReflectionParameterNode* GetFieldByIndex(size_t index) const
+    {
+        if(!this) return nullptr;
+        auto fields = (ReflectionParameterNode*) (this + 1);
+        return &fields[index];
+    }
+};
+
+
 struct ReflectionBlob : ReflectionNode
 {
     // total size of the reflection data, in bytes
     size_t reflectionDataSize;
-    ReflectionSize parameterCount;
-    ReflectionSize pad;
+
+    ReflectionPtr<ReflectionTypeLayoutNode> globalParams;
 
     static ReflectionBlob* Create(
         CollectionOfTranslationUnits*   program);
 
-    uint32_t GetParameterCount() const { return parameterCount; }
-    ReflectionParameterNode* GetParameterByIndex(uint32_t index) const
+    ReflectionTypeLayoutNode* getGlobalParamsTypeLayout() const
     {
-        auto params = (ReflectionParameterNode*) (this + 1);
-        return &params[index];
+        return globalParams;
     }
+
+    uint32_t GetParameterCount() const;
+    ReflectionVariableLayoutBaseNode* GetParameterByIndex(uint32_t index) const;
 
     size_t GetReflectionDataSize() const
     {
@@ -669,6 +700,70 @@ inline ReflectionTypeNode* ReflectionTypeNode::UnwrapArrays()
         auto arrayType = type->AsArray();
         if(!arrayType) return type;
         type = arrayType->GetElementType();
+    }
+}
+
+//
+
+inline char const* ReflectionVariableLayoutBaseNode::GetName() const
+{
+    if(!this) return nullptr;
+    switch(GetFlavor())
+    {
+    default: return nullptr;
+
+    case ReflectionNodeFlavor::VariableLayout:
+        return ((ReflectionVariableLayoutNode*) this)->GetName();
+
+    case ReflectionNodeFlavor::Parameter:
+        return ((ReflectionParameterNode*) this)->GetName();
+    }
+}
+
+inline ReflectionTypeLayoutNode* ReflectionVariableLayoutBaseNode::GetTypeLayout() const
+{
+    if(!this) return nullptr;
+    switch(GetFlavor())
+    {
+    default: return nullptr;
+
+    case ReflectionNodeFlavor::VariableLayout:
+        return ((ReflectionVariableLayoutNode*) this)->GetTypeLayout();
+
+    case ReflectionNodeFlavor::Parameter:
+        return ((ReflectionParameterNode*) this)->GetTypeLayout();
+    }
+}
+
+inline SpireParameterCategory ReflectionVariableLayoutBaseNode::GetCategory() const
+{
+    if(!this) return SPIRE_PARAMETER_CATEGORY_NONE;
+    switch(GetFlavor())
+    {
+    default: return SPIRE_PARAMETER_CATEGORY_NONE;
+
+    case ReflectionNodeFlavor::VariableLayout:
+        return ((ReflectionVariableLayoutNode*) this)->GetCategory();
+
+    case ReflectionNodeFlavor::Parameter:
+        return ((ReflectionParameterNode*) this)->GetCategory();
+    }
+}
+
+//
+
+inline ReflectionVariableLayoutBaseNode* ReflectionStructTypeLayoutBaseNode::GetFieldByIndex(size_t index) const
+{
+    if(!this) return nullptr;
+    switch(GetFlavor())
+    {
+    default: return nullptr;
+
+    case ReflectionNodeFlavor::TypeLayout:
+        return ((ReflectionStructTypeLayoutNode*) this)->GetFieldByIndex(index);
+
+    case ReflectionNodeFlavor::ParameterBlockLayout:
+        return ((ReflectionParameterBlockLayoutNode*) this)->GetFieldByIndex(index);
     }
 }
 

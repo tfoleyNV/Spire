@@ -615,6 +615,7 @@ static bool IsReflectionParameter(
 static void GenerateReflectionParameter(
     ReflectionGenerationContext*        context,
     RefPtr<VarLayout>                   paramLayout,
+    NodePtr<ReflectionVariableNode>     var,
     NodePtr<ReflectionParameterNode>    parameter)
 {
     auto varDecl = paramLayout->varDecl.GetDecl();
@@ -680,6 +681,75 @@ static void GenerateReflectionParameter(
     }
 }
 
+static NodePtr<ReflectionParameterBlockLayoutNode> generateReflectionParameterBlock(
+    ReflectionGenerationContext*    context,
+    RefPtr<StructTypeLayout>        typeLayout)
+{
+    // How many fields do we need to consider?
+    size_t fieldCount = typeLayout->fields999.Count();
+
+    // Need to create a node for the plain old type as well
+    NodePtr<ReflectionStructTypeNode> type = AllocateNode<ReflectionStructTypeNode>(context);
+    NodePtr<ReflectionVariableNode> fields = AllocateNodes<ReflectionVariableNode>(context, fieldCount);
+
+    type->flavor = ReflectionNodeFlavor::TypeLayout;
+    type->SetKind(SPIRE_TYPE_KIND_STRUCT);
+    type->SetFieldCount(fieldCount);
+
+    // ALlocate space for the parameter block layout and then its fields
+    NodePtr<ReflectionParameterBlockLayoutNode> block = AllocateNode<ReflectionParameterBlockLayoutNode>(context);
+    NodePtr<ReflectionParameterNode> fieldLayouts = AllocateNodes<ReflectionParameterNode>(context, fieldCount);
+
+    block->flavor = ReflectionNodeFlavor::ParameterBlockLayout;
+    block->type = type;
+
+    // Now allocate space for the parameters (to go right after the blob itself) and fill them in
+    size_t fieldIndex = 0;
+    for( auto fieldLayout : typeLayout->fields999 )
+    {
+        auto field = fieldLayout->varDecl;
+
+        GenerateReflectionVar(context, field, fields + fieldIndex);
+
+        GenerateReflectionParameter(context, fieldLayout, fields + fieldIndex, fieldLayouts + fieldIndex);
+        fieldIndex++;
+    }
+    assert(fieldIndex == fieldCount);
+
+    return block;
+}
+
+static NodePtr<ReflectionTypeLayoutNode> generateReflectionParameterBlock(
+    ReflectionGenerationContext*    context,
+    RefPtr<TypeLayout>              typeLayout)
+{
+    if(auto structTypeLayout = typeLayout.As<StructTypeLayout>())
+    {
+        return generateReflectionParameterBlock(context, structTypeLayout);
+    }
+    else if( auto constantBufferTypeLayout = typeLayout.As<ConstantBufferTypeLayout>() )
+    {
+        auto elementTypeLayoutNode = generateReflectionParameterBlock(context, constantBufferTypeLayout->elementTypeLayout);
+
+        auto constantBufferTypeNode = AllocateNode<ReflectionConstantBufferTypeNode>(context);
+        constantBufferTypeNode->flavor = ReflectionNodeFlavor::Type;
+        constantBufferTypeNode->SetKind(SPIRE_TYPE_KIND_CONSTANT_BUFFER);
+        constantBufferTypeNode->elementType = elementTypeLayoutNode;
+
+        auto constantBufferTypeLayoutNode = AllocateNode<ReflectionTypeLayoutNode>(context);
+        constantBufferTypeLayoutNode->flavor = ReflectionNodeFlavor::TypeLayout;
+        constantBufferTypeLayoutNode->type = constantBufferTypeNode;
+
+        // TODO(tfoley): We really need a *variable* layout node here,
+        // because we need some place to store the binding info...
+        return constantBufferTypeLayoutNode;
+    }
+    else
+    {
+        assert(!"unexpected");
+        return NodePtr<ReflectionTypeLayoutNode>();
+    }
+}
 
 static ReflectionBlob* GenerateReflectionBlob(
     ReflectionGenerationContext*    context,
@@ -697,19 +767,11 @@ static ReflectionBlob* GenerateReflectionBlob(
     NodePtr<ReflectionBlob> blob = AllocateNode<ReflectionBlob>(context);
     blob->flavor = ReflectionNodeFlavor::Blob;
 
-    // First let's count how many parameters there are to consider
-    size_t parameterCount = programLayout->fields999.Count();
-    blob->parameterCount = (ReflectionSize) parameterCount;
+    blob->globalParams = generateReflectionParameterBlock(
+        context,
+        programLayout->globalScopeLayout);
 
-    // Now allocate space for the parameters (to go right after the blob itself) and fill them in
-    NodePtr<ReflectionParameterNode> parameters = AllocateNodes<ReflectionParameterNode>(context, parameterCount);
-    size_t parameterIndex = 0;
-    for( auto paramLayout : programLayout->fields999 )
-    {
-        GenerateReflectionParameter(context, paramLayout, parameters + parameterIndex);
-        parameterIndex++;
-    }
-    assert(parameterIndex == parameterCount);
+
 
     // We are done emitting things, so lets look at what we got
 
@@ -1202,7 +1264,7 @@ static void emitReflectionBindingInfoJSON(PrettyWriter& writer, ReflectionParame
                 writer,
                 binding.category,
                 binding.index,
-                1, // TODO: compute the count to use
+                (ReflectionSize) param->GetTypeLayout()->GetSize(binding.category),
                 binding.space);
 
             write(writer,"}");
@@ -1219,7 +1281,7 @@ static void emitReflectionBindingInfoJSON(PrettyWriter& writer, ReflectionParame
             writer,
             info->category,
             info->index,
-            1, // TODO: compute the count to use
+            (ReflectionSize) param->GetTypeLayout()->GetSize(info->category),
             info->space);
 
         dedent(writer);
@@ -1227,7 +1289,19 @@ static void emitReflectionBindingInfoJSON(PrettyWriter& writer, ReflectionParame
     }
 }
 
-static void emitReflectionParamJSON(PrettyWriter& writer, ReflectionParameterNode* param)
+static void emitReflectionBindingInfoJSON(PrettyWriter& writer, ReflectionVariableLayoutBaseNode* varLayout)
+{
+    if( varLayout->GetFlavor() == ReflectionNodeFlavor::Parameter )
+    {
+        emitReflectionBindingInfoJSON(writer, (ReflectionParameterNode*) varLayout);
+    }
+    else
+    {
+        assert(!"unimplemented");
+    }
+}
+
+static void emitReflectionParamJSON(PrettyWriter& writer, ReflectionVariableLayoutBaseNode* param)
 {
     write(writer, "{\n");
     indent(writer);
@@ -1396,5 +1470,51 @@ uint32_t ReflectionArrayTypeLayoutNode::GetElementStride(SpireParameterCategory 
     return (uint32_t) elementTypeLayout->GetSize(category);
 }
 
+//
+
+
+uint32_t ReflectionBlob::GetParameterCount() const
+{
+    auto gp = getGlobalParamsTypeLayout();
+    if( gp->GetKind() == SPIRE_TYPE_KIND_CONSTANT_BUFFER )
+    {
+        gp = ((ReflectionConstantBufferTypeNode*) gp->GetType())->GetElementType();
+    }
+
+    switch( gp->GetFlavor() )
+    {
+    default:
+        return 0;
+
+    case ReflectionNodeFlavor::ParameterBlockLayout:
+        return ((ReflectionParameterBlockLayoutNode*) gp)->GetFieldCount();
+
+    case ReflectionNodeFlavor::TypeLayout:
+        return ((ReflectionStructTypeLayoutNode*) gp)->GetFieldCount();
+        break;
+    }
+}
+
+ReflectionVariableLayoutBaseNode* ReflectionBlob::GetParameterByIndex(uint32_t index) const
+{
+    auto gp = getGlobalParamsTypeLayout();
+    if( gp->GetKind() == SPIRE_TYPE_KIND_CONSTANT_BUFFER )
+    {
+        gp = ((ReflectionConstantBufferTypeNode*) gp->GetType())->GetElementType();
+    }
+
+    switch( gp->GetFlavor() )
+    {
+    default:
+        return 0;
+
+    case ReflectionNodeFlavor::ParameterBlockLayout:
+        return ((ReflectionParameterBlockLayoutNode*) gp)->GetFieldByIndex(index);
+
+    case ReflectionNodeFlavor::TypeLayout:
+        return ((ReflectionStructTypeLayoutNode*) gp)->GetFieldByIndex(index);
+        break;
+    }
+}
 
 }}

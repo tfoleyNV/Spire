@@ -55,7 +55,7 @@ standard output = {
         },
         {
             "name": "ta",
-            "binding": {"kind": "shaderResource", "index": 1},
+            "binding": {"kind": "shaderResource", "index": 1, "count": 16},
             "type": {
                 "kind": "array",
                 "elementCount": 16,
@@ -82,7 +82,7 @@ standard output = {
         },
         {
             "name": "sa",
-            "binding": {"kind": "samplerState", "index": 1},
+            "binding": {"kind": "samplerState", "index": 1, "count": 4},
             "type": {
                 "kind": "array",
                 "elementCount": 4,

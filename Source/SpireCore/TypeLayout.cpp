@@ -290,6 +290,96 @@ LayoutInfo GetSimpleLayoutImpl(
     return info;
 }
 
+RefPtr<ConstantBufferTypeLayout>
+createConstantBufferTypeLayout(
+    RefPtr<ConstantBufferType>  constantBufferType,
+    RefPtr<TypeLayout>          elementTypeLayout,
+    LayoutRulesImpl*            rules)
+{
+    auto info = rules->GetObjectLayout(LayoutResourceKind::ConstantBuffer);
+
+    auto typeLayout = new ConstantBufferTypeLayout();
+
+    typeLayout->type = constantBufferType;
+    typeLayout->rules = rules;
+
+    typeLayout->elementTypeLayout = elementTypeLayout;
+
+    // The layout of the constant buffer if it gets stored
+    // in another constant buffer is just what we computed
+    // originally (which should be a single binding "slot"
+    // and hence no uniform data).
+    // 
+    typeLayout->uniforms = info;
+    assert(typeLayout->uniforms.size == 0);
+    assert(typeLayout->uniforms.alignment == 1);
+
+    // TODO(tfoley): There is a subtle question here of whether
+    // a constant buffer declaration that then contains zero
+    // bytes of uniform data should actually allocate a CB
+    // binding slot. For now I'm going to try to ignore it,
+    // but handling this robustly could let other code
+    // simply handle the "global scope" as a giant outer
+    // CB declaration...
+
+    // The CB will always allocate at least one resource
+    // binding slot for the CB itself.
+    typeLayout->resources.count = 1;
+    typeLayout->resources.kind = LayoutResourceKind::ConstantBuffer;
+    typeLayout->resources.next = 0;
+
+    // Now, if the element type itself had any resources, then
+    // we need to make these part of the layout for our CB
+    if( elementTypeLayout->resources.kind != LayoutResourceKind::Invalid )
+    {
+        RefPtr<TypeLayout::ResourceInfo>* link = &typeLayout->resources.next;
+        for( auto rr = &elementTypeLayout->resources; rr; rr = rr->next.Ptr() )
+        {
+            assert(rr->kind != LayoutResourceKind::Invalid);
+
+            // If we have nested constant buffers, then just increase the number of slots reserved
+            if( rr->kind == LayoutResourceKind::ConstantBuffer )
+            {
+                typeLayout->resources.count += rr->count;
+            }
+            else
+            {
+                // Otherwise, we are appending a new slot type to the array (need to make a copy here...)
+                RefPtr<TypeLayout::ResourceInfo> info = new TypeLayout::ResourceInfo();
+                info->kind = rr->kind;
+                info->count = rr->count;
+                info->next = nullptr;
+
+                *link = info;
+                link = &info->next;
+            }
+        }
+    }
+
+    return typeLayout;
+}
+
+RefPtr<ConstantBufferTypeLayout>
+createConstantBufferTypeLayout(
+    RefPtr<ConstantBufferType>  constantBufferType,
+    LayoutRulesImpl*            rules)
+{
+    // TODO(tfoley): need to compute the layout for the constant
+    // buffer's contents...
+    auto constantBufferLayoutRules = GetLayoutRulesImpl(
+        LayoutRule::HLSLConstantBuffer);
+
+    // Create and save type layout for the buffer contents.
+    auto elementTypeLayout = CreateTypeLayout(
+        constantBufferType->elementType.Ptr(),
+        constantBufferLayoutRules);
+
+    return createConstantBufferTypeLayout(
+        constantBufferType,
+        elementTypeLayout,
+        rules);
+}
+
 LayoutInfo GetLayoutImpl(
     ExpressionType*     type,
     LayoutRulesImpl*    rules,
@@ -317,73 +407,9 @@ LayoutInfo GetLayoutImpl(
         //
         if (outTypeLayout)
         {
-            auto typeLayout = new ConstantBufferTypeLayout();
-            *outTypeLayout = typeLayout;
-
-            typeLayout->type = type;
-            typeLayout->rules = rules;
-
-            // TODO(tfoley): need to compute the layout for the constant
-            // buffer's contents...
-            auto constantBufferLayoutRules = GetLayoutRulesImpl(
-                LayoutRule::HLSLConstantBuffer);
-
-            // Create and save type layout for the buffer contents.
-            auto elementTypeLayout = CreateTypeLayout(
-                constantBufferType->elementType.Ptr(),
-                constantBufferLayoutRules);
-            typeLayout->elementTypeLayout = elementTypeLayout;
-
-            // The layout of the constant buffer if it gets stored
-            // in another constant buffer is just what we computed
-            // originally (which should be a single binding "slot"
-            // and hence no uniform data).
-            // 
-            typeLayout->uniforms = info;
-            assert(typeLayout->uniforms.size == 0);
-            assert(typeLayout->uniforms.alignment == 1);
-
-            // TODO(tfoley): There is a subtle question here of whether
-            // a constant buffer declaration that then contains zero
-            // bytes of uniform data should actually allocate a CB
-            // binding slot. For now I'm going to try to ignore it,
-            // but handling this robustly could let other code
-            // simply handle the "global scope" as a giant outer
-            // CB declaration...
-
-            // The CB will always allocate at least one resource
-            // binding slot for the CB itself.
-            typeLayout->resources.count = 1;
-            typeLayout->resources.kind = LayoutResourceKind::ConstantBuffer;
-            typeLayout->resources.next = 0;
-
-            // Now, if the element type itself had any resources, then
-            // we need to make these part of the layout for our CB
-            if( elementTypeLayout->resources.kind != LayoutResourceKind::Invalid )
-            {
-                RefPtr<TypeLayout::ResourceInfo>* link = &typeLayout->resources.next;
-                for( auto rr = &elementTypeLayout->resources; rr; rr = rr->next.Ptr() )
-                {
-                    assert(rr->kind != LayoutResourceKind::Invalid);
-
-                    // If we have nested constant buffers, then just increase the number of slots reserved
-                    if( rr->kind == LayoutResourceKind::ConstantBuffer )
-                    {
-                        typeLayout->resources.count += rr->count;
-                    }
-                    else
-                    {
-                        // Otherwise, we are appending a new slot type to the array (need to make a copy here...)
-                        RefPtr<TypeLayout::ResourceInfo> info = new TypeLayout::ResourceInfo();
-                        info->kind = rr->kind;
-                        info->count = rr->count;
-                        info->next = nullptr;
-
-                        *link = info;
-                        link = &info->next;
-                    }
-                }
-            }
+            *outTypeLayout = createConstantBufferTypeLayout(
+                constantBufferType,
+                rules);
         }
 
         return info;

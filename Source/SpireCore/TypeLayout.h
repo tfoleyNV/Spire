@@ -241,18 +241,36 @@ public:
     // An ordered list of layouts for the known fields
     List<RefPtr<VarLayout>> fields999;
 
-    // Map a variable to its layout directly
+    // Map a variable to its layout directly.
+    //
+    // Note that in the general case, there may be entries
+    // in the `fields` array that came from multiple
+    // translation units, and in cases where there are
+    // multiple declarations of the same parameter, only
+    // one will appear in `fields`, while all of
+    // them will be reflected in `mapVarToLayout`.
+    //
     Dictionary<Decl*, RefPtr<VarLayout>> mapVarToLayout;
 };
 
 // Layout information for the global scope of a program
-class ProgramLayout : public StructTypeLayout
+class ProgramLayout : public RefObject
 {
-    // Note that a `ProgramLayout` may include entries in the
-    // `fields` array from multiple translation units, and in
-    // cases where multiple declarations of the same parameter
-    // occur, only one will appear in `fields`, while all of
-    // them will be reflected in `mapVarToLayout`.
+public:
+    // We store a layout for the declarations at the global
+    // scope. Note that this will *either* be a single
+    // `StructTypeLayout` with the fields stored directly,
+    // or it will be a single `ConstantBufferTypeLayout`,
+    // where the global-scope fields are the members of
+    // that constant buffer.
+    //
+    // The `struct` case will be used if there are no
+    // "naked" global-scope uniform variables, and the
+    // constant-buffer case will be used if there are
+    // (since a constant buffer will have to be allocated
+    // to store them).
+    //
+    RefPtr<TypeLayout> globalScopeLayout;
 };
 
 // Layout information for a particular shader entry point
@@ -382,6 +400,26 @@ inline size_t GetTypeAlignment(ILType* type, LayoutRule rule = LayoutRule::Std43
 {
     return GetLayout(type, rule).alignment;
 }
+
+//
+
+// Create a type layout for a constant buffer type.
+RefPtr<ConstantBufferTypeLayout>
+createConstantBufferTypeLayout(
+    RefPtr<ConstantBufferType>  constantBufferType,
+    LayoutRulesImpl*            rules);
+
+// Create a type layout for a constant buffer type,
+// in the case where we already know the layout
+// for the element type.
+RefPtr<ConstantBufferTypeLayout>
+createConstantBufferTypeLayout(
+    RefPtr<ConstantBufferType>  constantBufferType,
+    RefPtr<TypeLayout>          elementTypeLayout,
+    LayoutRulesImpl*            rules);
+
+
+//
 
 }}
 

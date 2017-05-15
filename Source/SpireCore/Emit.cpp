@@ -1243,9 +1243,55 @@ static void EmitFuncDecl(EmitContext* context, RefPtr<FunctionSyntaxNode> decl)
     }
 }
 
-static void EmitProgram(EmitContext* context, RefPtr<ProgramSyntaxNode> program, RefPtr<ProgramLayout> programLayout)
+static void EmitProgram(
+    EmitContext*                context,
+    RefPtr<ProgramSyntaxNode>   program,
+    RefPtr<ProgramLayout>       programLayout)
 {
-    EmitDeclsInContainerUsingLayout(context, program, programLayout);
+    // Layout information for the global scope is either an ordinary
+    // `struct` in the common case, or a constant buffer in the case
+    // where there were global-scope uniforms.
+    auto globalScopeLayout = programLayout->globalScopeLayout;
+    if( auto globalStructLayout = globalScopeLayout.As<StructTypeLayout>() )
+    {
+        // The `struct` case is easy enough to handle: we just
+        // emit all the declarations directly, using their layout
+        // information as a guideline.
+        EmitDeclsInContainerUsingLayout(context, program, globalStructLayout);
+    }
+    else if(auto globalConstantBufferLayout = globalScopeLayout.As<ConstantBufferTypeLayout>())
+    {
+        // TODO: the `cbuffer` case really needs to be emitted very
+        // carefully, but that is beyond the scope of what a simple rewriter
+        // can easily do (without semantic analysis, etc.).
+        //
+        // The crux of the problem is that we need to collect all the
+        // global-scope uniforms (but not declarations that don't involve
+        // uniform storage...) and put them in a single `cbuffer` declaration,
+        // so that we can give it an explicit location. The fields in that
+        // declaration might use various type declarations, so we'd really
+        // need to emit all the type declarations first, and that involves
+        // some large scale reorderings.
+        //
+        // For now we will punt and just emit the declarations normally,
+        // and hope that the global-scope block (`$Globals`) gets auto-assigned
+        // the same location that we manually asigned it.
+
+        auto elementTypeLayout = globalConstantBufferLayout->elementTypeLayout;
+        auto elementTypeStructLayout = elementTypeLayout.As<StructTypeLayout>();
+
+        // We expect all constant buffers to contain `struct` types for now
+        assert(elementTypeStructLayout);
+
+        EmitDeclsInContainerUsingLayout(
+            context,
+            program,
+            elementTypeStructLayout);
+    }
+    else
+    {
+        assert(!"unexpected");
+    }
 }
 
 static void EmitDeclImpl(EmitContext* context, RefPtr<Decl> decl, RefPtr<VarLayout> layout)

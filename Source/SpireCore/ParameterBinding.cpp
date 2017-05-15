@@ -477,10 +477,13 @@ static void collectParameters(
 void GenerateParameterBindings(
     CollectionOfTranslationUnits*   program)
 {
+    // TODO: need to get this from somewhere!
+    auto rules = GetLayoutRulesImpl(LayoutRule::HLSLConstantBuffer);
+
     // Create a context to hold shared state during the process
     // of generating parameter bindings
     SharedParameterBindingContext sharedContext;
-    sharedContext.defaultLayoutRules = GetLayoutRulesImpl(LayoutRule::HLSLConstantBuffer);
+    sharedContext.defaultLayoutRules = rules;
 
     // Create a sub-context to collect parameters that get
     // declared into the global scope
@@ -497,6 +500,34 @@ void GenerateParameterBindings(
         generateParameterBindings(&context, parameter);
     }
 
+    bool anyGlobalUniforms = false;
+    for( auto& parameterInfo : sharedContext.parameters )
+    {
+        assert(parameterInfo->varLayouts.Count() != 0);
+        auto firstVarLayout = parameterInfo->varLayouts.First();
+
+        // Does the field have any uniform data?
+        if( firstVarLayout->typeLayout->uniforms.size != 0 )
+        {
+            anyGlobalUniforms = true;
+            break;
+        }
+    }
+
+    // If there are any global-scope uniforms, then we need to
+    // allocate a constant-buffer binding for them here.
+    ParameterBindingInfo globalConstantBufferBinding;
+    if( anyGlobalUniforms )
+    {
+        globalConstantBufferBinding.index =
+            context.usedResourceRanges[
+                (int)LayoutResourceKind::ConstantBuffer].Allocate(1);
+
+        // For now we only auto-generate bindings in space zero
+        globalConstantBufferBinding.space = 0;
+    }
+
+
     // Now walk through again to actually give everything
     // ranges of registers...
     for( auto& parameter : sharedContext.parameters )
@@ -504,23 +535,66 @@ void GenerateParameterBindings(
         completeBindingsForParameter(&context, parameter);
     }
 
-    // We now have a bunch of layout information, which we should
-    // record into a suitable object that represents the program
-    RefPtr<ProgramLayout> programLayout = new ProgramLayout;
-    programLayout->rules = context.layoutRules;
+    // TODO: need to deal with parameters declared inside entry-point
+    // parameter lists at some point...
 
+
+    // Next we need to create a type layout to reflect the information
+    // we have collected.
+
+    RefPtr<StructTypeLayout> globalScopeStructLayout = new StructTypeLayout();
+    globalScopeStructLayout->rules = context.layoutRules;
+
+    LayoutInfo structLayoutInfo = rules->BeginStructLayout();
     for( auto& parameterInfo : sharedContext.parameters )
     {
         assert(parameterInfo->varLayouts.Count() != 0);
         auto firstVarLayout = parameterInfo->varLayouts.First();
 
-        programLayout->fields999.Add(firstVarLayout);
+        // Does the field have any uniform data?
+        auto uniformInfo = firstVarLayout->typeLayout->uniforms;
+        size_t uniformSize = uniformInfo.size;
+        if( uniformSize != 0 )
+        {
+            // Make sure uniform fields get laid out properly...
+
+            size_t uniformOffset = rules->AddStructField(
+                &structLayoutInfo,
+                uniformInfo);
+
+            for( auto& varLayout : parameterInfo->varLayouts )
+            {
+                varLayout->uniformOffset = uniformOffset;
+            }
+        }
+
+        globalScopeStructLayout->fields999.Add(firstVarLayout);
 
         for( auto& varLayout : parameterInfo->varLayouts )
         {
-            programLayout->mapVarToLayout.Add(varLayout->varDecl.GetDecl(), varLayout);
+            globalScopeStructLayout->mapVarToLayout.Add(varLayout->varDecl.GetDecl(), varLayout);
         }
     }
+    rules->EndStructLayout(&structLayoutInfo);
+
+    RefPtr<TypeLayout> globalScopeLayout = globalScopeStructLayout;
+
+    // If there are global-scope uniforms, then we need to wrap
+    // up a global constant buffer type layout to hold them
+    if( anyGlobalUniforms )
+    {
+        auto globalConstantBufferLayout = createConstantBufferTypeLayout(
+            nullptr,
+            globalScopeStructLayout,
+            rules);
+
+        globalScopeLayout = globalConstantBufferLayout;
+    }
+
+    // We now have a bunch of layout information, which we should
+    // record into a suitable object that represents the program
+    RefPtr<ProgramLayout> programLayout = new ProgramLayout;
+    programLayout->globalScopeLayout = globalScopeLayout;
 
     program->layout = programLayout;
 }
