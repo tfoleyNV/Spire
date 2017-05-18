@@ -119,16 +119,6 @@ namespace Spire
             String LayoutString;
         };
 
-        // An attribute of the form `[Name]` or `[Name: Value]`
-        class SimpleAttribute : public Modifier
-        {
-        public:
-            String Key;
-            Token Value;
-
-            String const& GetValue() const { return Value.Content; }
-        };
-
         // An HLSL semantic
         class HLSLSemantic : public Modifier
         {
@@ -958,13 +948,6 @@ namespace Spire
 
             // The next declaration defined in the same container with the same name
             Decl* nextInContainerWithSameName = nullptr;
-
-
-            FilteredModifierList<SimpleAttribute> GetLayoutAttributes() { return GetModifiersOfType<SimpleAttribute>(); }
-
-            bool FindSimpleAttribute(String const& key, Token& outValue);
-            bool FindSimpleAttribute(String const& key, String& outValue);
-            bool HasSimpleAttribute(String const& key);
 
             bool IsChecked(DeclCheckState state) { return checkState >= state; }
             void SetCheckState(DeclCheckState state)
@@ -2128,6 +2111,8 @@ namespace Spire
             Token nameToken;
             List<RefPtr<ExpressionSyntaxNode>> args;
         };
+
+
 
         // HLSL modifiers for geometry shader input topology
         class HLSLGeometryShaderInputPrimitiveTypeModifier : public Modifier {};

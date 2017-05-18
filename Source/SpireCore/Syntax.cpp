@@ -7,45 +7,7 @@ namespace Spire
 {
     namespace Compiler
     {
-        // Decl
-
-        bool Decl::FindSimpleAttribute(String const& key, Token& outValue)
-        {
-            for (auto attr : GetLayoutAttributes())
-            {
-                if (attr->Key == key)
-                {
-                    outValue = attr->Value;
-                    return true;
-                }
-            }
-            return false;
-        }
-        bool Decl::FindSimpleAttribute(String const& key, String& outValue)
-        {
-            for (auto attr : GetLayoutAttributes())
-            {
-                if (attr->Key == key)
-                {
-                    outValue = attr->Value.Content;
-                    return true;
-                }
-            }
-            return false;
-        }
-        bool Decl::HasSimpleAttribute(String const& key)
-        {
-            for (auto attr : GetLayoutAttributes())
-            {
-                if (attr->Key == key)
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        //
+        // BasicExpressionType
 
         bool BasicExpressionType::EqualsImpl(const ExpressionType * type) const
         {

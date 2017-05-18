@@ -692,13 +692,13 @@ static void EmitLoopAttributes(EmitContext* context, RefPtr<StatementSyntaxNode>
     // that turns abstract syntax into a concrete hierarchy of attribute types (e.g.,
     // a specific `LoopModifier` or `UnrollModifier`).
 
-    for(auto attr : decl->GetModifiersOfType<SimpleAttribute>())
+    for(auto attr : decl->GetModifiersOfType<HLSLUncheckedAttribute>())
     {
-        if(attr->Key == "loop")
+        if(attr->nameToken.Content == "loop")
         {
             Emit(context, "[loop]");
         }
-        else if(attr->Key == "unroll")
+        else if(attr->nameToken.Content == "unroll")
         {
             Emit(context, "[unroll]");
         }
