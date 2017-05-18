@@ -6,6 +6,8 @@
 
 #include "../../Spire.h"
 
+#define SPIRE_EXHAUSTIVE_SWITCH() default: assert(!"unexpected"); break;
+
 namespace Spire {
 namespace Compiler {
 
@@ -529,25 +531,43 @@ SimpleSemanticInfo decomposeSimpleSemantic(
     return info;
 }
 
-static void processEntryPointInput(
-    ParameterBindingContext*    context,
-    RefPtr<ExpressionType>      type,
-    HLSLSimpleSemantic*         semantic)
+enum class EntryPointParameterDirection
 {
-    // Skip inputs without an explicit seamntic?
-    if(!semantic)
-        return;
+    Input,
+    Output,
+};
 
-    // TODO: actually capture information here!
+struct EntryPointParameterState
+{
+    String*                         optSemanticName;
+    int*                            ioSemanticIndex;
+    EntryPointParameterDirection    direction;
+    int                             semanticSlotCount;
+};
+
+static void processSimpleEntryPointInput(
+    ParameterBindingContext*        context,
+    RefPtr<ExpressionType>          type,
+    EntryPointParameterState const& state)
+{
+    auto optSemanticName    =  state.optSemanticName;
+    auto semanticIndex      = *state.ioSemanticIndex;
+    auto semanticSlotCount  =  state.semanticSlotCount;
 }
 
 static void processSimpleEntryPointOutput(
-    ParameterBindingContext*    context,
-    RefPtr<ExpressionType>      type,
-    SimpleSemanticInfo&         ioSemanticInfo)
+    ParameterBindingContext*        context,
+    RefPtr<ExpressionType>          type,
+    EntryPointParameterState const& state)
 {
-    auto semanticName = ioSemanticInfo.name;
-    auto semanticIndex = ioSemanticInfo.index++;
+    auto optSemanticName    =  state.optSemanticName;
+    auto semanticIndex      = *state.ioSemanticIndex;
+    auto semanticSlotCount  =  state.semanticSlotCount;
+
+    if(!optSemanticName)
+        return;
+
+    auto semanticName = *optSemanticName;
 
     // Note: I'm just doing something expedient here and detecting `SV_Target`
     // outputs and claiming the appropriate register range right away.
@@ -556,30 +576,90 @@ static void processSimpleEntryPointOutput(
     // once we've gone to the trouble of looking it all up...
     if( semanticName.ToLower() == "sv_target" )
     {
-        context->usedResourceRanges[int(LayoutResourceKind::UnorderedAccess)].Add(semanticIndex, semanticIndex+1);
+        context->usedResourceRanges[int(LayoutResourceKind::UnorderedAccess)].Add(semanticIndex, semanticIndex + semanticSlotCount);
     }
 }
 
-static void processEntryPointOutput(
-    ParameterBindingContext*    context,
-    RefPtr<ExpressionType>      type,
-    SimpleSemanticInfo&         ioSemanticInfo)
+static void processSimpleEntryPointParameter(
+    ParameterBindingContext*        context,
+    RefPtr<ExpressionType>          type,
+    EntryPointParameterState const& inState,
+    int                             semanticSlotCount = 1)
+{
+    EntryPointParameterState state = inState;
+    state.semanticSlotCount = semanticSlotCount;
+
+    switch( state.direction )
+    {
+    case EntryPointParameterDirection::Input:
+        processSimpleEntryPointInput(context, type, state);
+        break;
+
+    case EntryPointParameterDirection::Output:
+        processSimpleEntryPointOutput(context, type, state);
+        break;
+
+    SPIRE_EXHAUSTIVE_SWITCH()
+    }
+
+    *state.ioSemanticIndex += state.semanticSlotCount;
+}
+
+static void processEntryPointParameter(
+    ParameterBindingContext*        context,
+    RefPtr<ExpressionType>          type,
+    EntryPointParameterState const& state);
+
+static void processEntryPointParameterWithPossibleSemantic(
+    ParameterBindingContext*        context,
+    Decl*                           declForSemantic,
+    RefPtr<ExpressionType>          type,
+    EntryPointParameterState const& state)
+{
+    // If there is no explicit semantic already in effect, *and* we find an explicit
+    // semantic on the associated declaration, then we'll use it.
+    if( !state.optSemanticName )
+    {
+        if( auto semantic = declForSemantic->FindModifier<HLSLSimpleSemantic>() )
+        {
+            auto semanticInfo = decomposeSimpleSemantic(semantic);
+            int semanticIndex = semanticInfo.index;
+
+            EntryPointParameterState subState = state;
+            subState.optSemanticName = &semanticInfo.name;
+            subState.ioSemanticIndex = &semanticIndex;
+
+            processEntryPointParameter(context, type, subState);
+        }
+    }
+
+    // Default case: either there was an explicit semantic in effect already,
+    // *or* we couldn't find an explicit semantic to apply on the given
+    // declaration, so we will just recursive with whatever we have at
+    // the moment.
+    processEntryPointParameter(context, type, state);
+}
+
+
+static void processEntryPointParameter(
+    ParameterBindingContext*        context,
+    RefPtr<ExpressionType>          type,
+    EntryPointParameterState const& state)
 {
     // Scalar and vector types are treated as outputs directly
     if(auto basicType = type->As<BasicExpressionType>())
     {
-        processSimpleEntryPointOutput(context, basicType, ioSemanticInfo);
+        processSimpleEntryPointParameter(context, basicType, state);
     }
     else if(auto basicType = type->As<VectorExpressionType>())
     {
-        processSimpleEntryPointOutput(context, basicType, ioSemanticInfo);
+        processSimpleEntryPointParameter(context, basicType, state);
     }
     // A matrix is processed as if it was an array of rows
     else if( auto matrixType = type->As<MatrixExpressionType>() )
     {
         auto rowCount = GetIntVal(matrixType->rowCount);
-
-        assert(!"unimplemented");
+        processSimpleEntryPointParameter(context, basicType, state, rowCount);
     }
     else if( auto arrayType = type->As<ArrayExpressionType>() )
     {
@@ -587,7 +667,7 @@ static void processEntryPointOutput(
 
         for( int ii = 0; ii < elementCount; ++ii )
         {
-            processEntryPointOutput(context, arrayType->BaseType, ioSemanticInfo);
+            processEntryPointParameter(context, arrayType->BaseType, state);
         }
 
         assert(!"unimplemented");
@@ -607,7 +687,11 @@ static void processEntryPointOutput(
             // Need to recursively walk the fields of the structure now...
             for( auto field : structDeclRef.GetFields() )
             {
-                processEntryPointOutput(context, field.GetType(), ioSemanticInfo);
+                processEntryPointParameterWithPossibleSemantic(
+                    context,
+                    field.GetDecl(),
+                    field.GetType(),
+                    state);
             }
         }
         else
@@ -619,32 +703,6 @@ static void processEntryPointOutput(
     {
         assert(!"unimplemented");
     }
-}
-
-static void processEntryPointOutput(
-    ParameterBindingContext*    context,
-    RefPtr<ExpressionType>      type,
-    HLSLSimpleSemantic*         semantic)
-{
-    // Skip outputs without an explicit seamntic?
-    if(!semantic)
-        return;
-
-    // Need to break up semantic into name/index
-    auto semanticInfo = decomposeSimpleSemantic(semantic);
-    processEntryPointOutput(context, type, semanticInfo);
-}
-
-static HLSLSimpleSemantic* findSimpleSemantic(
-    ParameterBindingContext*    context,
-    Decl*                       decl)
-{
-    // TODO: probably need to validate we don't have multiple semantics
-    auto semantic = decl->FindModifier<HLSLSimpleSemantic>();
-
-    // TODO: is it our job to raise an error if there is no semantic?
-
-    return semantic;
 }
 
 static void collectEntryPointParameters(
@@ -683,32 +741,57 @@ static void collectEntryPointParameters(
     //
     // TODO: check whether we should enumerate the parameters before the return type, or vice versa
 
+    int defaultSemanticIndex = 0;
+
+    EntryPointParameterState state;
+    state.ioSemanticIndex = &defaultSemanticIndex;
+    state.optSemanticName = nullptr;
+    state.semanticSlotCount = 0;
+
     for( auto m : entryPointFuncDecl->Members )
     {
         auto paramDecl = m.As<VarDeclBase>();
         if(!paramDecl)
             continue;
 
-        // We have an entry-point parameter, and need to figure out what to do with it
+        // We have an entry-point parameter, and need to figure out what to do with it.
 
-        auto semantic = findSimpleSemantic(context, paramDecl.Ptr());
-
+        // If it appears to be an input, process it as such.
         if( paramDecl->HasModifier<InModifier>() || paramDecl->HasModifier<InOutModifier>() || !paramDecl->HasModifier<OutModifier>() )
         {
-            processEntryPointInput(context, paramDecl->Type.type, semantic);
+            state.direction = EntryPointParameterDirection::Input;
+
+            processEntryPointParameterWithPossibleSemantic(
+                context,
+                paramDecl.Ptr(),
+                paramDecl->Type.type,
+                state);
         }
 
+        // If it appears to be an output, process it as such.
         if(paramDecl->HasModifier<OutModifier>() || paramDecl->HasModifier<InOutModifier>())
         {
-            processEntryPointOutput(context, paramDecl->Type.type, semantic);
+            state.direction = EntryPointParameterDirection::Output;
+
+            processEntryPointParameterWithPossibleSemantic(
+                context,
+                paramDecl.Ptr(),
+                paramDecl->Type.type,
+                state);
         }
     }
 
+    // If we can find an output type for the entry point, then process it as
+    // an output parameter.
     if( auto resultType = entryPointFuncDecl->ReturnType.type )
     {
-        // We have a result type, and need to figure out what to do with it
-        auto semantic = findSimpleSemantic(context, entryPointFuncDecl);
-        processEntryPointOutput(context, resultType, semantic);
+        state.direction = EntryPointParameterDirection::Output;
+
+        processEntryPointParameterWithPossibleSemantic(
+            context,
+            entryPointFuncDecl,
+            resultType,
+            state);
     }
 }
 
