@@ -139,7 +139,33 @@ namespace Spire
                     assert(D3DCompile_);
                 }
 
-                String hlslCode = EmitHLSL(context);
+                // The HLSL compiler will try to "canonicalize" our input file path,
+                // and we don't want it to do that, because they it won't report
+                // the same locations on error messages that we would.
+                //
+                // To work around that, we prepend a custom `#line` directive.
+
+                String rawHlslCode = EmitHLSL(context);
+
+                StringBuilder hlslCodeBuilder;
+                hlslCodeBuilder << "#line 1 \"";
+                for(auto c : context.sourcePath)
+                {
+                    char buffer[] = { c, 0 };
+                    switch(c)
+                    {
+                    default:
+                        hlslCodeBuilder << buffer;
+                        break;
+
+                    case '\\':
+                        hlslCodeBuilder << "\\\\";
+                    }
+                }
+                hlslCodeBuilder << "\"\n";
+                hlslCodeBuilder << rawHlslCode;
+
+                auto hlslCode = hlslCodeBuilder.ProduceString();
 
                 ID3DBlob* codeBlob;
                 ID3DBlob* diagnosticsBlob;

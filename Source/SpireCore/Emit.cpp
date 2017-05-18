@@ -55,7 +55,7 @@ static void emitTextSpan(EmitContext* context, char const* textBegin, char const
     // Update our logical position
     // TODO(tfoley): Need to make "corelib" not use `int` for pointer-sized things...
     auto len = int(textEnd - textBegin);
-    context->loc.Pos += len;
+    context->loc.Col += len;
 }
 
 static void Emit(EmitContext* context, char const* textBegin, char const* textEnd)
@@ -80,7 +80,7 @@ static void Emit(EmitContext* context, char const* textBegin, char const* textEn
             // information on code positions
             emitTextSpan(context, spanBegin, spanEnd);
             context->loc.Line++;
-            context->loc.Pos = 1;
+            context->loc.Col = 1;
 
             // Start a new span for emit purposes
             spanBegin = spanEnd;
@@ -744,6 +744,7 @@ static void advanceToSourceLocation(
     
         context->loc.FileName = sourceLocation.FileName;
         context->loc.Line = sourceLocation.Line;
+        context->loc.Col = 1;
     }
 
     // Now indent up to the appropriate column, so that error messages
@@ -760,6 +761,7 @@ static void advanceToSourceLocation(
         {
             emitRawText(context, " ");
         }
+        context->loc.Col = sourceLocation.Col;
     }
 }
 
