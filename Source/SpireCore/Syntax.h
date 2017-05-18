@@ -907,11 +907,9 @@ namespace Spire
             T* CloneSyntaxNodeFields(T * target, CloneContext & /*ctx*/)
             {
                 target->Position = this->Position;
-                target->Tags = this->Tags;
                 return target;
             }
         public:
-            EnumerableDictionary<String, RefPtr<Object>> Tags;
             CodePosition Position;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) = 0;
             virtual SyntaxNode * Clone(CloneContext & ctx) = 0;
