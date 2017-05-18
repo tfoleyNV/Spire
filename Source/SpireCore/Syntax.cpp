@@ -228,16 +228,6 @@ namespace Spire
             return visitor->VisitParameter(this);
         }
 
-        RefPtr<SyntaxNode> ComponentSyntaxNode::Accept(SyntaxVisitor * visitor)
-        {
-            return visitor->VisitComponent(this);
-        }
-
-        RefPtr<SyntaxNode> ShaderSyntaxNode::Accept(SyntaxVisitor * visitor)
-        {
-            return visitor->VisitShader(this);
-        }
-
         // UsingFileDecl
 
         RefPtr<SyntaxNode> UsingFileDecl::Accept(SyntaxVisitor * visitor)
@@ -246,26 +236,6 @@ namespace Spire
         }
 
         //
-
-        RefPtr<SyntaxNode> ImportOperatorDefSyntaxNode::Accept(SyntaxVisitor * visitor)
-        {
-            return visitor->VisitImportOperatorDef(this); 
-        }
-
-        RefPtr<SyntaxNode> ImportSyntaxNode::Accept(SyntaxVisitor * v)
-        {
-            return v->VisitImport(this);
-        }
-
-        RefPtr<SyntaxNode> ImportArgumentSyntaxNode::Accept(SyntaxVisitor * visitor)
-        {
-            return visitor->VisitImportArgument(this);
-        }
-
-        RefPtr<SyntaxNode> ImportStatementSyntaxNode::Accept(SyntaxVisitor * visitor)
-        {
-            return visitor->VisitImportStatement(this);
-        }
 
         RefPtr<SyntaxNode> StructField::Accept(SyntaxVisitor * visitor)
         {
@@ -969,23 +939,6 @@ namespace Spire
 
         //
 
-        RefPtr<SyntaxNode> ImportExpressionSyntaxNode::Accept(SyntaxVisitor * visitor)
-        {
-            return visitor->VisitImportExpression(this);
-        }
-
-        //
-
-
-        RefPtr<ComponentSyntaxNode> SyntaxVisitor::VisitComponent(ComponentSyntaxNode * comp)
-        {
-            comp->Type = comp->Type.Accept(this);
-            if (comp->Expression)
-                comp->Expression = comp->Expression->Accept(this).As<ExpressionSyntaxNode>();
-            if (comp->BlockStatement)
-                comp->BlockStatement = comp->BlockStatement->Accept(this).As<BlockStatementSyntaxNode>();
-            return comp;
-        }
         String GetOperatorFunctionName(Operator op)
         {
             switch (op)
@@ -1123,20 +1076,6 @@ namespace Spire
             default:
                 return "ERROR";
             }
-        }
-        RefPtr<SyntaxNode> ProjectExpressionSyntaxNode::Accept(SyntaxVisitor * visitor)
-        {
-            return visitor->VisitProject(this);
-        }
-
-        RefPtr<SyntaxNode> InterfaceSyntaxNode::Accept(SyntaxVisitor * visitor)
-        {
-            return visitor->VisitInterface(this);
-        }
-
-        RefPtr<SyntaxNode> TemplateShaderSyntaxNode::Accept(SyntaxVisitor * visitor)
-        {
-            return visitor->VisitTemplateShader(this);
         }
 
         // TypeExp

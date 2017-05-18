@@ -1,2 +1,2 @@
-shader Test {
+void foo() {
 // Note: no closing curly brace

@@ -13,17 +13,6 @@ namespace Spire
             return t == BaseType::Int || t == BaseType::Float || t == BaseType::UInt;
         }
 
-        String GetFullComponentName(ComponentSyntaxNode * comp)
-        {
-            StringBuilder sb;
-            sb << comp->Name.Content;
-            for (auto & param : comp->GetParameters())
-            {
-                sb << "@" << param->Type.type->ToString();
-            }
-            return sb.ProduceString();
-        }
-
         String TranslateHLSLTypeNames(String name)
         {
             if (name == "float2" || name == "half2")
@@ -574,24 +563,6 @@ namespace Spire
             }
 
         public:
-            virtual CoreLib::RefPtr<InterfaceSyntaxNode> VisitInterface(InterfaceSyntaxNode * interfaceNode) override
-            {
-                for (auto & comp : interfaceNode->GetComponents())
-                {
-                    for (auto & param : comp->GetParameters())
-                    {
-                        param->Type = CheckUsableType(param->Type);
-                        if (param->Expr)
-                            getSink()->diagnose(param->Expr->Position, Diagnostics::defaultParamNotAllowedInInterface, param->Name);
-                    }
-                    comp->Type = CheckProperType(comp->Type);
-                    if (comp->Expression)
-                        comp->Expression->Accept(this);
-                    if (comp->BlockStatement)
-                        comp->BlockStatement->Accept(this);
-                }
-                return interfaceNode;
-            }
 
             typedef unsigned int ConversionCost;
             enum : ConversionCost
@@ -1008,14 +979,6 @@ namespace Spire
                 for (auto & func : program->GetFunctions())
                 {
                     EnsureDecl(func);
-                }
-                for (auto & pipeline : program->GetPipelines())
-                {
-                    VisitPipeline(pipeline.Ptr());
-                }
-                for (auto & interfaceNode : program->GetInterfaces())
-                {
-                    EnsureDecl(interfaceNode);
                 }
         
                 if (sink->GetErrorCount() != 0)
@@ -1441,15 +1404,6 @@ namespace Spire
                     if (auto parentScopeDecl = dynamic_cast<ScopeDecl*>(parentDecl))
                     {
                         getSink()->diagnose(varDecl->Type, Diagnostics::invalidTypeForLocalVariable);
-                    }
-                }
-                else if (auto declRefType = typeExp.type->AsDeclRefType())
-                {
-                    if (auto worldDeclRef = declRefType->declRef.As<WorldDeclRef>())
-                    {
-                        // The type references a world, and we don't want to allow that here.
-                        // TODO(tfoley): there is no clear reason why this shouldn't be allowed semantically.
-                        getSink()->diagnose(varDecl->Type, Diagnostics::recordTypeVariableInImportOperator);
                     }
                 }
                 varDecl->Type = typeExp;
@@ -2416,7 +2370,6 @@ namespace Spire
                 enum class Flavor
                 {
                     Func,
-                    ComponentFunc,
                     Generic,
                     UnspecializedGeneric,
                 };
@@ -2547,10 +2500,6 @@ namespace Spire
                     paramCounts = CountParameters(candidate.item.declRef.As<FuncDeclBaseRef>().GetParameters());
                     break;
 
-                case OverloadCandidate::Flavor::ComponentFunc:
-                    paramCounts = CountParameters(candidate.item.declRef.As<ComponentDeclRef>().GetParameters());
-                    break;
-
                 case OverloadCandidate::Flavor::Generic:
                     paramCounts = CountParameters(candidate.item.declRef.As<GenericDeclRef>());
                     break;
@@ -2647,10 +2596,6 @@ namespace Spire
                 {
                 case OverloadCandidate::Flavor::Func:
                     params = candidate.item.declRef.As<FuncDeclBaseRef>().GetParameters().ToArray();
-                    break;
-
-                case OverloadCandidate::Flavor::ComponentFunc:
-                    params = candidate.item.declRef.As<ComponentDeclRef>().GetParameters().ToArray();
                     break;
 
                 case OverloadCandidate::Flavor::Generic:
@@ -2792,7 +2737,6 @@ namespace Spire
 
                     switch(candidate.flavor)
                     {
-                    case OverloadCandidate::Flavor::ComponentFunc:
                     case OverloadCandidate::Flavor::Func:
                         context.appExpr->FunctionExpr = baseExpr;
                         context.appExpr->Type = candidate.resultType;
@@ -3938,18 +3882,6 @@ namespace Spire
                 {
                     return (int(mask) & int(LookupMask::Function)) != 0;
                 }
-                // component declarations have kind of odd rules
-                else if(auto componentDecl = dynamic_cast<ComponentSyntaxNode*>(decl))
-                {
-                    if (componentDecl->IsComponentFunction())
-                    {
-                        return (int(mask) & int(LookupMask::Function)) != 0;
-                    }
-                    else
-                    {
-                        return (int(mask) & int(LookupMask::Value)) != 0;
-                    }
-                }
 
                 // default behavior is to assume a value declaration
                 // (no overloading allowed)
@@ -4320,18 +4252,6 @@ namespace Spire
                     qualType.type = varDeclRef.GetType();
                     qualType.IsLeftValue = true; // TODO(tfoley): allow explicit `const` or `let` variables
                     return qualType;
-                }
-                else if(auto compDeclRef = declRef.As<ComponentDeclRef>())
-                {
-                    if (compDeclRef.GetDecl()->IsComponentFunction())
-                    {
-                        // TODO: need to implement this case
-                        throw "unimplemented";
-                    }
-                    else
-                    {
-                        return compDeclRef.GetType();
-                    }
                 }
                 else if (auto typeAliasDeclRef = declRef.As<TypeDefDeclRef>())
                 {
