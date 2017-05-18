@@ -2422,6 +2422,12 @@ namespace Spire
         // HLSL `linear` modifier
         class HLSLLinearModifier : public Modifier {};
 
+        // HLSL `sample` modifier
+        class HLSLSampleModifier : public Modifier {};
+
+        // HLSL `centroid` modifier
+        class HLSLCentroidModifier : public Modifier {};
+
         // HLSL `precise` modifier
         class HLSLPreciseModifier : public Modifier {};
 

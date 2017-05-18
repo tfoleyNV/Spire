@@ -680,6 +680,8 @@ namespace Spire
 
                 CASE(nointerpolation, HLSLNoInterpolationModifier);
                 CASE(linear, HLSLLinearModifier);
+                CASE(sample, HLSLSampleModifier);
+                CASE(centroid, HLSLCentroidModifier);
                 CASE(precise, HLSLPreciseModifier);
                 CASE(shared, HLSLEffectSharedModifier);
                 CASE(groupshared, HLSLGroupSharedModifier);
