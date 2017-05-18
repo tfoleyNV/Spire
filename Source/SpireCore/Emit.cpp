@@ -16,6 +16,9 @@ namespace Spire { namespace Compiler {
 struct EmitContext
 {
     StringBuilder sb;
+
+    // Current source position for tracking purposes...
+    CodePosition loc;
 };
 
 //
@@ -31,9 +34,58 @@ static void EmitDeclRef(EmitContext* context, DeclRef declRef);
 
 // Low-level emit logic
 
+static void emitRawTextSpan(EmitContext* context, char const* textBegin, char const* textEnd)
+{
+    // TODO(tfoley): Need to make "corelib" not use `int` for pointer-sized things...
+    auto len = int(textEnd - textBegin);
+
+    context->sb.Append(textBegin, len);
+}
+
+static void emitRawText(EmitContext* context, char const* text)
+{
+    emitRawTextSpan(context, text, text + strlen(text));
+}
+
+static void emitTextSpan(EmitContext* context, char const* textBegin, char const* textEnd)
+{
+    // Emit the raw text
+    emitRawTextSpan(context, textBegin, textEnd);
+
+    // Update our logical position
+    // TODO(tfoley): Need to make "corelib" not use `int` for pointer-sized things...
+    auto len = int(textEnd - textBegin);
+    context->loc.Pos += len;
+}
+
 static void Emit(EmitContext* context, char const* textBegin, char const* textEnd)
 {
-    context->sb.Append(textBegin, int(textEnd - textBegin));
+    char const* spanBegin = textBegin;
+
+    char const* spanEnd = spanBegin;
+    for(;;)
+    {
+        if(spanEnd == textEnd)
+        {
+            // We have a whole range of text waiting to be flushed
+            emitTextSpan(context, spanBegin, spanEnd);
+            return;
+        }
+
+        auto c = *spanEnd++;
+
+        if( c == '\n' )
+        {
+            // At the end of a line, we need to update our tracking
+            // information on code positions
+            emitTextSpan(context, spanBegin, spanEnd);
+            context->loc.Line++;
+            context->loc.Pos = 1;
+
+            // Start a new span for emit purposes
+            spanBegin = spanEnd;
+        }
+    }
 }
 
 static void Emit(EmitContext* context, char const* text)
@@ -653,19 +705,94 @@ static void EmitLoopAttributes(EmitContext* context, RefPtr<StatementSyntaxNode>
     }
 }
 
-static void EmitUnparsedStmt(EmitContext* context, RefPtr<UnparsedStmt> stmt)
+static void advanceToSourceLocation(
+    EmitContext*        context,
+    CodePosition const& sourceLocation)
 {
-    // TODO: actually emit the tokens that made up the statement...
-    Emit(context, "{\n");
-    for( auto& token : stmt->tokens )
+    // If we are currently emitting code at a source location with
+    // a differnet file or line, *or* if the source location is
+    // somehow later on the line than what we want to emit,
+    // then we need to emit a new `#line` directive.
+    if(sourceLocation.FileName != context->loc.FileName
+        || sourceLocation.Line != context->loc.Line
+        || sourceLocation.Col < context->loc.Col)
     {
+        emitRawText(context, "\n#line ");
+
+        char buffer[16];
+        sprintf(buffer, "%d", sourceLocation.Line);
+        emitRawText(context, buffer);
+
+        emitRawText(context, "\"");
+        for(auto c : sourceLocation.FileName)
+        {
+            char charBuffer[] = { c, 0 };
+            switch(c)
+            {
+            default:
+                emitRawText(context, charBuffer);
+                break;
+
+            // TODO: should probably canonicalize paths to not use backslash somewhere else
+            // in the compilation pipeline...
+            case '\\':
+                emitRawText(context, "/");
+                break;
+            }
+        }
+        emitRawText(context, "\"\n");
+    
+        context->loc.FileName = sourceLocation.FileName;
+        context->loc.Line = sourceLocation.Line;
+    }
+
+    // Now indent up to the appropriate column, so that error messages
+    // that reference columns will be correct.
+    //
+    // TODO: This logic does not take into account whether indentation
+    // came in as spaces or tabs, so there is necessarily going to be
+    // coupling between how the downstream compiler counts columns,
+    // and how we do.
+    if(sourceLocation.Col > context->loc.Col)
+    {
+        int delta = sourceLocation.Col - context->loc.Col;
+        for( int ii = 0; ii < delta; ++ii )
+        {
+            emitRawText(context, " ");
+        }
+    }
+}
+
+static void emitTokenWithLocation(EmitContext* context, Token const& token)
+{
+    if( token.Position.FileName.Length() != 0 )
+    {
+        advanceToSourceLocation(context, token.Position);
+    }
+    else
+    {
+        // If we don't have the original position info, we need to play
+        // it safe and emit whitespace to line things up nicely
+
         if(token.flags & TokenFlag::AtStartOfLine)
             Emit(context, "\n");
         // TODO(tfoley): macro expansion can currently lead to whitespace getting dropped,
         // so we will just insert it aggressively, to play it safe.
         else //  if(token.flags & TokenFlag::AfterWhitespace)
             Emit(context, " ");
-        Emit(context, token.Content);
+    }
+
+    // Emit the raw textual content of the token
+    Emit(context, token.Content);
+}
+
+static void EmitUnparsedStmt(EmitContext* context, RefPtr<UnparsedStmt> stmt)
+{
+    // TODO: actually emit the tokens that made up the statement...
+    Emit(context, "{\n");
+    for( auto& token : stmt->tokens )
+    {
+        emitTokenWithLocation(context, token);
     }
     Emit(context, "}\n");
 }
@@ -862,7 +989,6 @@ static void EmitModifiers(EmitContext* context, RefPtr<Decl> decl)
         CASE(HLSLLinearModifier, linear);
         CASE(HLSLSampleModifier, sample);
         CASE(HLSLCentroidModifier, centroid);
-        CASE(HLSLNoInterpolationModifier, nointerpolation);
 
         #undef CASE
 

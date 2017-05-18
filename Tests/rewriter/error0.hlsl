@@ -8,5 +8,12 @@
 
 float4 main() : SV_Target
 {
-	return 0.0
+    float a = 1.0;
+
+    // no semicolon at the end of this line!
+    float b = 2.0
+
+    float c = a + b;
+
+    return float4(c);
 }
