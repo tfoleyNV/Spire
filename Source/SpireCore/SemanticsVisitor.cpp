@@ -1510,7 +1510,6 @@ namespace Spire
                             getSink()->diagnose(expr, Diagnostics::bitOperationNonIntegral);
                         }
                     }
-                    expr->Arguments[0]->Access = ExpressionAccess::Write;
 
                     // TODO(tfoley): Need to actual insert coercion here...
                     if(CanCoerce(leftType, expr->Type))

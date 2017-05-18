@@ -1202,11 +1202,6 @@ namespace Spire
 
         };
 
-        enum class ExpressionAccess
-        {
-            Read, Write
-        };
-
         struct QualType
         {
             RefPtr<ExpressionType>	type;
@@ -1246,12 +1241,8 @@ namespace Spire
         {
         public:
             QualType Type;
-            ExpressionAccess Access;
             ExpressionSyntaxNode()
-            {
-                Access = ExpressionAccess::Read;
-            }
-            ExpressionSyntaxNode(const ExpressionSyntaxNode & expr) = default;
+            {}
         };
 
         //
