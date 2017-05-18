@@ -970,7 +970,6 @@ namespace Spire
             bool FindSimpleAttribute(String const& key, Token& outValue);
             bool FindSimpleAttribute(String const& key, String& outValue);
             bool HasSimpleAttribute(String const& key);
-            SpecializeModifier * FindSpecializeModifier();
 
             bool IsChecked(DeclCheckState state) { return checkState >= state; }
             void SetCheckState(DeclCheckState state)
@@ -1253,14 +1252,6 @@ namespace Spire
                 Access = ExpressionAccess::Read;
             }
             ExpressionSyntaxNode(const ExpressionSyntaxNode & expr) = default;
-        };
-
-        // A 'specialize' modifier indicating the shader parameter should be specialized
-        class SpecializeModifier : public Modifier
-        {
-        public:
-            List<RefPtr<ExpressionSyntaxNode>> Values;
-
         };
 
         //

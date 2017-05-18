@@ -721,22 +721,6 @@ namespace Spire
 
                     AddModifier(&modifierLink, modifier);
                 }
-                else if (AdvanceIf(parser, "specialize"))
-                {
-                    RefPtr<SpecializeModifier> modifier = new SpecializeModifier();
-                    if (AdvanceIf(parser, TokenType::LParent))
-                    {
-                        while (!AdvanceIfMatch(parser, TokenType::RParent))
-                        {
-                            auto expr = parser->ParseArgExpr();
-                            modifier->Values.Add(expr);
-                            if (AdvanceIf(parser, TokenType::RParent))
-                                break;
-                            parser->ReadToken(TokenType::Comma);
-                        }
-                    }
-                    AddModifier(&modifierLink, modifier);
-                }
                 else if (parser->tokenReader.PeekTokenType() == TokenType::LBracket)
                 {
                     ParseSquareBracketAttributes(parser, &modifierLink);

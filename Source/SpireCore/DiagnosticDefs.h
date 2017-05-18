@@ -241,9 +241,6 @@ DIAGNOSTIC(36001, Error, insufficientTemplateShaderArguments, "instantiating tem
 DIAGNOSTIC(36002, Error, tooManyTemplateShaderArguments, "instantiating template shader '$0': too many arguments.");
 DIAGNOSTIC(36003, Error, templateShaderArgumentIsNotDefined, "'$0' provided as template shader argument to '$1' is not a defined module.");
 DIAGNOSTIC(36004, Error, templateShaderArgumentDidNotImplementRequiredInterface, "module '$0' provided as template shader argument to '$1' did not implement required interface '$2'.");
-DIAGNOSTIC(36010, Error, specializeCanOnlyBeUsedOnParam, "'specialize' modifier can only be used on module parameters.");
-DIAGNOSTIC(36011, Error, specializedParameterMustBeInt, "specialized parameters must be a int, uint or bool.");
-DIAGNOSTIC(36012, Error, specializationValuesMustBeConstantLiterial, "specialization candidate values can only be constant literials.");
 
 // TODO: need to assign numbers to all these extra diagnostics...
 
