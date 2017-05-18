@@ -884,6 +884,8 @@ namespace Spire
             {
                 member->ParentDecl = container.Ptr();
                 container->Members.Add(member);
+
+                container->memberDictionaryIsValid = false;
             }
         }
 

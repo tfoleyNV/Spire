@@ -296,8 +296,11 @@ static NodePtr<ReflectionTypeNode> GenerateReflectionType(
     return info;                                                                        \
     } while(0)
 
-    CASE(HLSLByteAddressBufferType,         SPIRE_BYTE_ADDRESS_BUFFER, SPIRE_RESOURCE_ACCESS_READ);
-    CASE(HLSLRWByteAddressBufferType,       SPIRE_BYTE_ADDRESS_BUFFER, SPIRE_RESOURCE_ACCESS_READ_WRITE);
+    CASE(HLSLByteAddressBufferType,         SPIRE_BYTE_ADDRESS_BUFFER,  SPIRE_RESOURCE_ACCESS_READ);
+    CASE(HLSLRWByteAddressBufferType,       SPIRE_BYTE_ADDRESS_BUFFER,  SPIRE_RESOURCE_ACCESS_READ_WRITE);
+
+    // Report additional unknown resource types as if they are byte-address buffers
+    CASE(UntypedBufferResourceType,         SPIRE_BYTE_ADDRESS_BUFFER,  SPIRE_RESOURCE_ACCESS_READ);
 #undef CASE
 
 
@@ -570,6 +573,11 @@ static NodePtr<ReflectionTypeLayoutNode> GenerateReflectionTypeLayout(
     {
         assert(typeLayout->uniforms.size);
         info->size.simple = (ReflectionSize) typeLayout->uniforms.size;
+    }
+    else if( category == SPIRE_PARAMETER_CATEGORY_NONE )
+    {
+        // This would only occur for an empty `struct` type.
+        info->size.simple = 0;
     }
     else
     {

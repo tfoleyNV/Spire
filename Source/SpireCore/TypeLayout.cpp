@@ -462,6 +462,9 @@ LayoutInfo GetLayoutImpl(
     CASE(HLSLAppendStructuredBufferType,    UnorderedAccess);
     CASE(HLSLConsumeStructuredBufferType,   UnorderedAccess);
 
+    // This case is mostly to allow users to add new resource types...
+    CASE(UntypedBufferResourceType,         ShaderResource);
+
 #undef CASE
 
     //

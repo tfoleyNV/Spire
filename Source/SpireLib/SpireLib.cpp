@@ -436,33 +436,37 @@ namespace SpireLib
             compileContext.Add(new Spire::Compiler::CompilationContext());
             states.Add(State());
 
-            predefUnit = loadPredefUnit();
+            predefUnit = createPredefUnit();
+            addBuiltinSource("stdlib", SpireStdLib::GetCode());
         }
 
-        CompileUnit loadPredefUnit()
+        CompileUnit createPredefUnit()
+        {
+            CompileUnit translationUnit;
+
+
+            RefPtr<ProgramSyntaxNode> translationUnitSyntax = new ProgramSyntaxNode();
+
+            TranslationUnitOptions translationUnitOptions;
+            translationUnit.options = translationUnitOptions;
+            translationUnit.SyntaxNode = translationUnitSyntax;
+
+            return translationUnit;
+        }
+
+        void addBuiltinSource(
+            String const& path,
+            String const& source)
         {
             DiagnosticSink sink;
             sink.callback = &stdlibDiagnosticCallback;
 
-            CompileResult compileResult;
-            compileResult.mSink = &sink;
+            RefPtr<SourceFile> sourceFile = new SourceFile();
+            sourceFile->path = path;
+            sourceFile->content = source;
 
             CompileOptions options;
-
-            TranslationUnitOptions translationUnitOptions;
-
-            RefPtr<SourceFile> sourceFile = new SourceFile();
-            sourceFile->path = "stdlib";
-            sourceFile->content = SpireStdLib::GetCode();
-
-            translationUnitOptions.sourceFiles.Add(sourceFile);
-
-            // Parse it!
-
-            CompileUnit translationUnit;
-
             auto& preprocesorDefinitions = options.PreprocessorDefinitions;
-
 
             auto tokens = PreprocessSource(
                 sourceFile->content,
@@ -475,7 +479,11 @@ namespace SpireLib
                 assert(!"error in stdlib");
             }
 
-            RefPtr<ProgramSyntaxNode> translationUnitSyntax = new ProgramSyntaxNode();
+            predefUnit.options.sourceFiles.Add(sourceFile);
+
+
+            auto translationUnitSyntax = predefUnit.SyntaxNode;
+
             parseSourceFile(
                 translationUnitSyntax.Ptr(),
                 options,
@@ -488,15 +496,16 @@ namespace SpireLib
                 assert(!"error in stdlib");
             }
 
-            translationUnit.options = translationUnitOptions;
-            translationUnit.SyntaxNode = translationUnitSyntax;
+            // Now perform semantic checks, emit output, etc.
 
             CollectionOfTranslationUnits collectionOfTranslationUnits;
-            collectionOfTranslationUnits.translationUnits.Add(translationUnit);
+            collectionOfTranslationUnits.translationUnits.Add(predefUnit);
+
+            CompileResult compileResult;
+            compileResult.mSink = &sink;
 
             CompilationContext compileContext;
 
-            // Now perform semantic checks, emit output, etc.
             compiler->Compile(
                 compileResult,
                 compileContext,
@@ -506,8 +515,6 @@ namespace SpireLib
             {
                 assert(!"error in stdlib");
             }
-
-            return collectionOfTranslationUnits.translationUnits.First();
         }
 
         ~Session()
@@ -971,6 +978,16 @@ SPIRE_API void spDestroySession(
     if(!session) return;
     delete SESSION(session);
 }
+
+SPIRE_API void spAddBuiltins(
+    SpireSession*   session,
+    char const*     sourcePath,
+    char const*     sourceString)
+{
+    auto s = SESSION(session);
+    s->addBuiltinSource(sourcePath, sourceString);
+}
+
 
 SPIRE_API SpireCompileRequest* spCreateCompileRequest(
     SpireSession* session)

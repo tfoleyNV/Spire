@@ -3926,6 +3926,7 @@ namespace Spire
                 if (decl->memberDictionaryIsValid)
                     return;
 
+                decl->memberDictionary.Clear();
                 decl->transparentMembers.Clear();
 
                 for (auto m : decl->Members)

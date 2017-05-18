@@ -138,6 +138,14 @@ extern "C"
 
 
     /*!
+    @brief Add new builtin declarations to be used in subsequent compiles.
+    */
+    SPIRE_API void spAddBuiltins(
+        SpireSession*   session,
+        char const*     sourcePath,
+        char const*     sourceString);
+
+    /*!
     @brief Create a compile request.
     */
     SPIRE_API SpireCompileRequest* spCreateCompileRequest(
@@ -334,7 +342,7 @@ extern "C"
     typedef unsigned int SpireResourceShape;
     enum
     {
-        SPIRE_RESOURCE_BASE_SHAPE_MASK      = 0x3F,
+        SPIRE_RESOURCE_BASE_SHAPE_MASK      = 0x0F,
 
         SPIRE_RESOURCE_NONE                 = 0x00,
 
@@ -346,8 +354,9 @@ extern "C"
 
         SPIRE_STRUCTURED_BUFFER             = 0x06,
         SPIRE_BYTE_ADDRESS_BUFFER           = 0x07,
+        SPIRE_RESOURCE_UNKNOWN              = 0x08,
 
-        SPIRE_RESOURCE_EXT_SHAPE_MASK       = 0xC0,
+        SPIRE_RESOURCE_EXT_SHAPE_MASK       = 0xF0,
         SPIRE_TEXTURE_ARRAY_FLAG            = 0x40,
         SPIRE_TEXTURE_MULTISAMPLE_FLAG      = 0x80,
 

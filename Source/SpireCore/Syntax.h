@@ -750,8 +750,9 @@ namespace Spire
         class HLSLStructuredBufferType : public ArrayLikeType {};
         class HLSLRWStructuredBufferType : public ArrayLikeType {};
 
-        class HLSLByteAddressBufferType : public DeclRefType {};
-        class HLSLRWByteAddressBufferType : public DeclRefType {};
+        class UntypedBufferResourceType : public DeclRefType {};
+        class HLSLByteAddressBufferType : public UntypedBufferResourceType {};
+        class HLSLRWByteAddressBufferType : public UntypedBufferResourceType {};
 
         class HLSLAppendStructuredBufferType : public BuiltinGenericType {};
         class HLSLConsumeStructuredBufferType : public BuiltinGenericType {};

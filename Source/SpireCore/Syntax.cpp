@@ -899,6 +899,7 @@ namespace Spire
 
                 CASE(HLSLByteAddressBufferType, HLSLByteAddressBufferType)
                 CASE(HLSLRWByteAddressBufferType, HLSLRWByteAddressBufferType)
+                CASE(UntypedBufferResourceType, UntypedBufferResourceType)
 
                 #undef CASE
 
