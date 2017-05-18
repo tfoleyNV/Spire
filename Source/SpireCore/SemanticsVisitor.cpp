@@ -54,6 +54,44 @@ namespace Spire
                 return name;
         }
 
+        void BuildMemberDictionary(ContainerDecl* decl)
+        {
+            // Don't rebuild if already built
+            if (decl->memberDictionaryIsValid)
+                return;
+
+            decl->memberDictionary.Clear();
+            decl->transparentMembers.Clear();
+
+            for (auto m : decl->Members)
+            {
+                auto name = m->Name.Content;
+
+                // Add any transparent members to a separate list for lookup
+                if (m->HasModifier<TransparentModifier>())
+                {
+                    TransparentMemberInfo info;
+                    info.decl = m.Ptr();
+                    decl->transparentMembers.Add(info);
+                }
+
+                // Ignore members with an empty name
+                if (name.Length() == 0)
+                    continue;
+
+                m->nextInContainerWithSameName = nullptr;
+
+                Decl* next = nullptr;
+                if (decl->memberDictionary.TryGetValue(name, next))
+                    m->nextInContainerWithSameName = next;
+
+                decl->memberDictionary[name] = m.Ptr();
+
+            }
+            decl->memberDictionaryIsValid = true;
+        }
+
+
         class SemanticsVisitor : public SyntaxVisitor
         {
             ProgramSyntaxNode * program = nullptr;
@@ -3918,43 +3956,6 @@ namespace Spire
                 // (no overloading allowed)
 
                 return (int(mask) & int(LookupMask::Value)) != 0;
-            }
-
-            void BuildMemberDictionary(ContainerDecl* decl)
-            {
-                // Don't rebuild if already built
-                if (decl->memberDictionaryIsValid)
-                    return;
-
-                decl->memberDictionary.Clear();
-                decl->transparentMembers.Clear();
-
-                for (auto m : decl->Members)
-                {
-                    auto name = m->Name.Content;
-
-                    // Add any transparent members to a separate list for lookup
-                    if (m->HasModifier<TransparentModifier>())
-                    {
-                        TransparentMemberInfo info;
-                        info.decl = m.Ptr();
-                        decl->transparentMembers.Add(info);
-                    }
-
-                    // Ignore members with an empty name
-                    if (name.Length() == 0)
-                        continue;
-
-                    m->nextInContainerWithSameName = nullptr;
-
-                    Decl* next = nullptr;
-                    if (decl->memberDictionary.TryGetValue(name, next))
-                        m->nextInContainerWithSameName = next;
-
-                    decl->memberDictionary[name] = m.Ptr();
-
-                }
-                decl->memberDictionaryIsValid = true;
             }
 
             void AddToLookupResult(

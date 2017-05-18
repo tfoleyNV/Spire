@@ -450,7 +450,7 @@ static void completeBindingsForParameter(
     }
 }
 
-static void collectParameters(
+static void collectGlobalScopeParameters(
     ParameterBindingContext*    context,
     ProgramSyntaxNode*          program)
 {
@@ -479,13 +479,253 @@ static void collectParameters(
     // to global-scope function declarations.
 }
 
+// TODO: move this declaration to somewhere logical:
+void BuildMemberDictionary(ContainerDecl* decl);
+
+struct SimpleSemanticInfo
+{
+    String  name;
+    int     index;
+};
+
+SimpleSemanticInfo decomposeSimpleSemantic(
+    HLSLSimpleSemantic* semantic)
+{
+    auto composedName = semantic->name.Content;
+
+    // look for a trailing sequence of decimal digits
+    // at the end of the composed name
+    int length = composedName.Length();
+    int indexLoc = length;
+    while( indexLoc > 0 )
+    {
+        auto c = composedName[indexLoc-1];
+        if( c >= '0' && c <= '9' )
+        {
+            indexLoc--;
+            continue;
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    SimpleSemanticInfo info;
+
+    // 
+    if( indexLoc == length )
+    {
+        // No index suffix
+        info.name = composedName;
+        info.index = 0;
+    }
+    else
+    {
+        // The name is everything before the digits
+        info.name = composedName.SubString(0, indexLoc);
+        info.index = strtol(composedName.SubString(indexLoc, length - indexLoc).begin(), nullptr, 10);
+    }
+    return info;
+}
+
+static void processEntryPointInput(
+    ParameterBindingContext*    context,
+    RefPtr<ExpressionType>      type,
+    HLSLSimpleSemantic*         semantic)
+{
+    // Skip inputs without an explicit seamntic?
+    if(!semantic)
+        return;
+
+    // TODO: actually capture information here!
+}
+
+static void processSimpleEntryPointOutput(
+    ParameterBindingContext*    context,
+    RefPtr<ExpressionType>      type,
+    SimpleSemanticInfo&         ioSemanticInfo)
+{
+    auto semanticName = ioSemanticInfo.name;
+    auto semanticIndex = ioSemanticInfo.index++;
+
+    // Note: I'm just doing something expedient here and detecting `SV_Target`
+    // outputs and claiming the appropriate register range right away.
+    //
+    // TODO: we should really be building up some representation of all of this,
+    // once we've gone to the trouble of looking it all up...
+    if( semanticName.ToLower() == "sv_target" )
+    {
+        context->usedResourceRanges[int(LayoutResourceKind::UnorderedAccess)].Add(semanticIndex, semanticIndex+1);
+    }
+}
+
+static void processEntryPointOutput(
+    ParameterBindingContext*    context,
+    RefPtr<ExpressionType>      type,
+    SimpleSemanticInfo&         ioSemanticInfo)
+{
+    // Scalar and vector types are treated as outputs directly
+    if(auto basicType = type->As<BasicExpressionType>())
+    {
+        processSimpleEntryPointOutput(context, basicType, ioSemanticInfo);
+    }
+    else if(auto basicType = type->As<VectorExpressionType>())
+    {
+        processSimpleEntryPointOutput(context, basicType, ioSemanticInfo);
+    }
+    // A matrix is processed as if it was an array of rows
+    else if( auto matrixType = type->As<MatrixExpressionType>() )
+    {
+        auto rowCount = GetIntVal(matrixType->rowCount);
+
+        assert(!"unimplemented");
+    }
+    else if( auto arrayType = type->As<ArrayExpressionType>() )
+    {
+        auto elementCount = GetIntVal(arrayType->ArrayLength);
+
+        for( int ii = 0; ii < elementCount; ++ii )
+        {
+            processEntryPointOutput(context, arrayType->BaseType, ioSemanticInfo);
+        }
+
+        assert(!"unimplemented");
+    }
+    // Ignore a bunch of types that don't make sense here...
+    else if(auto textureType = type->As<TextureType>()) {}
+    else if(auto samplerStateType = type->As<SamplerStateType>()) {}
+    else if(auto constantBufferType = type->As<ConstantBufferType>()) {}
+    // Catch declaration-reference types late in the sequence, since
+    // otherwise they will include all of the above cases...
+    else if( auto declRefType = type->As<DeclRefType>() )
+    {
+        auto declRef = declRefType->declRef;
+
+        if (auto structDeclRef = declRef.As<StructDeclRef>())
+        {
+            // Need to recursively walk the fields of the structure now...
+            for( auto field : structDeclRef.GetFields() )
+            {
+                processEntryPointOutput(context, field.GetType(), ioSemanticInfo);
+            }
+        }
+        else
+        {
+            assert(!"unimplemented");
+        }
+    }
+    else
+    {
+        assert(!"unimplemented");
+    }
+}
+
+static void processEntryPointOutput(
+    ParameterBindingContext*    context,
+    RefPtr<ExpressionType>      type,
+    HLSLSimpleSemantic*         semantic)
+{
+    // Skip outputs without an explicit seamntic?
+    if(!semantic)
+        return;
+
+    // Need to break up semantic into name/index
+    auto semanticInfo = decomposeSimpleSemantic(semantic);
+    processEntryPointOutput(context, type, semanticInfo);
+}
+
+static HLSLSimpleSemantic* findSimpleSemantic(
+    ParameterBindingContext*    context,
+    Decl*                       decl)
+{
+    // TODO: probably need to validate we don't have multiple semantics
+    auto semantic = decl->FindModifier<HLSLSimpleSemantic>();
+
+    // TODO: is it our job to raise an error if there is no semantic?
+
+    return semantic;
+}
+
+static void collectEntryPointParameters(
+    ParameterBindingContext*        context,
+    EntryPointOption const&         entryPoint,
+    ProgramSyntaxNode*              translationUnitSyntax)
+{
+    // First, look for the entry point with the specified name
+
+    // Make sure we've got a query-able member dictionary
+    BuildMemberDictionary(translationUnitSyntax);
+
+    Decl* entryPointDecl;
+    if( !translationUnitSyntax->memberDictionary.TryGetValue(entryPoint.name, entryPointDecl) )
+    {
+        // No such entry point!
+        return;
+    }
+    if( entryPointDecl->nextInContainerWithSameName )
+    {
+        // Not the only decl of that name!
+        return;
+    }
+
+    FunctionSyntaxNode* entryPointFuncDecl = dynamic_cast<FunctionSyntaxNode*>(entryPointDecl);
+    if( !entryPointFuncDecl )
+    {
+        // Not a function!
+        return;
+    }
+
+    // Okay, we seemingly have an entry-point function, and now we need to collect info on its parameters too
+    //
+    // TODO: Long-term we probably want complete information on all inputs/outputs of an entry point,
+    // but for now we are really just trying to scrape information on fragment outputs, so lets do that:
+    //
+    // TODO: check whether we should enumerate the parameters before the return type, or vice versa
+
+    for( auto m : entryPointFuncDecl->Members )
+    {
+        auto paramDecl = m.As<VarDeclBase>();
+        if(!paramDecl)
+            continue;
+
+        // We have an entry-point parameter, and need to figure out what to do with it
+
+        auto semantic = findSimpleSemantic(context, paramDecl.Ptr());
+
+        if( paramDecl->HasModifier<InModifier>() || paramDecl->HasModifier<InOutModifier>() || !paramDecl->HasModifier<OutModifier>() )
+        {
+            processEntryPointInput(context, paramDecl->Type.type, semantic);
+        }
+
+        if(paramDecl->HasModifier<OutModifier>() || paramDecl->HasModifier<InOutModifier>())
+        {
+            processEntryPointOutput(context, paramDecl->Type.type, semantic);
+        }
+    }
+
+    if( auto resultType = entryPointFuncDecl->ReturnType.type )
+    {
+        // We have a result type, and need to figure out what to do with it
+        auto semantic = findSimpleSemantic(context, entryPointFuncDecl);
+        processEntryPointOutput(context, resultType, semantic);
+    }
+}
+
 static void collectParameters(
     ParameterBindingContext*        context,
     CollectionOfTranslationUnits*   program)
 {
     for( auto& translationUnit : program->translationUnits )
     {
-        collectParameters(context, translationUnit.SyntaxNode.Ptr());
+        // First look at global-scope parameters
+        collectGlobalScopeParameters(context, translationUnit.SyntaxNode.Ptr());
+
+        // Next consider parameters for entry points
+        for( auto& entryPoint : translationUnit.options.entryPoints )
+        {
+            collectEntryPointParameters(context, entryPoint, translationUnit.SyntaxNode.Ptr());
+        }
     }
 }
 
@@ -506,7 +746,7 @@ void GenerateParameterBindings(
     context.shared = &sharedContext;
     context.layoutRules = sharedContext.defaultLayoutRules;
 
-    // Walk through global scope to discover all the parameters
+    // Walk through AST to discover all the parameters
     collectParameters(&context, program);
 
     // Now walk through the parameters to generate initial binding information
