@@ -100,28 +100,10 @@ namespace Spire
         {
             return visitor->VisitProgram(this);
         }
-        ProgramSyntaxNode * ProgramSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new ProgramSyntaxNode(*this), ctx);
-            rs->Members.Clear();
-            for (auto & m : Members)
-                rs->Members.Add(m->Clone(ctx));
-            return rs;
-        }
+
         RefPtr<SyntaxNode> FunctionSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitFunction(this);
-        }
-        FunctionSyntaxNode * FunctionSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new FunctionSyntaxNode(*this), ctx);
-            for (auto & member : rs->Members)
-            {
-                member = member->Clone(ctx);
-            }
-            rs->ReturnType = ReturnType.Clone(ctx);
-            rs->Body = Body->Clone(ctx);
-            return rs;
         }
 
         //
@@ -131,174 +113,73 @@ namespace Spire
             return visitor->VisitScopeDecl(this);
         }
 
-        ScopeDecl* ScopeDecl::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new ScopeDecl(*this), ctx);
-            for (auto & member : rs->Members)
-            {
-                member = member->Clone(ctx);
-            }
-            return rs;
-        }
-
-
         //
 
         RefPtr<SyntaxNode> BlockStatementSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitBlockStatement(this);
         }
-        BlockStatementSyntaxNode * BlockStatementSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new BlockStatementSyntaxNode(*this), ctx);
-            rs->Statements.Clear();
-            for (auto & stmt : Statements)
-            {
-                rs->Statements.Add(stmt->Clone(ctx));
-            }
-            return rs;
-        }
+
         RefPtr<SyntaxNode> BreakStatementSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitBreakStatement(this);
         }
-        BreakStatementSyntaxNode * BreakStatementSyntaxNode::Clone(CloneContext & ctx)
-        {
-            return CloneSyntaxNodeFields(new BreakStatementSyntaxNode(*this), ctx);
-        }
+
         RefPtr<SyntaxNode> ContinueStatementSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitContinueStatement(this);
         }
-        ContinueStatementSyntaxNode * ContinueStatementSyntaxNode::Clone(CloneContext & ctx)
-        {
-            return CloneSyntaxNodeFields(new ContinueStatementSyntaxNode(*this), ctx);
-        }
+
         RefPtr<SyntaxNode> DoWhileStatementSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitDoWhileStatement(this);
         }
-        DoWhileStatementSyntaxNode * DoWhileStatementSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new DoWhileStatementSyntaxNode(*this), ctx);
-            if (Predicate)
-                rs->Predicate = Predicate->Clone(ctx);
-            if (Statement)
-                rs->Statement = Statement->Clone(ctx);
-            return rs;
-        }
+
         RefPtr<SyntaxNode> EmptyStatementSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitEmptyStatement(this);
         }
-        EmptyStatementSyntaxNode * EmptyStatementSyntaxNode::Clone(CloneContext & ctx)
-        {
-            return CloneSyntaxNodeFields(new EmptyStatementSyntaxNode(*this), ctx);
-        }
+
         RefPtr<SyntaxNode> ForStatementSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitForStatement(this);
         }
-        ForStatementSyntaxNode * ForStatementSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new ForStatementSyntaxNode(*this), ctx);
-            if (InitialStatement)
-                rs->InitialStatement = InitialStatement->Clone(ctx);
-            if (SideEffectExpression)
-                rs->SideEffectExpression = SideEffectExpression->Clone(ctx);
-            if (PredicateExpression)
-                rs->PredicateExpression = PredicateExpression->Clone(ctx);
-            if (Statement)
-                rs->Statement = Statement->Clone(ctx);
-            return rs;
-        }
+
         RefPtr<SyntaxNode> IfStatementSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitIfStatement(this);
         }
-        IfStatementSyntaxNode * IfStatementSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new IfStatementSyntaxNode(*this), ctx);
-            if (Predicate)
-                rs->Predicate = Predicate->Clone(ctx);
-            if (PositiveStatement)
-                rs->PositiveStatement = PositiveStatement->Clone(ctx);
-            if (NegativeStatement)
-                rs->NegativeStatement = NegativeStatement->Clone(ctx);
-            return rs;
-        }
+
         RefPtr<SyntaxNode> ReturnStatementSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitReturnStatement(this);
         }
-        ReturnStatementSyntaxNode * ReturnStatementSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new ReturnStatementSyntaxNode(*this), ctx);
-            if (Expression)
-                rs->Expression = Expression->Clone(ctx);
-            return rs;
-        }
+
         RefPtr<SyntaxNode> VarDeclrStatementSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitVarDeclrStatement(this);
         }
-        VarDeclrStatementSyntaxNode * VarDeclrStatementSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new VarDeclrStatementSyntaxNode(*this), ctx);
-            rs->decl = rs->decl->Clone(ctx);
-            return rs;
-        }
+
         RefPtr<SyntaxNode> Variable::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitDeclrVariable(this);
         }
-        Variable * Variable::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new Variable(*this), ctx);
-            if (Expr)
-                rs->Expr = Expr->Clone(ctx);
-            return rs;
-        }
+
         RefPtr<SyntaxNode> WhileStatementSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitWhileStatement(this);
         }
-        WhileStatementSyntaxNode * WhileStatementSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new WhileStatementSyntaxNode(*this), ctx);
-            if (Predicate)
-                rs->Predicate = Predicate->Clone(ctx);
-            if (Statement)
-                rs->Statement = Statement->Clone(ctx);
-            return rs;
-        }
+
         RefPtr<SyntaxNode> ExpressionStatementSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitExpressionStatement(this);
         }
-        ExpressionStatementSyntaxNode * ExpressionStatementSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new ExpressionStatementSyntaxNode(*this), ctx);
-            if (Expression)
-                rs->Expression = Expression->Clone(ctx);
-            return rs;
-        }
+
         RefPtr<SyntaxNode> ConstantExpressionSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitConstantExpression(this);
         }
-        ConstantExpressionSyntaxNode * ConstantExpressionSyntaxNode::Clone(CloneContext & ctx)
-        {
-            return CloneSyntaxNodeFields(new ConstantExpressionSyntaxNode(*this), ctx);
-        }
-        IndexExpressionSyntaxNode * IndexExpressionSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new IndexExpressionSyntaxNode(*this), ctx);
-            rs->BaseExpression = BaseExpression->Clone(ctx);
-            if(IndexExpression)
-                rs->IndexExpression = IndexExpression->Clone(ctx);
-            return rs;
-        }
+
         RefPtr<SyntaxNode> IndexExpressionSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitIndexExpression(this);
@@ -307,25 +188,12 @@ namespace Spire
         {
             return visitor->VisitMemberExpression(this);
         }
-        MemberExpressionSyntaxNode * MemberExpressionSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new MemberExpressionSyntaxNode(*this), ctx);
-            rs->BaseExpression = BaseExpression->Clone(ctx);
-            return rs;
-        }
 
         // SwizzleExpr
 
         RefPtr<SyntaxNode> SwizzleExpr::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitSwizzleExpression(this);
-        }
-
-        SwizzleExpr * SwizzleExpr::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new SwizzleExpr(*this), ctx);
-            rs->base = base->Clone(ctx);
-            return rs;
         }
 
         // DerefExpr
@@ -336,46 +204,21 @@ namespace Spire
             return this;
         }
 
-        DerefExpr * DerefExpr::Clone(CloneContext & /*ctx*/)
-        {
-            throw "unimplemented";
-        }
-
         //
 
         RefPtr<SyntaxNode> InvokeExpressionSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitInvokeExpression(this);
         }
-        InvokeExpressionSyntaxNode * InvokeExpressionSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new InvokeExpressionSyntaxNode(*this), ctx);
-            rs->FunctionExpr = FunctionExpr->Clone(ctx);
-            rs->Arguments.Clear();
-            for (auto & arg : Arguments)
-            {
-                rs->Arguments.Add(arg->Clone(ctx));
-            }
-            return rs;
-        }
+
         RefPtr<SyntaxNode> TypeCastExpressionSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitTypeCastExpression(this);
         }
-        TypeCastExpressionSyntaxNode * TypeCastExpressionSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new TypeCastExpressionSyntaxNode(*this), ctx);
-            rs->TargetType = TargetType.Clone(ctx);
-            rs->Expression = Expression->Clone(ctx);
-            return rs;
-        }
+
         RefPtr<SyntaxNode> VarExpressionSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitVarExpression(this);
-        }
-        VarExpressionSyntaxNode * VarExpressionSyntaxNode::Clone(CloneContext & ctx)
-        {
-            return CloneSyntaxNodeFields(new VarExpressionSyntaxNode(*this), ctx);
         }
 
         // OverloadedExpr
@@ -386,51 +229,21 @@ namespace Spire
             return this;
         }
 
-        OverloadedExpr * OverloadedExpr::Clone(CloneContext & /*ctx*/)
-        {
-            throw "unimplemented";
-        }
-
         //
 
         RefPtr<SyntaxNode> ParameterSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitParameter(this);
         }
-        ParameterSyntaxNode * ParameterSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new ParameterSyntaxNode(*this), ctx);
-            rs->Type = Type.Clone(ctx);
-            rs->Expr = Expr->Clone(ctx);
-            return rs;
-        }
+
         RefPtr<SyntaxNode> ComponentSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitComponent(this);
         }
-        ComponentSyntaxNode * ComponentSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new ComponentSyntaxNode(*this), ctx);
-            rs->Type = Type.Clone(ctx);
-            if (Rate)
-                rs->Rate = Rate->Clone(ctx);
-            if (BlockStatement)
-                rs->BlockStatement = BlockStatement->Clone(ctx);
-            if (Expression)
-                rs->Expression = Expression->Clone(ctx);
-            return rs;
-        }
+
         RefPtr<SyntaxNode> ShaderSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitShader(this);
-        }
-        ShaderSyntaxNode * ShaderSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new ShaderSyntaxNode(*this), ctx);
-            rs->Members.Clear();
-            for (auto & comp : Members)
-                rs->Members.Add(comp->Clone(ctx));
-            return rs;
         }
 
         // UsingFileDecl
@@ -440,72 +253,26 @@ namespace Spire
             return visitor->VisitUsingFileDecl(this);
         }
 
-        UsingFileDecl* UsingFileDecl::Clone(CloneContext & ctx)
-        {
-            return CloneSyntaxNodeFields(new UsingFileDecl(*this), ctx);
-        }
-
         //
 
-        RateSyntaxNode * RateSyntaxNode::Clone(CloneContext & ctx)
-        {
-            return CloneSyntaxNodeFields(new RateSyntaxNode(*this), ctx);
-        }
-        WorldSyntaxNode * WorldSyntaxNode::Clone(CloneContext & ctx)
-        {
-            return CloneSyntaxNodeFields(new WorldSyntaxNode(*this), ctx);
-        }
         RefPtr<SyntaxNode> ImportOperatorDefSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitImportOperatorDef(this); 
         }
-        ImportOperatorDefSyntaxNode * ImportOperatorDefSyntaxNode::Clone(CloneContext & ctx)
-        {
-            return CloneSyntaxNodeFields(new ImportOperatorDefSyntaxNode(*this), ctx);
-        }
-        PipelineSyntaxNode * PipelineSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new PipelineSyntaxNode(*this), ctx);
-            rs->Members.Clear();
-            for (auto & m : Members)
-                rs->Members.Add(m->Clone(ctx));
-            return rs;
-        }
-        ChoiceValueSyntaxNode * ChoiceValueSyntaxNode::Clone(CloneContext & ctx)
-        {
-            return CloneSyntaxNodeFields(new ChoiceValueSyntaxNode(*this), ctx);
-        }
+
         RefPtr<SyntaxNode> ImportSyntaxNode::Accept(SyntaxVisitor * v)
         {
             return v->VisitImport(this);
         }
-        ImportSyntaxNode * ImportSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new ImportSyntaxNode(*this), ctx);
-            rs->Arguments.Clear();
-            for (auto & arg : Arguments)
-                rs->Arguments.Add(arg->Clone(ctx));
-            return rs;
-        }
+
         RefPtr<SyntaxNode> ImportArgumentSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitImportArgument(this);
         }
-        ImportArgumentSyntaxNode * ImportArgumentSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new ImportArgumentSyntaxNode(*this), ctx);
-            rs->Expression = Expression->Clone(ctx);
-            return rs;
-        }
+
         RefPtr<SyntaxNode> ImportStatementSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitImportStatement(this);
-        }
-        ImportStatementSyntaxNode * ImportStatementSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new ImportStatementSyntaxNode(*this), ctx);
-            rs->Import = Import->Clone(ctx);
-            return rs;
         }
 
         RefPtr<SyntaxNode> StructField::Accept(SyntaxVisitor * visitor)
@@ -524,20 +291,10 @@ namespace Spire
         {
             return visitor->VisitTypeDefDecl(this);
         }
-        TypeDefDecl* TypeDefDecl::Clone(CloneContext & ctx)
-        {
-            auto result = CloneSyntaxNodeFields(new TypeDefDecl(*this), ctx);
-            return result;
-        }
 
         RefPtr<SyntaxNode> DiscardStatementSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitDiscardStatement(this);
-        }
-        DiscardStatementSyntaxNode * DiscardStatementSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new DiscardStatementSyntaxNode(*this), ctx);
-            return rs;
         }
 
         // BasicExpressionType
@@ -1224,20 +981,6 @@ namespace Spire
         {
             return visitor->VisitImportExpression(this);
         }
-        ImportExpressionSyntaxNode * ImportExpressionSyntaxNode::Clone(CloneContext & ctx)
-        {
-            ImportExpressionSyntaxNode * result = new ImportExpressionSyntaxNode(*this);
-            CloneSyntaxNodeFields(result, ctx);
-            result->Component = Component->Clone(ctx);
-            result->Arguments.Clear();
-            for (auto & arg : Arguments)
-                result->Arguments.Add(arg->Clone(ctx));
-            return result;
-        }
-        StageSyntaxNode * StageSyntaxNode::Clone(CloneContext &)
-        {
-            return new StageSyntaxNode(*this);
-        }
 
         //
 
@@ -1393,53 +1136,18 @@ namespace Spire
         {
             return visitor->VisitProject(this);
         }
-        ProjectExpressionSyntaxNode * ProjectExpressionSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto * result = new ProjectExpressionSyntaxNode(*this);
-            result->BaseExpression = BaseExpression->Clone(ctx);
-            return result;
-        }
+
         RefPtr<SyntaxNode> InterfaceSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitInterface(this);
         }
-        InterfaceSyntaxNode * InterfaceSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new InterfaceSyntaxNode(*this), ctx);
-            rs->Members.Clear();
-            for (auto & comp : Members)
-                rs->Members.Add(comp->Clone(ctx));
-            return rs;
-        }
+
         RefPtr<SyntaxNode> TemplateShaderSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitTemplateShader(this);
         }
-        TemplateShaderSyntaxNode * TemplateShaderSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new TemplateShaderSyntaxNode(*this), ctx);
-            rs->Parameters.Clear();
-            for (auto & param : Parameters)
-                rs->Parameters.Add(param->Clone(ctx));
-            for (auto & member : Members)
-                rs->Members.Add(member->Clone(ctx));
-            return rs;
-        }
-        TemplateShaderParameterSyntaxNode * TemplateShaderParameterSyntaxNode::Clone(CloneContext & ctx)
-        {
-            auto rs = CloneSyntaxNodeFields(new TemplateShaderParameterSyntaxNode(*this), ctx);
-            return rs;
-        }
 
         // TypeExp
-
-        TypeExp TypeExp::Clone(CloneContext& context)
-        {
-            TypeExp result;
-            if (exp)
-                result.exp = exp->Clone(context);
-            return result;
-        }
 
         TypeExp TypeExp::Accept(SyntaxVisitor* visitor)
         {
@@ -1457,19 +1165,11 @@ namespace Spire
             return visitor->VisitGenericDecl(this);
         }
 
-        GenericDecl * GenericDecl::Clone(CloneContext & /*ctx*/) {
-            throw "unimplemented";
-        }
-
         // GenericTypeParamDecl
 
         RefPtr<SyntaxNode> GenericTypeParamDecl::Accept(SyntaxVisitor * /*visitor*/) {
             //throw "unimplemented";
             return this;
-        }
-
-        GenericTypeParamDecl * GenericTypeParamDecl::Clone(CloneContext & /*ctx*/) {
-            throw "unimplemented";
         }
 
         // GenericTypeConstraintDecl
@@ -1479,21 +1179,11 @@ namespace Spire
             return this;
         }
 
-        GenericTypeConstraintDecl * GenericTypeConstraintDecl::Clone(CloneContext & ctx)
-        {
-            throw "unimplemented";
-        }
-
-
         // GenericValueParamDecl
 
         RefPtr<SyntaxNode> GenericValueParamDecl::Accept(SyntaxVisitor * /*visitor*/) {
             //throw "unimplemented";
             return this;
-        }
-
-        GenericValueParamDecl * GenericValueParamDecl::Clone(CloneContext & /*ctx*/) {
-            throw "unimplemented";
         }
 
         // GenericParamIntVal
@@ -1563,22 +1253,12 @@ namespace Spire
             return this;
         }
 
-        ExtensionDecl* ExtensionDecl::Clone(CloneContext & /*ctx*/)
-        {
-            throw "unimplemented";
-        }
-
         // ConstructorDecl
 
         RefPtr<SyntaxNode> ConstructorDecl::Accept(SyntaxVisitor * visitor)
         {
             visitor->VisitConstructorDecl(this);
             return this;
-        }
-
-        ConstructorDecl* ConstructorDecl::Clone(CloneContext & /*ctx*/)
-        {
-            throw "unimplemented";
         }
 
         // Substitutions
@@ -1769,29 +1449,14 @@ namespace Spire
             return visitor->VisitSwitchStmt(this);
         }
 
-        SwitchStmt * SwitchStmt::Clone(CloneContext & /*ctx*/)
-        {
-            throw "unimplemented";
-        }
-
         RefPtr<SyntaxNode> CaseStmt::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitCaseStmt(this);
         }
 
-        CaseStmt * CaseStmt::Clone(CloneContext & /*ctx*/)
-        {
-            throw "unimplemented";
-        }
-
         RefPtr<SyntaxNode> DefaultStmt::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitDefaultStmt(this);
-        }
-
-        DefaultStmt * DefaultStmt::Clone(CloneContext & /*ctx*/)
-        {
-            throw "unimplemented";
         }
 
         // TraitDecl
@@ -1802,11 +1467,6 @@ namespace Spire
             return this;
         }
 
-        TraitDecl* TraitDecl::Clone(CloneContext & /*ctx*/)
-        {
-            throw "unimplemented";
-        }
-
         // TraitConformanceDecl
 
         RefPtr<SyntaxNode> TraitConformanceDecl::Accept(SyntaxVisitor * visitor)
@@ -1815,21 +1475,11 @@ namespace Spire
             return this;
         }
 
-        TraitConformanceDecl* TraitConformanceDecl::Clone(CloneContext & ctx)
-        {
-            throw "unimplemented";
-        }
-
         // SharedTypeExpr
 
         RefPtr<SyntaxNode> SharedTypeExpr::Accept(SyntaxVisitor * visitor)
         {
             return visitor->VisitSharedTypeExpr(this);
-        }
-
-        SharedTypeExpr * SharedTypeExpr::Clone(CloneContext & /*ctx*/)
-        {
-            throw "unimplemented";
         }
 
         // OperatorExpressionSyntaxNode
@@ -1911,17 +1561,7 @@ namespace Spire
             return this;
         }
 
-        UnparsedStmt* UnparsedStmt::Clone(CloneContext & ctx)
-        {
-            return this;
-        }
-
         //
-
-        InitializerListExpr* InitializerListExpr::Clone(CloneContext & ctx)
-        {
-            return this;
-        }
 
         RefPtr<SyntaxNode> InitializerListExpr::Accept(SyntaxVisitor * visitor)
         {

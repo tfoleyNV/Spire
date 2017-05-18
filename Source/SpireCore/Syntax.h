@@ -902,17 +902,9 @@ namespace Spire
 
         class SyntaxNode : public RefObject
         {
-        protected:
-            template<typename T>
-            T* CloneSyntaxNodeFields(T * target, CloneContext & /*ctx*/)
-            {
-                target->Position = this->Position;
-                return target;
-            }
         public:
             CodePosition Position;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) = 0;
-            virtual SyntaxNode * Clone(CloneContext & ctx) = 0;
         };
 
         class ContainerDecl;
@@ -960,7 +952,6 @@ namespace Spire
         class DeclBase : public ModifiableSyntaxNode
         {
         public:
-            virtual DeclBase * Clone(CloneContext & ctx) = 0;
         };
 
         class Decl : public DeclBase
@@ -987,8 +978,6 @@ namespace Spire
                 assert(state >= checkState);
                 checkState = state;
             }
-
-            virtual Decl * Clone(CloneContext & ctx) = 0;
         };
 
         // A group of declarations that should be treated as a unit
@@ -998,7 +987,6 @@ namespace Spire
             List<RefPtr<Decl>> decls;
 
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual DeclGroup * Clone(CloneContext & /*ctx*/) override { throw "unimplemented"; }
         };
 
         template<typename T>
@@ -1265,7 +1253,6 @@ namespace Spire
                 Access = ExpressionAccess::Read;
             }
             ExpressionSyntaxNode(const ExpressionSyntaxNode & expr) = default;
-            virtual ExpressionSyntaxNode* Clone(CloneContext & ctx) = 0;
         };
 
         // A 'specialize' modifier indicating the shader parameter should be specialized
@@ -1313,7 +1300,6 @@ namespace Spire
             }
             ExpressionType* operator->() { return Ptr(); }
 
-            TypeExp Clone(CloneContext& context);
             TypeExp Accept(SyntaxVisitor* visitor);
         };
 
@@ -1347,12 +1333,6 @@ namespace Spire
             StructField()
             {}
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual StructField * Clone(CloneContext & ctx) override
-            {
-                auto rs = CloneSyntaxNodeFields(new StructField(*this), ctx);
-                rs->Type = Type.Clone(ctx);
-                return rs;
-            }
         };
 
         struct FieldDeclRef : VarDeclBaseRef
@@ -1371,7 +1351,6 @@ namespace Spire
 
 
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual ExtensionDecl* Clone(CloneContext & ctx) override;
         };
 
         struct ExtensionDeclRef : ContainerDeclRef
@@ -1425,14 +1404,6 @@ namespace Spire
         public:
             bool IsIntrinsic = false;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual StructSyntaxNode * Clone(CloneContext & ctx) override
-            {
-                auto rs = CloneSyntaxNodeFields(new StructSyntaxNode(*this), ctx);
-                rs->Members.Clear();
-                for (auto & m : Members)
-                    rs->Members.Add(m->Clone(ctx));
-                return rs;
-            }
         };
 
         struct StructDeclRef : public AggTypeDeclRef
@@ -1446,14 +1417,6 @@ namespace Spire
         {
         public:
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            ClassSyntaxNode * Clone(CloneContext & ctx) override
-            {
-                auto rs = CloneSyntaxNodeFields(new ClassSyntaxNode(*this), ctx);
-                rs->Members.Clear();
-                for (auto & m : Members)
-                    rs->Members.Add(m->Clone(ctx));
-                return rs;
-            }
         };
 
         struct ClassDeclRef : public AggTypeDeclRef
@@ -1470,7 +1433,6 @@ namespace Spire
             List<TypeExp> bases;
 
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual TraitDecl* Clone(CloneContext & ctx) override;
         };
 
         struct TraitDeclRef : public AggTypeDeclRef
@@ -1492,7 +1454,6 @@ namespace Spire
             TraitDeclRef traitDeclRef;
 
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual TraitConformanceDecl* Clone(CloneContext & ctx) override;
         };
 
         struct TraitConformanceDeclRef : public DeclRef
@@ -1519,7 +1480,6 @@ namespace Spire
             TypeExp Type;
 
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual TypeDefDecl * Clone(CloneContext & ctx) override;
         };
 
         struct TypeDefDeclRef : SimpleTypeDeclRef
@@ -1551,7 +1511,6 @@ namespace Spire
         class StatementSyntaxNode : public ModifiableSyntaxNode
         {
         public:
-            virtual StatementSyntaxNode* Clone(CloneContext & ctx) = 0;
         };
 
         // A scope for local declarations (e.g., as part of a statement)
@@ -1559,7 +1518,6 @@ namespace Spire
         {
         public:
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual ScopeDecl * Clone(CloneContext & ctx) override;
         };
 
         class ScopeStmt : public StatementSyntaxNode
@@ -1573,7 +1531,6 @@ namespace Spire
         public:
             List<RefPtr<StatementSyntaxNode>> Statements;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual BlockStatementSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class UnparsedStmt : public StatementSyntaxNode
@@ -1583,14 +1540,12 @@ namespace Spire
             List<Token> tokens;
 
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual UnparsedStmt * Clone(CloneContext & ctx) override;
         };
 
         class ParameterSyntaxNode : public VarDeclBase
         {
         public:
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual ParameterSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         struct ParamDeclRef : VarDeclBaseRef
@@ -1646,7 +1601,6 @@ namespace Spire
         {
         public:
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual ConstructorDecl* Clone(CloneContext & ctx) override;
         };
 
         struct ConstructorDeclRef : FuncDeclBaseRef
@@ -1665,8 +1619,6 @@ namespace Spire
             FunctionSyntaxNode()
             {
             }
-
-            virtual FunctionSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         struct FuncDeclRef : FuncDeclBaseRef
@@ -1682,7 +1634,6 @@ namespace Spire
             List<RefPtr<FunctionSyntaxNode>> Requirements;
             List<String> Usings;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual ImportOperatorDefSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class ChoiceValueSyntaxNode : public ExpressionSyntaxNode
@@ -1690,7 +1641,6 @@ namespace Spire
         public:
             String WorldName;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor *) { return this; }
-            virtual ChoiceValueSyntaxNode * Clone(CloneContext & ctx);
         };
 
         // Base class for expressions that will reference declarations
@@ -1711,7 +1661,6 @@ namespace Spire
             String Variable;
 
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual VarExpressionSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         // Masks to be applied when lookup up declarations
@@ -1811,7 +1760,6 @@ namespace Spire
             LookupResult lookupResult2;
 
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual OverloadedExpr * Clone(CloneContext & ctx) override;
         };
 
         class ConstantExpressionSyntaxNode : public ExpressionSyntaxNode
@@ -1828,7 +1776,6 @@ namespace Spire
                 float FloatValue;
             };
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual ConstantExpressionSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         enum class Operator
@@ -1857,7 +1804,6 @@ namespace Spire
             RefPtr<ImportOperatorDefSyntaxNode> ImportOperatorDef; // filled by semantics
             List<RefPtr<ExpressionSyntaxNode>> Arguments;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual ImportExpressionSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class ProjectExpressionSyntaxNode : public ExpressionSyntaxNode
@@ -1865,7 +1811,6 @@ namespace Spire
         public:
             RefPtr<ExpressionSyntaxNode> BaseExpression;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual ProjectExpressionSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         // An initializer list, e.g. `{ 1, 2, 3 }`
@@ -1874,7 +1819,6 @@ namespace Spire
         public:
             List<RefPtr<ExpressionSyntaxNode>> args;
 
-            virtual InitializerListExpr * Clone(CloneContext & ctx) override;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
         };
 
@@ -1892,7 +1836,6 @@ namespace Spire
         {
         public:
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual InvokeExpressionSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class OperatorExpressionSyntaxNode : public InvokeExpressionSyntaxNode
@@ -1908,7 +1851,6 @@ namespace Spire
         public:
             RefPtr<ExpressionSyntaxNode> BaseExpression;
             RefPtr<ExpressionSyntaxNode> IndexExpression;
-            virtual IndexExpressionSyntaxNode * Clone(CloneContext & ctx) override;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
         };
 
@@ -1918,7 +1860,6 @@ namespace Spire
             RefPtr<ExpressionSyntaxNode> BaseExpression;
             String MemberName;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual MemberExpressionSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class SwizzleExpr : public ExpressionSyntaxNode
@@ -1929,7 +1870,6 @@ namespace Spire
             int elementIndices[4];
 
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual SwizzleExpr * Clone(CloneContext & ctx) override;
         };
 
         // A dereference of a pointer or pointer-like type
@@ -1939,7 +1879,6 @@ namespace Spire
             RefPtr<ExpressionSyntaxNode> base;
 
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual DerefExpr * Clone(CloneContext & ctx) override;
         };
 
         class TypeCastExpressionSyntaxNode : public ExpressionSyntaxNode
@@ -1948,7 +1887,6 @@ namespace Spire
             TypeExp TargetType;
             RefPtr<ExpressionSyntaxNode> Expression;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual TypeCastExpressionSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class SelectExpressionSyntaxNode : public OperatorExpressionSyntaxNode
@@ -1961,20 +1899,17 @@ namespace Spire
         {
         public:
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual EmptyStatementSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class DiscardStatementSyntaxNode : public StatementSyntaxNode
         {
         public:
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual DiscardStatementSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         struct Variable : public VarDeclBase
         {
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual Variable * Clone(CloneContext & ctx) override;
         };
 
         class VarDeclrStatementSyntaxNode : public StatementSyntaxNode
@@ -1982,7 +1917,6 @@ namespace Spire
         public:
             RefPtr<DeclBase> decl;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual VarDeclrStatementSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class RateWorld
@@ -2006,7 +1940,6 @@ namespace Spire
             {
                 return this;
             }
-            virtual RateSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class ComponentSyntaxNode : public ContainerDecl
@@ -2028,7 +1961,6 @@ namespace Spire
             }
             bool IsComponentFunction() { return GetParameters().Count() != 0; }
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual ComponentSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         struct ComponentDeclRef : ContainerDeclRef
@@ -2048,7 +1980,6 @@ namespace Spire
         public:
             bool IsAbstract() { return HasModifier<InputModifier>(); }
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor *) override { return this; }
-            virtual WorldSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         struct WorldDeclRef : DeclRef
@@ -2062,7 +1993,6 @@ namespace Spire
             Token StageType;
             EnumerableDictionary<String, Token> Attributes;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor *) override { return this; }
-            virtual StageSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         // Shared functionality for "shader class"-like declarations
@@ -2094,7 +2024,6 @@ namespace Spire
                 return GetMembersOfType<ComponentSyntaxNode>();
             }
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor *) override { return this; }
-            virtual PipelineSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class ImportArgumentSyntaxNode : public SyntaxNode
@@ -2103,7 +2032,6 @@ namespace Spire
             RefPtr<ExpressionSyntaxNode> Expression;
             Token ArgumentName;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor *) override;
-            virtual ImportArgumentSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class ImportSyntaxNode : public Decl
@@ -2115,8 +2043,6 @@ namespace Spire
             Token ObjectName;
             List<RefPtr<ImportArgumentSyntaxNode>> Arguments;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor *) override;
-            virtual ImportSyntaxNode * Clone(CloneContext & ctx) override;
-
         };
 
         class TemplateShaderParameterSyntaxNode : public SyntaxNode
@@ -2124,7 +2050,6 @@ namespace Spire
         public:
             Token ModuleName, InterfaceName;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * /*visitor*/) { return this; }
-            virtual TemplateShaderParameterSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class TemplateShaderSyntaxNode : public ShaderDeclBase
@@ -2132,7 +2057,6 @@ namespace Spire
         public:
             List<RefPtr<TemplateShaderParameterSyntaxNode>> Parameters;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual TemplateShaderSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class ShaderSyntaxNode : public ShaderDeclBase
@@ -2140,7 +2064,6 @@ namespace Spire
         public:
             bool IsModule = false;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual ShaderSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class InterfaceSyntaxNode : public ShaderDeclBase
@@ -2151,7 +2074,6 @@ namespace Spire
                 return GetMembersOfType<ComponentSyntaxNode>();
             }
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor *) override;
-            virtual InterfaceSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class UsingFileDecl : public Decl
@@ -2160,7 +2082,6 @@ namespace Spire
             Token fileName;
 
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual UsingFileDecl * Clone(CloneContext & ctx) override;
         };
 
         class ProgramSyntaxNode : public ContainerDecl
@@ -2202,7 +2123,6 @@ namespace Spire
             }
 #endif
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual ProgramSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class ImportStatementSyntaxNode : public StatementSyntaxNode
@@ -2210,7 +2130,6 @@ namespace Spire
         public:
             RefPtr<ImportSyntaxNode> Import;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual ImportStatementSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class IfStatementSyntaxNode : public StatementSyntaxNode
@@ -2220,7 +2139,6 @@ namespace Spire
             RefPtr<StatementSyntaxNode> PositiveStatement;
             RefPtr<StatementSyntaxNode> NegativeStatement;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual IfStatementSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         // A statement that can be escaped with a `break`
@@ -2234,7 +2152,6 @@ namespace Spire
             RefPtr<StatementSyntaxNode> body;
 
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual SwitchStmt * Clone(CloneContext & ctx) override;
         };
 
         // A statement that is expected to appear lexically nested inside
@@ -2263,7 +2180,6 @@ namespace Spire
             RefPtr<ExpressionSyntaxNode> expr;
 
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual CaseStmt * Clone(CloneContext & ctx) override;
         };
 
         // a `default` statement inside a `switch`
@@ -2271,7 +2187,6 @@ namespace Spire
         {
         public:
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual DefaultStmt * Clone(CloneContext & ctx) override;
         };
 
         // A statement that represents a loop, and can thus be escaped with a `continue`
@@ -2285,7 +2200,6 @@ namespace Spire
             RefPtr<ExpressionSyntaxNode> SideEffectExpression, PredicateExpression;
             RefPtr<StatementSyntaxNode> Statement;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual ForStatementSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class WhileStatementSyntaxNode : public LoopStmt
@@ -2294,7 +2208,6 @@ namespace Spire
             RefPtr<ExpressionSyntaxNode> Predicate;
             RefPtr<StatementSyntaxNode> Statement;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual WhileStatementSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class DoWhileStatementSyntaxNode : public LoopStmt
@@ -2303,7 +2216,6 @@ namespace Spire
             RefPtr<StatementSyntaxNode> Statement;
             RefPtr<ExpressionSyntaxNode> Predicate;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual DoWhileStatementSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         // The case of child statements that do control flow relative
@@ -2318,14 +2230,12 @@ namespace Spire
         {
         public:
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual BreakStatementSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class ContinueStatementSyntaxNode : public JumpStmt
         {
         public:
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual ContinueStatementSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class ReturnStatementSyntaxNode : public StatementSyntaxNode
@@ -2333,7 +2243,6 @@ namespace Spire
         public:
             RefPtr<ExpressionSyntaxNode> Expression;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual ReturnStatementSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         class ExpressionStatementSyntaxNode : public StatementSyntaxNode
@@ -2341,7 +2250,6 @@ namespace Spire
         public:
             RefPtr<ExpressionSyntaxNode> Expression;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual ExpressionStatementSyntaxNode * Clone(CloneContext & ctx) override;
         };
 
         // Note(tfoley): Moved this further down in the file because it depends on
@@ -2352,13 +2260,6 @@ namespace Spire
         {
         public:
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual GenericAppExpr * Clone(CloneContext & ctx) override
-            {
-                auto rs = CloneSyntaxNodeFields(new GenericAppExpr(*this), ctx);
-                for (auto& arg : rs->Arguments)
-                    arg = arg->Clone(ctx);
-                return rs;
-            }
         };
 
         // An expression representing re-use of the syntax for a type in more
@@ -2370,7 +2271,6 @@ namespace Spire
             TypeExp base;
 
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual SharedTypeExpr * Clone(CloneContext & ctx) override;
         };
 
 
@@ -2475,7 +2375,6 @@ namespace Spire
             RefPtr<Decl> inner;
 
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual GenericDecl * Clone(CloneContext & ctx) override;
         };
 
         struct GenericDeclRef : ContainerDeclRef
@@ -2517,7 +2416,6 @@ namespace Spire
             TypeExp initType;
 
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual GenericTypeParamDecl * Clone(CloneContext & ctx) override;
         };
 
         struct GenericTypeParamDeclRef : SimpleTypeDeclRef
@@ -2537,7 +2435,6 @@ namespace Spire
             TypeExp sup;
 
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual GenericTypeConstraintDecl * Clone(CloneContext & ctx) override;
         };
 
         struct GenericTypeConstraintDeclRef : DeclRef
@@ -2553,7 +2450,6 @@ namespace Spire
         {
         public:
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
-            virtual GenericValueParamDecl * Clone(CloneContext & ctx) override;
         };
 
         struct GenericValueParamDeclRef : VarDeclBaseRef
