@@ -2102,17 +2102,31 @@ namespace Spire
         // HLSL `volatile` modifier (ignored)
         class HLSLVolatileModifier : public Modifier {};
 
-        // An HLSL `[name(arg0, ...)]` style attribute, which hasn't undergone any
-        // semantic analysis.
-        // After analysis, this might be transformed into a more specific case.
-        class HLSLUncheckedAttribute : public Modifier
+        // An HLSL `[name(arg0, ...)]` style attribute.
+        class HLSLAttribute : public Modifier
         {
         public:
             Token nameToken;
             List<RefPtr<ExpressionSyntaxNode>> args;
         };
+        
+        // An HLSL `[name(...)]` attribute that hasn't undergone
+        // any semantic analysis.
+        // After analysis, this might be transformed into a more specific case.
+        class HLSLUncheckedAttribute : public HLSLAttribute
+        {
+        public:
+        };
 
-
+        // An HLSL `[numthreads(x,y,z)]` attribute
+        class HLSLNumThreadsAttribute : public HLSLAttribute
+        {
+        public:
+            // The number of threads to use along each axis
+            int32_t x;
+            int32_t y;
+            int32_t z;
+        };
 
         // HLSL modifiers for geometry shader input topology
         class HLSLGeometryShaderInputPrimitiveTypeModifier : public Modifier {};

@@ -529,6 +529,7 @@ int main(
     // is not a near-term priority.
     //
     //  runHLSLTestsInDirectory(&context, "Tests/HLSL/");
+    runHLSLTestsInDirectory(&context, "Tests/HLSL/simple/");
     runHLSLTestsInDirectory(&context, "Tests/bindings/");
     runHLSLTestsInDirectory(&context, "Tests/rewriter/");
 #endif

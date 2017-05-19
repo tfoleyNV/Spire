@@ -996,7 +996,7 @@ static void EmitModifiers(EmitContext* context, RefPtr<Decl> decl)
 
         // TODO: eventually we should be checked these modifiers, but for
         // now we can emit them unchecked, I guess
-        else if (auto uncheckedAttr = mod.As<HLSLUncheckedAttribute>())
+        else if (auto uncheckedAttr = mod.As<HLSLAttribute>())
         {
             Emit(context, "[");
             Emit(context, uncheckedAttr->nameToken.Content);

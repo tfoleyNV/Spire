@@ -925,6 +925,126 @@ namespace Spire
                 getSink()->diagnose( conformanceDecl, Diagnostics::expectedATraitGot, base.type);
             }
 
+            RefPtr<ConstantIntVal> checkConstantIntVal(
+                RefPtr<ExpressionSyntaxNode>    expr)
+            {
+                // First type-check the expression as normal
+                expr = CheckExpr(expr);
+
+                auto intVal = CheckIntegerConstantExpression(expr.Ptr());
+                if(!intVal)
+                    return nullptr;
+
+                auto constIntVal = intVal.As<ConstantIntVal>();
+                if(!constIntVal)
+                {
+                    getSink()->diagnose(expr->Position, Diagnostics::expectedIntegerConstantNotLiteral);
+                    return nullptr;
+                }
+                return constIntVal;
+            }
+
+            RefPtr<Modifier> checkModifier(
+                RefPtr<Modifier>    m,
+                Decl*               decl)
+            {
+                if(auto hlslUncheckedAttribute = m.As<HLSLUncheckedAttribute>())
+                {
+                    // We have an HLSL `[name(arg,...)]` attribute, and we'd like
+                    // to check that it is provides all the expected arguments
+                    //
+                    // For now we will do this in a completely ad hoc fashion,
+                    // but it would be nice to have some generic routine to
+                    // do the needed type checking/coercion.
+                    if(hlslUncheckedAttribute->nameToken.Content == "numthreads")
+                    {
+                        if(hlslUncheckedAttribute->args.Count() != 3)
+                            return m;
+
+                        auto xVal = checkConstantIntVal(hlslUncheckedAttribute->args[0]);
+                        auto yVal = checkConstantIntVal(hlslUncheckedAttribute->args[1]);
+                        auto zVal = checkConstantIntVal(hlslUncheckedAttribute->args[2]);
+
+                        if(!xVal) return m;
+                        if(!yVal) return m;
+                        if(!zVal) return m;
+
+                        auto hlslNumThreadsAttribute = new HLSLNumThreadsAttribute();
+
+                        hlslNumThreadsAttribute->Position   = hlslUncheckedAttribute->Position;
+                        hlslNumThreadsAttribute->nameToken  = hlslUncheckedAttribute->nameToken;
+                        hlslNumThreadsAttribute->args       = hlslUncheckedAttribute->args;
+                        hlslNumThreadsAttribute->x          = xVal->value;
+                        hlslNumThreadsAttribute->y          = yVal->value;
+                        hlslNumThreadsAttribute->z          = zVal->value;
+
+                        return hlslNumThreadsAttribute;
+                    }
+                }
+
+                // Default behavior is to leave things as they are,
+                // and assume that modifiers are mostly already checked.
+                //
+                // TODO: This would be a good place to validate that
+                // a modifier is actually valid for the thing it is
+                // being applied to, and potentially to check that
+                // it isn't in conflict with any other modifiers
+                // on the same declaration.
+
+                return m;
+            }
+
+
+            void checkModifiers(Decl* decl)
+            {
+                // TODO(tfoley): need to make sure this only
+                // performs semantic checks on a `SharedModifier` once...
+
+                // The process of checking a modifier may produce a new modifier in its place,
+                // so we will build up a new linked list of modifiers that will replace
+                // the old list.
+                RefPtr<Modifier> resultModifiers;
+                RefPtr<Modifier>* resultModifierLink = &resultModifiers;
+
+                RefPtr<Modifier> modifier = decl->modifiers.first;
+                while(modifier)
+                {
+                    // Because we are rewriting the list in place, we need to extract
+                    // the next modifier here (not at the end of the loop).
+                    auto next = modifier->next;
+
+                    // We also go ahead and clobber the `next` field on the modifier
+                    // itself, so that the default behavior of `checkModifier()` can
+                    // be to return a single unlinked modifier.
+                    modifier->next = nullptr;
+
+                    auto checkedModifier = checkModifier(modifier, decl);
+                    if(checkedModifier)
+                    {
+                        // If checking gave us a modifier to add, then we
+                        // had better add it.
+
+                        // Just in case `checkModifier` ever returns multiple
+                        // modifiers, lets advance to the end of the list we
+                        // are building.
+                        while(*resultModifierLink)
+                            resultModifierLink = &(*resultModifierLink)->next;
+
+                        // attach the new modifier at the end of the list,
+                        // and now set the "link" to point to its `next` field
+                        *resultModifierLink = checkedModifier;
+                        resultModifierLink = &checkedModifier->next;
+                    }
+
+                    // Move along to the next modifier
+                    modifier = next;
+                }
+
+                // Whether we actually re-wrote anything or note, lets
+                // install the new list of modifiers on the declaration
+                decl->modifiers.first = resultModifiers;
+            }
+
             virtual RefPtr<ProgramSyntaxNode> VisitProgram(ProgramSyntaxNode * programNode) override
             {
                 // Try to register all the builtin decls
@@ -990,6 +1110,12 @@ namespace Spire
                 for (auto d : programNode->Members)
                 {
                     EnusreAllDeclsRec(d);
+                }
+
+                // Do any semantic checking required on modifiers?
+                for (auto d : programNode->Members)
+                {
+                    checkModifiers(d.Ptr());
                 }
 
                 return programNode;
