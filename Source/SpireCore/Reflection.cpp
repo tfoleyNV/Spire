@@ -6,173 +6,278 @@
 
 #include <assert.h>
 
-namespace Spire {
-namespace Compiler {
+// Implementation to back public-facing reflection API
 
-struct ReflectionGenerationContext
+using namespace Spire;
+using namespace Spire::Compiler;
+
+
+// Conversion routines to help with strongly-typed reflection API
+
+static inline ExpressionType* convert(SpireReflectionType* type)
 {
-    List<uint8_t> data;
-};
-
-template<typename T>
-struct NodePtr
-{
-    ReflectionGenerationContext*    context;
-    size_t                          offset;
-
-    NodePtr()
-        : context(0), offset(0)
-    {}
-
-    NodePtr(
-        ReflectionGenerationContext*    context,
-        size_t                          offset)
-        : context(context)
-        , offset(offset)
-    {}
-
-    template<typename U>
-    NodePtr(
-        NodePtr<U> ptr,
-        typename EnableIf<IsConvertible<T*, U*>::Value, void>::type * = 0)
-        : context(ptr.context)
-        , offset(ptr.offset)
-    {}
-
-    operator T*()
-    {
-        return (T*) (context->data.begin() + offset);
-    }
-
-    T* operator->()
-    {
-        return *this;
-    }
-
-    NodePtr<T> operator+(size_t index)
-    {
-        return NodePtr<T>(context, offset + index*sizeof(T));
-    }
-
-    template<typename U>
-    NodePtr<U> Cast()
-    {
-        return NodePtr<U>(context, offset);
-    }
-};
-
-template<typename T>
-NodePtr<T> MakeNodePtr(ReflectionGenerationContext* context, T* rawPtr)
-{
-    NodePtr<T> nodePtr;
-    nodePtr.context = context;
-    nodePtr.offset = ((uint8_t*)rawPtr - context->data.begin());
-    return nodePtr;
+    return (ExpressionType*) type;
 }
 
-static size_t AllocateNodeData(
-    ReflectionGenerationContext*    context,
-    size_t                          size,
-    size_t                          alignment,
-    size_t                          count)
+static inline SpireReflectionType* convert(ExpressionType* type)
 {
-    size_t mask = alignment - 1;
-
-    // Pad out the existing data to our alignment
-    while( (context->data.Count() & mask) != 0 )
-    {
-        // TODO(tfoley): There's got to be something faster than this...
-        context->data.Add(0);
-    }
-
-    // Starting offset for the new node data
-    size_t result = context->data.Count();
-
-    // Stride between elements (should always == size in C/C++)
-    size_t stride = (size + alignment-1) & ~(alignment-1);
-
-    // bytes to allocate
-    size_t byteCount = stride * count;
-
-    for( size_t bb = 0; bb < byteCount; ++bb )
-    {
-        // TODO(tfoley): There's got to be something faster than this...
-        context->data.Add(0);
-    }
-
-    return result;
+    return (SpireReflectionType*) type;
 }
 
-template<typename T>
-static NodePtr<T> AllocateNode(
-    ReflectionGenerationContext*    context)
+static inline TypeLayout* convert(SpireReflectionTypeLayout* type)
 {
-    return NodePtr<T>(context, AllocateNodeData(context, sizeof(T), alignof(T), 1));
+    return (TypeLayout*) type;
 }
 
-template<typename T>
-static NodePtr<T> AllocateNodes(
-    ReflectionGenerationContext*    context,
-    size_t                          count = 1)
+static inline SpireReflectionTypeLayout* convert(TypeLayout* type)
 {
-    return NodePtr<T>(context, AllocateNodeData(context, sizeof(T), alignof(T), count));
+    return (SpireReflectionTypeLayout*) type;
 }
 
-//
-
-static NodePtr<ReflectionTypeNode> GenerateReflectionType(
-    ReflectionGenerationContext*    context,
-    RefPtr<ExpressionType>          type);
-
-static NodePtr<ReflectionTypeLayoutNode> GenerateReflectionTypeLayout(
-    ReflectionGenerationContext*    context,
-    RefPtr<TypeLayout>              typeLayout);
-
-//
-
-static NodePtr<char> GenerateReflectionName(
-    ReflectionGenerationContext*    context,
-    String const&                   text)
+static inline VarDeclBase* convert(SpireReflectionVariable* var)
 {
-    // TODO(tfoley): It would be a good idea to only emit each unique string
-    // once, to avoid wasting a bunch of space.
-
-    size_t textSize = text.Length();
-
-// Need enough space for given text plus NULL byte
-NodePtr<char> ptr = AllocateNodes<char>(context, textSize + 1);
-
-memcpy(ptr, text.begin(), textSize);
-ptr[textSize] = 0;
-
-return ptr;
+    return (VarDeclBase*) var;
 }
 
-static void GenerateReflectionVar(
-    ReflectionGenerationContext*    context,
-    VarDeclBaseRef                  declRef,
-    NodePtr<ReflectionVariableNode> info)
+static inline SpireReflectionVariable* convert(VarDeclBase* var)
 {
-    info->flavor = ReflectionNodeFlavor::Variable;
-    info->name = GenerateReflectionName(context, declRef.GetName());
-    info->type = GenerateReflectionType(context, declRef.GetType());
+    return (SpireReflectionVariable*) var;
 }
 
-static NodePtr<ReflectionTypeNode> GenerateReflectionType(
-    ReflectionGenerationContext*    context,
-    RefPtr<ExpressionType>          type)
+static inline VarLayout* convert(SpireReflectionVariableLayout* var)
 {
+    return (VarLayout*) var;
+}
+
+static inline SpireReflectionVariableLayout* convert(VarLayout* var)
+{
+    return (SpireReflectionVariableLayout*) var;
+}
+
+static inline ProgramLayout* convert(SpireReflection* program)
+{
+    return (ProgramLayout*) program;
+}
+
+static inline SpireReflection* convert(ProgramLayout* program)
+{
+    return (SpireReflection*) program;
+}
+
+// Type Reflection
+
+
+SPIRE_API SpireTypeKind spReflectionType_GetKind(SpireReflectionType* inType)
+{
+    auto type = convert(inType);
+    if(!type) return SPIRE_TYPE_KIND_NONE;
+
     // TODO(tfoley: Don't emit the same type more than once...
 
     if (auto basicType = type->As<BasicExpressionType>())
     {
-        auto info = AllocateNode<ReflectionScalarTypeNode>(context);
-        info->flavor = ReflectionNodeFlavor::Type;
-        info->SetKind(SPIRE_TYPE_KIND_SCALAR);
+        return SPIRE_TYPE_KIND_SCALAR;
+    }
+    else if (auto vectorType = type->As<VectorExpressionType>())
+    {
+        return SPIRE_TYPE_KIND_VECTOR;
+    }
+    else if (auto matrixType = type->As<MatrixExpressionType>())
+    {
+        return SPIRE_TYPE_KIND_MATRIX;
+    }
+    else if (auto constantBufferType = type->As<ConstantBufferType>())
+    {
+        return SPIRE_TYPE_KIND_CONSTANT_BUFFER;
+    }
+    else if (auto samplerStateType = type->As<SamplerStateType>())
+    {
+        return SPIRE_TYPE_KIND_SAMPLER_STATE;
+    }
+    else if (auto textureType = type->As<TextureType>())
+    {
+        return SPIRE_TYPE_KIND_RESOURCE;
+    }
+
+    // TODO: need a better way to handle this stuff...
+#define CASE(TYPE)                          \
+    else if(type->As<TYPE>()) do {          \
+        return SPIRE_TYPE_KIND_RESOURCE;    \
+    } while(0)
+
+    CASE(HLSLBufferType);
+    CASE(HLSLRWBufferType);
+    CASE(HLSLBufferType);
+    CASE(HLSLRWBufferType);
+    CASE(HLSLStructuredBufferType);
+    CASE(HLSLRWStructuredBufferType);
+    CASE(HLSLAppendStructuredBufferType);
+    CASE(HLSLConsumeStructuredBufferType);
+    CASE(HLSLByteAddressBufferType);
+    CASE(HLSLRWByteAddressBufferType);
+    CASE(UntypedBufferResourceType);
+#undef CASE
+
+    else if (auto arrayType = type->As<ArrayExpressionType>())
+    {
+        return SPIRE_TYPE_KIND_ARRAY;
+    }
+    else if( auto declRefType = type->As<DeclRefType>() )
+    {
+        auto declRef = declRefType->declRef;
+        if( auto structDeclRef = declRef.As<StructDeclRef>() )
+        {
+            return SPIRE_TYPE_KIND_STRUCT;
+        }
+    }
+
+    assert(!"unexpected");
+    return SPIRE_TYPE_KIND_NONE;
+}
+
+SPIRE_API unsigned int spReflectionType_GetFieldCount(SpireReflectionType* inType)
+{
+    auto type = convert(inType);
+    if(!type) return 0;
+
+    // TODO: maybe filter based on kind
+
+    if(auto declRefType = dynamic_cast<DeclRefType*>(type))
+    {
+        auto declRef = declRefType->declRef;
+        if( auto structDeclRef = declRef.As<StructDeclRef>())
+        {
+            return structDeclRef.GetFields().Count();
+        }
+    }
+
+    return 0;
+}
+
+SPIRE_API SpireReflectionVariable* spReflectionType_GetFieldByIndex(SpireReflectionType* inType, unsigned index)
+{
+    auto type = convert(inType);
+    if(!type) return nullptr;
+
+    // TODO: maybe filter based on kind
+
+    if(auto declRefType = dynamic_cast<DeclRefType*>(type))
+    {
+        auto declRef = declRefType->declRef;
+        if( auto structDeclRef = declRef.As<StructDeclRef>())
+        {
+            auto fieldDeclRef = structDeclRef.GetFields().ToArray()[index];
+            return (SpireReflectionVariable*) fieldDeclRef.GetDecl();
+        }
+    }
+
+    return nullptr;
+}
+
+SPIRE_API size_t spReflectionType_GetElementCount(SpireReflectionType* inType)
+{
+    auto type = convert(inType);
+    if(!type) return 0;
+
+    if(auto arrayType = dynamic_cast<ArrayExpressionType*>(type))
+    {
+        return GetIntVal(arrayType->ArrayLength);
+    }
+    else if( auto vectorType = dynamic_cast<VectorExpressionType*>(type))
+    {
+        return GetIntVal(vectorType->elementCount);
+    }
+
+    return 0;
+}
+
+SPIRE_API SpireReflectionType* spReflectionType_GetElementType(SpireReflectionType* inType)
+{
+    auto type = convert(inType);
+    if(!type) return nullptr;
+
+    if(auto arrayType = dynamic_cast<ArrayExpressionType*>(type))
+    {
+        return (SpireReflectionType*) arrayType->BaseType.Ptr();
+    }
+    else if( auto constantBufferType = dynamic_cast<ConstantBufferType*>(type))
+    {
+        return convert(constantBufferType->elementType.Ptr());
+    }
+    else if( auto vectorType = dynamic_cast<VectorExpressionType*>(type))
+    {
+        return convert(vectorType->elementType.Ptr());
+    }
+    else if( auto matrixType = dynamic_cast<MatrixExpressionType*>(type))
+    {
+        return convert(matrixType->elementType.Ptr());
+    }
+
+    return nullptr;
+}
+
+SPIRE_API unsigned int spReflectionType_GetRowCount(SpireReflectionType* inType)
+{
+    auto type = convert(inType);
+    if(!type) return 0;
+
+    if(auto matrixType = dynamic_cast<MatrixExpressionType*>(type))
+    {
+        return GetIntVal(matrixType->rowCount);
+    }
+    else if(auto vectorType = dynamic_cast<VectorExpressionType*>(type))
+    {
+        return 1;
+    }
+    else if( auto basicType = dynamic_cast<BasicExpressionType*>(type) )
+    {
+        return 1;
+    }
+
+    return 0;
+}
+
+SPIRE_API unsigned int spReflectionType_GetColumnCount(SpireReflectionType* inType)
+{
+    auto type = convert(inType);
+    if(!type) return 0;
+
+    if(auto matrixType = dynamic_cast<MatrixExpressionType*>(type))
+    {
+        return GetIntVal(matrixType->colCount);
+    }
+    else if(auto vectorType = dynamic_cast<VectorExpressionType*>(type))
+    {
+        return GetIntVal(vectorType->elementCount);
+    }
+    else if( auto basicType = dynamic_cast<BasicExpressionType*>(type) )
+    {
+        return 1;
+    }
+
+    return 0;
+}
+
+SPIRE_API SpireScalarType spReflectionType_GetScalarType(SpireReflectionType* inType)
+{
+    auto type = convert(inType);
+    if(!type) return 0;
+
+    if(auto matrixType = dynamic_cast<MatrixExpressionType*>(type))
+    {
+        type = matrixType->elementType.Ptr();
+    }
+    else if(auto vectorType = dynamic_cast<VectorExpressionType*>(type))
+    {
+        type = vectorType->elementType.Ptr();
+    }
+
+    if(auto basicType = dynamic_cast<BasicExpressionType*>(type))
+    {
         switch (basicType->BaseType)
         {
 #define CASE(BASE, TAG) \
-        case BaseType::BASE: info->SetScalarType(SPIRE_SCALAR_TYPE_##TAG); break
+        case BaseType::BASE: return SPIRE_SCALAR_TYPE_##TAG
 
             CASE(Void, VOID);
             CASE(Int, INT32);
@@ -185,557 +290,404 @@ static NodePtr<ReflectionTypeNode> GenerateReflectionType(
 
         default:
             assert(!"unexpected");
-            info->SetScalarType(SPIRE_SCALAR_TYPE_NONE);
+            return SPIRE_SCALAR_TYPE_NONE;
             break;
         }
-        return info;
     }
-    else if (auto vectorType = type->As<VectorExpressionType>())
-    {
-        auto info = AllocateNode<ReflectionVectorTypeNode>(context);
-        info->flavor = ReflectionNodeFlavor::Type;
-        info->SetKind(SPIRE_TYPE_KIND_VECTOR);
-        info->SetElementCount(GetIntVal(vectorType->elementCount));
-        info->elementType = GenerateReflectionType(context, vectorType->elementType).Cast<ReflectionScalarTypeNode>();
-        return info;
-    }
-    else if (auto matrixType = type->As<MatrixExpressionType>())
-    {
-        auto info = AllocateNode<ReflectionMatrixTypeNode>(context);
-        info->flavor = ReflectionNodeFlavor::Type;
-        info->SetKind(SPIRE_TYPE_KIND_MATRIX);
-        info->SetRowCount(GetIntVal(matrixType->rowCount));
-        info->SetColumnCount(GetIntVal(matrixType->colCount));
-        info->elementType = GenerateReflectionType(context, matrixType->elementType).Cast<ReflectionScalarTypeNode>();
-        return info;
-    }
-    else if (auto constantBufferType = type->As<ConstantBufferType>())
-    {
-        auto info = AllocateNode<ReflectionConstantBufferTypeNode>(context);
-        info->flavor = ReflectionNodeFlavor::Type;
-        info->SetKind(SPIRE_TYPE_KIND_CONSTANT_BUFFER);
 
-        auto elementTypeLayout = CreateTypeLayout(
-            constantBufferType->elementType.Ptr(),
-            // TODO: we should pick the layout rules from the definition!
-            GetLayoutRulesImpl(LayoutRule::HLSLConstantBuffer));
+    return SPIRE_SCALAR_TYPE_NONE;
+}
 
-        info->elementType = GenerateReflectionTypeLayout(
-            context,
-            elementTypeLayout);
-        return info;
-    }
-    else if (auto samplerStateType = type->As<SamplerStateType>())
+SPIRE_API SpireResourceShape spReflectionType_GetResourceShape(SpireReflectionType* inType)
+{
+    auto type = convert(inType);
+    if(!type) return 0;
+
+    while(auto arrayType = type->As<ArrayExpressionType>())
     {
-        auto info = AllocateNode<ReflectionSamplerStateTypeNode>(context);
-        info->flavor = ReflectionNodeFlavor::Type;
-        info->SetKind(SPIRE_TYPE_KIND_SAMPLER_STATE);
-        return info;
+        type = arrayType->BaseType.Ptr();
     }
-    else if (auto textureType = type->As<TextureType>())
+
+    if(auto textureType = type->As<TextureType>())
     {
-        auto info = AllocateNode<ReflectionResourceTypeNode>(context);
-        info->flavor = ReflectionNodeFlavor::Type;
-        info->SetKind(SPIRE_TYPE_KIND_RESOURCE);
-        info->SetShape(textureType->getShape());
-        info->SetAccess(textureType->getAccess());
-        info->elementType = GenerateReflectionType(context, textureType->elementType);
-        return info;
+        return textureType->getShape();
+    }
+
+    // TODO: need a better way to handle this stuff...
+#define CASE(TYPE, SHAPE, ACCESS)   \
+    else if(type->As<TYPE>()) do {  \
+        return SHAPE;               \
+    } while(0)
+
+    CASE(HLSLBufferType,                    SPIRE_TEXTURE_BUFFER, SPIRE_RESOURCE_ACCESS_READ);
+    CASE(HLSLRWBufferType,                  SPIRE_TEXTURE_BUFFER, SPIRE_RESOURCE_ACCESS_READ_WRITE);
+    CASE(HLSLBufferType,                    SPIRE_TEXTURE_BUFFER, SPIRE_RESOURCE_ACCESS_READ);
+    CASE(HLSLRWBufferType,                  SPIRE_TEXTURE_BUFFER, SPIRE_RESOURCE_ACCESS_READ_WRITE);
+    CASE(HLSLStructuredBufferType,          SPIRE_STRUCTURED_BUFFER, SPIRE_RESOURCE_ACCESS_READ);
+    CASE(HLSLRWStructuredBufferType,        SPIRE_STRUCTURED_BUFFER, SPIRE_RESOURCE_ACCESS_READ_WRITE);
+    CASE(HLSLAppendStructuredBufferType,    SPIRE_STRUCTURED_BUFFER, SPIRE_RESOURCE_ACCESS_APPEND);
+    CASE(HLSLConsumeStructuredBufferType,   SPIRE_STRUCTURED_BUFFER, SPIRE_RESOURCE_ACCESS_CONSUME);
+    CASE(HLSLByteAddressBufferType,         SPIRE_BYTE_ADDRESS_BUFFER,  SPIRE_RESOURCE_ACCESS_READ);
+    CASE(HLSLRWByteAddressBufferType,       SPIRE_BYTE_ADDRESS_BUFFER,  SPIRE_RESOURCE_ACCESS_READ_WRITE);
+    CASE(UntypedBufferResourceType,         SPIRE_BYTE_ADDRESS_BUFFER,  SPIRE_RESOURCE_ACCESS_READ);
+#undef CASE
+
+    return SPIRE_RESOURCE_NONE;
+}
+
+SPIRE_API SpireResourceAccess spReflectionType_GetResourceAccess(SpireReflectionType* inType)
+{
+    auto type = convert(inType);
+    if(!type) return 0;
+
+    while(auto arrayType = type->As<ArrayExpressionType>())
+    {
+        type = arrayType->BaseType.Ptr();
+    }
+
+    if(auto textureType = type->As<TextureType>())
+    {
+        return textureType->getAccess();
+    }
+
+    // TODO: need a better way to handle this stuff...
+#define CASE(TYPE, SHAPE, ACCESS)   \
+    else if(type->As<TYPE>()) do {  \
+        return ACCESS;              \
+    } while(0)
+
+    CASE(HLSLBufferType,                    SPIRE_TEXTURE_BUFFER, SPIRE_RESOURCE_ACCESS_READ);
+    CASE(HLSLRWBufferType,                  SPIRE_TEXTURE_BUFFER, SPIRE_RESOURCE_ACCESS_READ_WRITE);
+    CASE(HLSLBufferType,                    SPIRE_TEXTURE_BUFFER, SPIRE_RESOURCE_ACCESS_READ);
+    CASE(HLSLRWBufferType,                  SPIRE_TEXTURE_BUFFER, SPIRE_RESOURCE_ACCESS_READ_WRITE);
+    CASE(HLSLStructuredBufferType,          SPIRE_STRUCTURED_BUFFER, SPIRE_RESOURCE_ACCESS_READ);
+    CASE(HLSLRWStructuredBufferType,        SPIRE_STRUCTURED_BUFFER, SPIRE_RESOURCE_ACCESS_READ_WRITE);
+    CASE(HLSLAppendStructuredBufferType,    SPIRE_STRUCTURED_BUFFER, SPIRE_RESOURCE_ACCESS_APPEND);
+    CASE(HLSLConsumeStructuredBufferType,   SPIRE_STRUCTURED_BUFFER, SPIRE_RESOURCE_ACCESS_CONSUME);
+    CASE(HLSLByteAddressBufferType,         SPIRE_BYTE_ADDRESS_BUFFER,  SPIRE_RESOURCE_ACCESS_READ);
+    CASE(HLSLRWByteAddressBufferType,       SPIRE_BYTE_ADDRESS_BUFFER,  SPIRE_RESOURCE_ACCESS_READ_WRITE);
+    CASE(UntypedBufferResourceType,         SPIRE_BYTE_ADDRESS_BUFFER,  SPIRE_RESOURCE_ACCESS_READ);
+#undef CASE
+
+    return SPIRE_RESOURCE_ACCESS_NONE;
+}
+
+SPIRE_API SpireReflectionType* spReflectionType_GetResourceResultType(SpireReflectionType* inType)
+{
+    auto type = convert(inType);
+    if(!type) return nullptr;
+
+    while(auto arrayType = type->As<ArrayExpressionType>())
+    {
+        type = arrayType->BaseType.Ptr();
+    }
+
+    if (auto textureType = type->As<TextureType>())
+    {
+        return convert(textureType->elementType.Ptr());
     }
 
     // TODO: need a better way to handle this stuff...
 #define CASE(TYPE, SHAPE, ACCESS)                                                       \
     else if(type->As<TYPE>()) do {                                                      \
-    auto info = AllocateNode<ReflectionResourceTypeNode>(context);                      \
-    info->flavor = ReflectionNodeFlavor::Type;                                          \
-    info->SetKind(SPIRE_TYPE_KIND_RESOURCE);                                            \
-    info->SetShape(SHAPE);                                                              \
-    info->SetAccess(ACCESS);                                                            \
-    info->elementType = GenerateReflectionType(context, type->As<TYPE>()->elementType); \
-    return info;                                                                        \
+        return convert(type->As<TYPE>()->elementType.Ptr());                            \
     } while(0)
 
     CASE(HLSLBufferType,                    SPIRE_TEXTURE_BUFFER, SPIRE_RESOURCE_ACCESS_READ);
     CASE(HLSLRWBufferType,                  SPIRE_TEXTURE_BUFFER, SPIRE_RESOURCE_ACCESS_READ_WRITE);
-#undef CASE
-
-    // TODO: need a better way to handle this stuff...
-#define CASE(TYPE, SHAPE, ACCESS)                                                               \
-    else if(type->As<TYPE>()) do {                                                              \
-    auto info = AllocateNode<ReflectionResourceTypeNode>(context);                              \
-    info->flavor = ReflectionNodeFlavor::Type;                                                  \
-    info->SetKind(SPIRE_TYPE_KIND_RESOURCE);                                                    \
-    info->SetShape(SHAPE);                                                                      \
-    info->SetAccess(ACCESS);                                                                    \
-    auto elementTypeLayout = CreateTypeLayout(                                                  \
-        type->As<TYPE>()->elementType.Ptr(),                                                    \
-        GetLayoutRulesImpl(LayoutRule::HLSLStructuredBuffer));                                  \
-    info->elementType = GenerateReflectionTypeLayout(context, elementTypeLayout);               \
-    return info;                                                                                \
-    } while(0)
-
     CASE(HLSLBufferType,                    SPIRE_TEXTURE_BUFFER, SPIRE_RESOURCE_ACCESS_READ);
     CASE(HLSLRWBufferType,                  SPIRE_TEXTURE_BUFFER, SPIRE_RESOURCE_ACCESS_READ_WRITE);
+
+    // TODO: structured buffer needs to expose type layout!
 
     CASE(HLSLStructuredBufferType,          SPIRE_STRUCTURED_BUFFER, SPIRE_RESOURCE_ACCESS_READ);
     CASE(HLSLRWStructuredBufferType,        SPIRE_STRUCTURED_BUFFER, SPIRE_RESOURCE_ACCESS_READ_WRITE);
-
-    // TODO: need to add flags for these cases too...
     CASE(HLSLAppendStructuredBufferType,    SPIRE_STRUCTURED_BUFFER, SPIRE_RESOURCE_ACCESS_APPEND);
     CASE(HLSLConsumeStructuredBufferType,   SPIRE_STRUCTURED_BUFFER, SPIRE_RESOURCE_ACCESS_CONSUME);
 #undef CASE
 
-#define CASE(TYPE, SHAPE, ACCESS)                                                       \
-    else if(type->As<TYPE>()) do {                                                      \
-    auto info = AllocateNode<ReflectionResourceTypeNode>(context);                      \
-    info->flavor = ReflectionNodeFlavor::Type;                                          \
-    info->SetKind(SPIRE_TYPE_KIND_RESOURCE);                                            \
-    info->SetShape(SHAPE);                                                              \
-    info->SetAccess(ACCESS);                                                            \
-    info->elementType.raw = 0;                                                          \
-    return info;                                                                        \
-    } while(0)
+    return nullptr;
+}
 
-    CASE(HLSLByteAddressBufferType,         SPIRE_BYTE_ADDRESS_BUFFER,  SPIRE_RESOURCE_ACCESS_READ);
-    CASE(HLSLRWByteAddressBufferType,       SPIRE_BYTE_ADDRESS_BUFFER,  SPIRE_RESOURCE_ACCESS_READ_WRITE);
+// Type Layout Reflection
 
-    // Report additional unknown resource types as if they are byte-address buffers
-    CASE(UntypedBufferResourceType,         SPIRE_BYTE_ADDRESS_BUFFER,  SPIRE_RESOURCE_ACCESS_READ);
-#undef CASE
+SPIRE_API SpireReflectionType* spReflectionTypeLayout_GetType(SpireReflectionTypeLayout* inTypeLayout)
+{
+    auto typeLayout = convert(inTypeLayout);
+    if(!typeLayout) return nullptr;
 
+    return (SpireReflectionType*) typeLayout->type.Ptr();
+}
 
-    else if (auto arrayType = type->As<ArrayExpressionType>())
+SPIRE_API size_t spReflectionTypeLayout_GetSize(SpireReflectionTypeLayout* inTypeLayout, SpireParameterCategory category)
+{
+    auto typeLayout = convert(inTypeLayout);
+    if(!typeLayout) return 0;
+
+    auto info = typeLayout->FindResourceInfo(LayoutResourceKind(category));
+    if(!info) return 0;
+
+    return info->count;
+}
+
+SPIRE_API SpireReflectionVariableLayout* spReflectionTypeLayout_GetFieldByIndex(SpireReflectionTypeLayout* inTypeLayout, unsigned index)
+{
+    auto typeLayout = convert(inTypeLayout);
+    if(!typeLayout) return nullptr;
+
+    if(auto structTypeLayout = dynamic_cast<StructTypeLayout*>(typeLayout))
     {
-        auto info = AllocateNode<ReflectionArrayTypeNode>(context);
-        info->flavor = ReflectionNodeFlavor::Type;
-        info->SetKind(SPIRE_TYPE_KIND_ARRAY);
-        info->elementType = GenerateReflectionType(context, arrayType->BaseType);
-        info->elementCount = arrayType->ArrayLength ? GetIntVal(arrayType->ArrayLength) : 0;
-        return info;
+        return (SpireReflectionVariableLayout*) structTypeLayout->fields[index].Ptr();
     }
-    else if( auto declRefType = type->As<DeclRefType>() )
+
+    return nullptr;
+}
+
+SPIRE_API size_t spReflectionTypeLayout_GetElementStride(SpireReflectionTypeLayout* inTypeLayout, SpireParameterCategory category)
+{
+    auto typeLayout = convert(inTypeLayout);
+    if(!typeLayout) return 0;
+
+    if( auto arrayTypeLayout = dynamic_cast<ArrayTypeLayout*>(typeLayout))
     {
-        auto declRef = declRefType->declRef;
-        if( auto structDeclRef = declRef.As<StructDeclRef>() )
+        if(category == SPIRE_PARAMETER_CATEGORY_UNIFORM)
         {
-            auto info = AllocateNode<ReflectionStructTypeNode>(context);
-            info->flavor = ReflectionNodeFlavor::Type;
-            info->SetKind(SPIRE_TYPE_KIND_STRUCT);
-
-            size_t fieldCount = structDeclRef.GetDecl()->GetFields().Count();
-            info->SetFieldCount(fieldCount);
-
-            auto fields = AllocateNodes<ReflectionVariableNode>(context, fieldCount);
-
-            size_t fieldIndex = 0;
-            for(auto ff : structDeclRef.GetFields())
-            {
-                auto field = fields + fieldIndex;
-
-                // TODO: fill the damn thing in!!!!!
-                GenerateReflectionVar(context, ff, field);
-
-                fieldIndex++;
-            }
-
-            return info;
+            return arrayTypeLayout->uniformStride;
+        }
+        else
+        {
+            auto elementTypeLayout = arrayTypeLayout->elementTypeLayout;
+            auto info = elementTypeLayout->FindResourceInfo(LayoutResourceKind(category));
+            if(!info) return 0;
+            return info->count;
         }
     }
 
-    assert(!"unexpected");
-    return NodePtr<ReflectionTypeNode>();
+    return 0;
 }
 
-static SpireParameterCategory ComputeReflectionParameterCategory(
-    ReflectionGenerationContext*    context,
-    LayoutResourceKind              kind)
+SPIRE_API SpireReflectionTypeLayout* spReflectionTypeLayout_GetElementTypeLayout(SpireReflectionTypeLayout* inTypeLayout)
 {
-    switch (kind)
+    auto typeLayout = convert(inTypeLayout);
+    if(!typeLayout) return nullptr;
+
+    if( auto arrayTypeLayout = dynamic_cast<ArrayTypeLayout*>(typeLayout))
     {
-    case LayoutResourceKind::Uniform:
-        return SPIRE_PARAMETER_CATEGORY_UNIFORM;
-    case LayoutResourceKind::ConstantBuffer:
-        return SPIRE_PARAMETER_CATEGORY_CONSTANT_BUFFER;
-    case LayoutResourceKind::ShaderResource:
-        return SPIRE_PARAMETER_CATEGORY_SHADER_RESOURCE;
-    case LayoutResourceKind::UnorderedAccess:
-        return SPIRE_PARAMETER_CATEGORY_UNORDERED_ACCESS;
-    case LayoutResourceKind::SamplerState:
-        return SPIRE_PARAMETER_CATEGORY_SAMPLER_STATE;
-
-    default:
-        return SPIRE_PARAMETER_CATEGORY_NONE;
+        return (SpireReflectionTypeLayout*) arrayTypeLayout->elementTypeLayout.Ptr();
     }
+    else if( auto constantBufferTypeLayout = dynamic_cast<ConstantBufferTypeLayout*>(typeLayout))
+    {
+        return convert(constantBufferTypeLayout->elementTypeLayout.Ptr());
+    }
+    else if( auto structuredBufferTypeLayout = dynamic_cast<StructuredBufferTypeLayout*>(typeLayout))
+    {
+        return convert(structuredBufferTypeLayout->elementTypeLayout.Ptr());
+    }
+
+    return nullptr;
 }
 
-static SpireParameterCategory ComputeReflectionParameterCategory(
-    ReflectionGenerationContext*        context,
-    RefPtr<TypeLayout>                  typeLayout)
+static SpireParameterCategory getParameterCategory(
+    LayoutResourceKind kind)
 {
-    // If we have more than one kind of resource, then we need to report that as "mixed"
+    return SpireParameterCategory(kind);
+}
+
+static SpireParameterCategory getParameterCategory(
+    TypeLayout*  typeLayout)
+{
     auto resourceInfoCount = typeLayout->resourceInfos.Count();
-    if(resourceInfoCount > 1)
+    if(resourceInfoCount == 1)
     {
-        return SPIRE_PARAMETER_CATEGORY_MIXED;
+        return getParameterCategory(typeLayout->resourceInfos[0].kind);
     }
-    else if( resourceInfoCount == 0 )
+    else if(resourceInfoCount == 0)
     {
-        // TODO: should  we ever allow this to happen?
+        // TODO: can this ever happen?
         return SPIRE_PARAMETER_CATEGORY_NONE;
     }
-
-    return ComputeReflectionParameterCategory(context, typeLayout->resourceInfos[0].kind);
+    return SPIRE_PARAMETER_CATEGORY_MIXED;
 }
 
-
-static NodePtr<ReflectionTypeLayoutNode> GenerateReflectionTypeLayout(
-    ReflectionGenerationContext*    context,
-    NodePtr<ReflectionTypeNode>     typeNode,
-    RefPtr<TypeLayout>              typeLayout)
+SPIRE_API SpireParameterCategory spReflectionTypeLayout_GetParameterCategory(SpireReflectionTypeLayout* inTypeLayout)
 {
-    // First create a type layout node of the correct kind
-    NodePtr<ReflectionTypeLayoutNode> info;
-    switch( typeNode->GetKind() )
-    {
-    default:
-        assert(!"unexpected");
-    case SPIRE_TYPE_KIND_CONSTANT_BUFFER:
-        // TODO: do constant buffers need any special handling?
-    case spire::TypeReflection::Kind::Scalar:
-    case spire::TypeReflection::Kind::Vector:
-    case spire::TypeReflection::Kind::Matrix:
-    case SPIRE_TYPE_KIND_SAMPLER_STATE:
-    case SPIRE_TYPE_KIND_RESOURCE:
-        info = AllocateNode<ReflectionTypeLayoutNode>(context);
-        break;
+    auto typeLayout = convert(inTypeLayout);
+    if(!typeLayout) return SPIRE_PARAMETER_CATEGORY_NONE;
 
-    case spire::TypeReflection::Kind::Array:
-        {
-            auto arrayTypeLayoutNode = AllocateNode<ReflectionArrayTypeLayoutNode>(context);
-            info = arrayTypeLayoutNode;
-
-            auto arrayTypeNode = typeNode.Cast<ReflectionArrayTypeNode>();
-
-            auto arrayLayout = typeLayout.As<ArrayTypeLayout>();
-            assert(arrayLayout);
-
-            auto elementTypeNode = MakeNodePtr(context, arrayTypeNode->elementType.Ptr());
-            auto elementTypeLayout = arrayLayout->elementTypeLayout;
-
-
-            auto elementTypeLayoutNode = GenerateReflectionTypeLayout(
-                context,
-                elementTypeNode,
-                elementTypeLayout);
-
-            arrayTypeLayoutNode->elementTypeLayout = elementTypeLayoutNode;
-
-            arrayTypeLayoutNode->elementStride = (ReflectionSize) arrayLayout->uniformStride;
-        }
-        break;
-
-    case spire::TypeReflection::Kind::Struct:
-        {
-            auto structLayout = typeLayout.As<StructTypeLayout>();
-            assert(structLayout);
-
-            auto structInfo = AllocateNode<ReflectionStructTypeLayoutNode>(context);
-            info = structInfo;
-
-            auto structTypeNode = typeNode.Cast<ReflectionStructTypeNode>();
-
-            size_t fieldCount = structTypeNode->GetFieldCount();
-            assert(fieldCount == structLayout->fields.Count());
-
-            auto fieldLayoutNodes = AllocateNodes<ReflectionVariableLayoutNode>(context, fieldCount);
-            for( size_t ff = 0; ff < fieldCount; ++ff )
-            {
-                auto fieldNode = MakeNodePtr(context, structTypeNode->GetFieldByIndex(ff));
-                auto fieldLayoutNode = fieldLayoutNodes + ff;
-
-                auto fieldVarLayout = structLayout->fields[int(ff)];
-                auto fieldTypeLayout = fieldVarLayout->typeLayout;
-
-                auto fieldTypeLayoutNode = GenerateReflectionTypeLayout(
-                    context,
-                    MakeNodePtr(context, fieldNode->GetType()),
-                    fieldTypeLayout);
-
-                // Need to populate values for the field
-                fieldLayoutNode->flavor = ReflectionNodeFlavor::VariableLayout;
-                fieldLayoutNode->variable = fieldNode;
-                fieldLayoutNode->typeLayout = fieldTypeLayoutNode;
-
-                // Need to fill in offset information here!!!
-                auto fieldCategory = ComputeReflectionParameterCategory(context, fieldTypeLayout);
-                if(fieldCategory == SPIRE_PARAMETER_CATEGORY_MIXED)
-                {
-                    List<ReflectionSize> offsetsData;
-
-                    // Offset data needs to match the ordering of categories
-                    // in the associated type.
-                    int categoryCount = fieldTypeLayoutNode->typeLayout.categoryCount;
-                    for(int cc = 0; cc < categoryCount; ++cc)
-                    {
-                        auto category = fieldTypeLayoutNode->size.mixed[cc].category;
-                        ReflectionSize offset = 0;
-                        for(auto rr : fieldVarLayout->resourceInfos)
-                        {
-                            if(ComputeReflectionParameterCategory(context, rr.kind) == category)
-                            {
-                                offset = rr.index;
-                                break;
-                            }
-                        }
-
-                        offsetsData.Add(offset);
-                    }
-                    assert(offsetsData.Count() == categoryCount);
-
-                    auto offsets = AllocateNodes<ReflectionSize>(context, categoryCount);
-                    for(int cc = 0; cc < categoryCount; ++cc)
-                    {
-                        offsets[cc] = offsetsData[cc];
-                    }
-                    fieldLayoutNode->offset.mixed = offsets;
-                }
-                else
-                {
-                    fieldLayoutNode->offset.simple = (ReflectionSize) fieldVarLayout->resourceInfos[0].index;
-                }
-            }
-        }
-        break;
-    }
-
-    // Next, fill in the common fields, shared by all cases
-    info->flavor = ReflectionNodeFlavor::TypeLayout;
-    info->type = typeNode;
-
-    auto category = ComputeReflectionParameterCategory(context, typeLayout);
-    info->typeLayout.category = category;
-    info->typeLayout.categoryCount = 0;
-    if(category == SPIRE_PARAMETER_CATEGORY_MIXED)
-    {
-        List<ReflectionTypeSizeInfo> sizeInfosData;
-        for( auto rr : typeLayout->resourceInfos )
-        {
-            ReflectionTypeSizeInfo sizeInfo;
-            sizeInfo.category = ComputeReflectionParameterCategory(context, rr.kind);
-            sizeInfo.size = rr.count;
-            sizeInfosData.Add(sizeInfo);
-        }
-
-        int categoryCount = sizeInfosData.Count();
-        auto sizeInfos = AllocateNodes<ReflectionTypeSizeInfo>(context, categoryCount);
-        for( int cc = 0; cc < categoryCount; ++cc )
-        {
-            sizeInfos[cc] = sizeInfosData[cc];
-        }
-
-        info->typeLayout.categoryCount = ReflectionSize(categoryCount);
-        info->size.mixed = sizeInfos;
-    }
-    else if( category == SPIRE_PARAMETER_CATEGORY_NONE )
-    {
-        // This would only occur for an empty `struct` type.
-        info->size.simple = 0;
-    }
-    else
-    {
-        info->size.simple = typeLayout->resourceInfos[0].count;
-    }
-
-    return info;
+    return getParameterCategory(typeLayout);
 }
 
-static NodePtr<ReflectionTypeLayoutNode> GenerateReflectionTypeLayout(
-    ReflectionGenerationContext*    context,
-    RefPtr<TypeLayout>              typeLayout)
+SPIRE_API unsigned spReflectionTypeLayout_GetCategoryCount(SpireReflectionTypeLayout* inTypeLayout)
 {
-    auto typeNode = GenerateReflectionType(context, typeLayout->type);
+    auto typeLayout = convert(inTypeLayout);
+    if(!typeLayout) return 0;
 
-    return GenerateReflectionTypeLayout(context, typeNode, typeLayout);
+    return (unsigned) typeLayout->resourceInfos.Count();
 }
 
-extern bool isGlobalVariableAShaderParameter(
-    VarDeclBase*    varDecl);
-
-static bool IsReflectionParameter(
-    ReflectionGenerationContext*        context,
-    RefPtr<Decl>                        decl)
+SPIRE_API SpireParameterCategory spReflectionTypeLayout_GetCategoryByIndex(SpireReflectionTypeLayout* inTypeLayout, unsigned index)
 {
-    if( auto varDecl = decl.As<VarDeclBase>() )
-    {
-        return isGlobalVariableAShaderParameter(varDecl.Ptr());
-    }
-    else
-    {
-        // Only variable declarations can represent parameters at global scope
-        return false;
-    }
+    auto typeLayout = convert(inTypeLayout);
+    if(!typeLayout) return SPIRE_PARAMETER_CATEGORY_NONE;
+
+    return typeLayout->resourceInfos[index].kind;
 }
 
-static void GenerateReflectionParameter(
-    ReflectionGenerationContext*        context,
-    RefPtr<VarLayout>                   paramLayout,
-    NodePtr<ReflectionVariableNode>     var,
-    NodePtr<ReflectionParameterNode>    parameter)
+// Variable Reflection
+
+SPIRE_API char const* spReflectionVariable_GetName(SpireReflectionVariable* inVar)
 {
-    auto varDecl = paramLayout->varDecl.GetDecl();
+    auto var = convert(inVar);
+    if(!var) return nullptr;
 
-    // Just to confirm that we aren't applying this logic to something we shouldn't
-    assert(!varDecl->HasModifier<HLSLStaticModifier>());
-
-    // Figure out what kind of parameter we are looking at:
-    auto category = ComputeReflectionParameterCategory(context, paramLayout->typeLayout);
-
-    parameter->flavor = ReflectionNodeFlavor::Parameter;
-    parameter->name = GenerateReflectionName(context, varDecl->Name.Content);
-    parameter->typeLayout = GenerateReflectionTypeLayout(context, paramLayout->typeLayout);
-    parameter->binding.category = category;
-
-    if (category == SPIRE_PARAMETER_CATEGORY_MIXED)
-    {
-        // More than one resource: need to handle this in a special way
-
-        List<ReflectionParameterBindingInfo> bindingsData;
-
-        for( auto rr : paramLayout->resourceInfos )
-        {
-            ReflectionParameterBindingInfo info;
-            info.category = ComputeReflectionParameterCategory(context, rr.kind);
-            info.space = (ReflectionSize) rr.space;
-            info.index = (ReflectionSize) rr.index;
-
-            bindingsData.Add(info);
-        }
-
-        ReflectionSize bindingCount = bindingsData.Count();
-        auto bindings = AllocateNodes<ReflectionParameterBindingInfo>(context, bindingCount);
-        for( ReflectionSize bb = 0; bb < bindingCount; ++bb )
-        {
-            bindings[bb] = bindingsData[bb];
-        }
-
-        parameter->binding.bindingCount = bindingCount;
-        parameter->binding.bindings = bindings;
-    }
-    else
-    {
-        // A resource parameter
-        parameter->binding.space = (ReflectionSize) paramLayout->resourceInfos[0].space;
-        parameter->binding.index = (ReflectionSize) paramLayout->resourceInfos[0].index;
-    }
+    return var->getName().begin();
 }
 
-static NodePtr<ReflectionParameterBlockLayoutNode> generateReflectionParameterBlock(
-    ReflectionGenerationContext*    context,
-    RefPtr<StructTypeLayout>        typeLayout)
+SPIRE_API SpireReflectionType* spReflectionVariable_GetType(SpireReflectionVariable* inVar)
 {
-    // How many fields do we need to consider?
-    size_t fieldCount = typeLayout->fields.Count();
+    auto var = convert(inVar);
+    if(!var) return nullptr;
 
-    // Need to create a node for the plain old type as well
-    NodePtr<ReflectionStructTypeNode> type = AllocateNode<ReflectionStructTypeNode>(context);
-    NodePtr<ReflectionVariableNode> fields = AllocateNodes<ReflectionVariableNode>(context, fieldCount);
-
-    type->flavor = ReflectionNodeFlavor::TypeLayout;
-    type->SetKind(SPIRE_TYPE_KIND_STRUCT);
-    type->SetFieldCount(fieldCount);
-
-    // ALlocate space for the parameter block layout and then its fields
-    NodePtr<ReflectionParameterBlockLayoutNode> block = AllocateNode<ReflectionParameterBlockLayoutNode>(context);
-    NodePtr<ReflectionParameterNode> fieldLayouts = AllocateNodes<ReflectionParameterNode>(context, fieldCount);
-
-    block->flavor = ReflectionNodeFlavor::ParameterBlockLayout;
-    block->type = type;
-
-    // Now allocate space for the parameters (to go right after the blob itself) and fill them in
-    size_t fieldIndex = 0;
-    for( auto fieldLayout : typeLayout->fields )
-    {
-        auto field = fieldLayout->varDecl;
-
-        GenerateReflectionVar(context, field, fields + fieldIndex);
-
-        GenerateReflectionParameter(context, fieldLayout, fields + fieldIndex, fieldLayouts + fieldIndex);
-        fieldIndex++;
-    }
-    assert(fieldIndex == fieldCount);
-
-    return block;
+    return  convert(var->getType());
 }
 
-static NodePtr<ReflectionTypeLayoutNode> generateReflectionParameterBlock(
-    ReflectionGenerationContext*    context,
-    RefPtr<TypeLayout>              typeLayout)
+// Variable Layout Reflection
+
+SPIRE_API SpireReflectionVariable* spReflectionVariableLayout_GetVariable(SpireReflectionVariableLayout* inVarLayout)
 {
-    if(auto structTypeLayout = typeLayout.As<StructTypeLayout>())
-    {
-        return generateReflectionParameterBlock(context, structTypeLayout);
-    }
-    else if( auto constantBufferTypeLayout = typeLayout.As<ConstantBufferTypeLayout>() )
-    {
-        auto elementTypeLayoutNode = generateReflectionParameterBlock(context, constantBufferTypeLayout->elementTypeLayout);
+    auto varLayout = convert(inVarLayout);
+    if(!varLayout) return nullptr;
 
-        auto constantBufferTypeNode = AllocateNode<ReflectionConstantBufferTypeNode>(context);
-        constantBufferTypeNode->flavor = ReflectionNodeFlavor::Type;
-        constantBufferTypeNode->SetKind(SPIRE_TYPE_KIND_CONSTANT_BUFFER);
-        constantBufferTypeNode->elementType = elementTypeLayoutNode;
-
-        auto constantBufferTypeLayoutNode = AllocateNode<ReflectionTypeLayoutNode>(context);
-        constantBufferTypeLayoutNode->flavor = ReflectionNodeFlavor::TypeLayout;
-        constantBufferTypeLayoutNode->type = constantBufferTypeNode;
-
-        // TODO(tfoley): We really need a *variable* layout node here,
-        // because we need some place to store the binding info...
-        return constantBufferTypeLayoutNode;
-    }
-    else
-    {
-        assert(!"unexpected");
-        return NodePtr<ReflectionTypeLayoutNode>();
-    }
+    return convert(varLayout->varDecl.GetDecl());
 }
 
-static ReflectionBlob* GenerateReflectionBlob(
-    ReflectionGenerationContext*    context,
-    CollectionOfTranslationUnits*   program)
+SPIRE_API SpireReflectionTypeLayout* spReflectionVariableLayout_GetTypeLayout(SpireReflectionVariableLayout* inVarLayout)
 {
-    // We need the program to already have had parameter binding performed.
-    auto programLayout = program->layout;
-    if (!programLayout)
+    auto varLayout = convert(inVarLayout);
+    if(!varLayout) return nullptr;
+
+    return convert(varLayout->getTypeLayout());
+}
+
+SPIRE_API size_t spReflectionVariableLayout_GetOffset(SpireReflectionVariableLayout* inVarLayout, SpireParameterCategory category)
+{
+    auto varLayout = convert(inVarLayout);
+    if(!varLayout) return 0;
+
+    auto info = varLayout->FindResourceInfo(LayoutResourceKind(category));
+    if(!info) return 0;
+
+    return info->index;
+}
+
+SPIRE_API size_t spReflectionVariableLayout_GetSpace(SpireReflectionVariableLayout* inVarLayout, SpireParameterCategory category)
+{
+    auto varLayout = convert(inVarLayout);
+    if(!varLayout) return 0;
+
+    auto info = varLayout->FindResourceInfo(LayoutResourceKind(category));
+    if(!info) return 0;
+
+    return info->space;
+}
+
+
+// Shader Parameter Reflection
+
+SPIRE_API unsigned spReflectionParameter_GetBindingIndex(SpireReflectionParameter* inVarLayout)
+{
+    auto varLayout = convert(inVarLayout);
+    if(!varLayout) return 0;
+
+    if(varLayout->resourceInfos.Count() > 0)
     {
-        // TODO: error message
-        return nullptr;
+        return (unsigned) varLayout->resourceInfos[0].index;
     }
 
-    // We need to walk the declarations in the program, and look for those that identify logical shader parameters
-    NodePtr<ReflectionBlob> blob = AllocateNode<ReflectionBlob>(context);
-    blob->flavor = ReflectionNodeFlavor::Blob;
-
-    blob->globalParams = generateReflectionParameterBlock(
-        context,
-        programLayout->globalScopeLayout);
-
-
-
-    // We are done emitting things, so lets look at what we got
-
-
-    // The total number of words emitted needs to fit in a word itself
-    size_t dataSize = context->data.Count();
-
-    // Need to update the blob info based on what we output
-    blob->reflectionDataSize = (ReflectionSize) dataSize;
-
-    // Make a raw memory allocation to hold the final data
-    ReflectionBlob* result = (ReflectionBlob*) malloc(dataSize);
-    memcpy(result, context->data.begin(), dataSize);
-
-    return result;
+    return 0;
 }
+
+SPIRE_API unsigned spReflectionParameter_GetBindingSpace(SpireReflectionParameter* inVarLayout)
+{
+    auto varLayout = convert(inVarLayout);
+    if(!varLayout) return 0;
+
+    if(varLayout->resourceInfos.Count() > 0)
+    {
+        return (unsigned) varLayout->resourceInfos[0].space;
+    }
+
+    return 0;
+}
+
+// Shader Reflection
+
+SPIRE_API unsigned spReflection_GetParameterCount(SpireReflection* inProgram)
+{
+    auto program = convert(inProgram);
+    if(!program) return 0;
+
+    auto globalLayout = program->globalScopeLayout;
+    if(auto globalConstantBufferLayout = globalLayout.As<ConstantBufferTypeLayout>())
+    {
+        globalLayout = globalConstantBufferLayout->elementTypeLayout;
+    }
+
+    if(auto globalStructLayout = globalLayout.As<StructTypeLayout>())
+    {
+        return globalStructLayout->fields.Count();
+    }
+
+    return 0;
+}
+
+SPIRE_API SpireReflectionParameter* spReflection_GetParameterByIndex(SpireReflection* inProgram, unsigned index)
+{
+    auto program = convert(inProgram);
+    if(!program) return nullptr;
+
+    auto globalLayout = program->globalScopeLayout;
+    if(auto globalConstantBufferLayout = globalLayout.As<ConstantBufferTypeLayout>())
+    {
+        globalLayout = globalConstantBufferLayout->elementTypeLayout;
+    }
+
+    if(auto globalStructLayout = globalLayout.As<StructTypeLayout>())
+    {
+        return convert(globalStructLayout->fields[index].Ptr());
+    }
+
+    return nullptr;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+namespace Spire {
+namespace Compiler {
+
+
+
+
+
+
 
 // Debug helper code: dump reflection data after generation
 
@@ -790,28 +742,22 @@ static void write(PrettyWriter& writer, char const* text)
     }
 }
 
-static void write(PrettyWriter& writer, uint32_t val)
+static void write(PrettyWriter& writer, UInt val)
 {
     adjust(writer);
-    writer.sb << val;
+    writer.sb << ((unsigned int) val);
 }
 
-static void write(PrettyWriter& writer, int32_t val)
-{
-    adjust(writer);
-    writer.sb << val;
-}
-
-static void emitReflectionVarInfoJSON(PrettyWriter& writer, ReflectionVariableNode* var);
-static void emitReflectionTypeLayoutJSON(PrettyWriter& writer, ReflectionTypeLayoutNode* type);
-static void emitReflectionTypeJSON(PrettyWriter& writer, ReflectionTypeNode* type);
+static void emitReflectionVarInfoJSON(PrettyWriter& writer, spire::VariableReflection* var);
+static void emitReflectionTypeLayoutJSON(PrettyWriter& writer, spire::TypeLayoutReflection* type);
+static void emitReflectionTypeJSON(PrettyWriter& writer, spire::TypeReflection* type);
 
 static void emitReflectionVarBindingInfoJSON(
     PrettyWriter&           writer,
     SpireParameterCategory  category,
-    ReflectionSize          index,
-    ReflectionSize          count,
-    ReflectionSize          space = 0)
+    UInt                    index,
+    UInt                    count,
+    UInt                    space = 0)
 {
     if( category == SPIRE_PARAMETER_CATEGORY_UNIFORM )
     {
@@ -861,46 +807,52 @@ static void emitReflectionVarBindingInfoJSON(
     }
 }
 
-static void emitReflectionVarBindingInfoJSON(PrettyWriter& writer, ReflectionVariableLayoutNode* var)
+static void emitReflectionVarBindingInfoJSON(
+    PrettyWriter&                       writer,
+    spire::VariableLayoutReflection*    var)
 {
-    auto category = var->GetParameterCategory();
-    if( category == SPIRE_PARAMETER_CATEGORY_MIXED )
+    auto typeLayout = var->getTypeLayout();
+    auto categoryCount = var->getCategoryCount();
+
+    if( categoryCount != 1 )
     {
         write(writer,"\"bindings\": [\n");
-        indent(writer);
-        ReflectionSize bindingCount = var->GetTypeLayout()->typeLayout.categoryCount;
-        assert(bindingCount);
-        for( ReflectionSize bb = 0; bb < bindingCount; ++bb )
-        {
-            if (bb != 0) write(writer, ",\n");
-
-            write(writer,"{");
-            emitReflectionVarBindingInfoJSON(
-                writer,
-                var->GetTypeLayout()->size.mixed[bb].category,
-                var->offset.mixed[bb],
-                var->GetTypeLayout()->size.mixed[bb].size);
-            write(writer,"}");
-        }
-        dedent(writer);
-        write(writer,"\n]");
-        return;
     }
     else
     {
-        write(writer,"\"binding\": {");
-        indent(writer);
+        write(writer,"\"binding\": ");
+    }
+    indent(writer);
+
+    for(uint32_t cc = 0; cc < categoryCount; ++cc )
+    {
+        auto category = var->getCategoryByIndex(cc);
+        auto index = var->getOffset(category);
+        auto space = var->getBindingSpace(category);
+        auto count = typeLayout->getSize(category);
+
+        if (cc != 0) write(writer, ",\n");
+
+        write(writer,"{");
         emitReflectionVarBindingInfoJSON(
             writer,
             category,
-            var->offset.simple,
-            var->GetTypeLayout()->size.simple);
-        dedent(writer);
+            index,
+            count,
+            space);
         write(writer,"}");
+    }
+
+    dedent(writer);
+    if( categoryCount != 1 )
+    {
+        write(writer,"\n]");
     }
 }
 
-static void emitReflectionNameInfoJSON(PrettyWriter& writer, char const* name)
+static void emitReflectionNameInfoJSON(
+    PrettyWriter&   writer,
+    char const*     name)
 {
     // TODO: deal with escaping special characters if/when needed
     write(writer, "\"name\": \"");
@@ -908,21 +860,18 @@ static void emitReflectionNameInfoJSON(PrettyWriter& writer, char const* name)
     write(writer, "\"");
 }
 
-static void emitReflectionNameInfoJSON(PrettyWriter& writer, ReflectionVariableNode* var)
-{
-    emitReflectionNameInfoJSON(writer, var->GetName());
-}
-
-static void emitReflectionVarLayoutJSON(PrettyWriter& writer, ReflectionVariableLayoutNode* var)
+static void emitReflectionVarLayoutJSON(
+    PrettyWriter&                       writer,
+    spire::VariableLayoutReflection*    var)
 {
     write(writer, "{\n");
     indent(writer);
 
-    emitReflectionNameInfoJSON(writer, var->GetVariable());
+    emitReflectionNameInfoJSON(writer, var->getName());
     write(writer, ",\n");
 
     write(writer, "\"type\": ");
-    emitReflectionTypeLayoutJSON(writer, var->GetTypeLayout());
+    emitReflectionTypeLayoutJSON(writer, var->getTypeLayout());
     write(writer, ",\n");
 
     emitReflectionVarBindingInfoJSON(writer, var);
@@ -931,7 +880,9 @@ static void emitReflectionVarLayoutJSON(PrettyWriter& writer, ReflectionVariable
     write(writer, "\n}");
 }
 
-static void emitReflectionScalarTypeInfoJSON(PrettyWriter& writer, SpireScalarType scalarType)
+static void emitReflectionScalarTypeInfoJSON(
+    PrettyWriter&   writer,
+    SpireScalarType scalarType)
 {
     write(writer, "\"scalarType\": \"");
     switch (scalarType)
@@ -955,9 +906,11 @@ static void emitReflectionScalarTypeInfoJSON(PrettyWriter& writer, SpireScalarTy
     write(writer, "\"");
 }
 
-static void emitReflectionTypeInfoJSON(PrettyWriter& writer, ReflectionTypeNode* type)
+static void emitReflectionTypeInfoJSON(
+    PrettyWriter&           writer,
+    spire::TypeReflection*  type)
 {
-    switch( type->GetKind() )
+    switch( type->getKind() )
     {
     case SPIRE_TYPE_KIND_SAMPLER_STATE:
         write(writer, "\"kind\": \"samplerState\"");
@@ -965,8 +918,8 @@ static void emitReflectionTypeInfoJSON(PrettyWriter& writer, ReflectionTypeNode*
 
     case SPIRE_TYPE_KIND_RESOURCE:
         {
-            auto shape = type->type.resource.shape;
-            auto access = type->type.resource.access;
+            auto shape  = type->getResourceShape();
+            auto access = type->getResourceAccess();
             write(writer, "\"kind\": \"resource\"");
             write(writer, ",\n");
             write(writer, "\"baseShape\": \"");
@@ -1026,54 +979,56 @@ static void emitReflectionTypeInfoJSON(PrettyWriter& writer, ReflectionTypeNode*
         write(writer, "\"kind\": \"constantBuffer\"");
         write(writer, ",\n");
         write(writer, "\"elementType\": ");
-        emitReflectionTypeLayoutJSON(
+        emitReflectionTypeJSON(
             writer,
-            ((ReflectionConstantBufferTypeNode*)type)->elementType);
+            type->getElementType());
         break;
 
     case SPIRE_TYPE_KIND_SCALAR:
         write(writer, "\"kind\": \"scalar\"");
         write(writer, ",\n");
-        emitReflectionScalarTypeInfoJSON(writer, type->type.scalar.scalarType);
+        emitReflectionScalarTypeInfoJSON(
+            writer,
+            type->getScalarType());
         break;
 
     case SPIRE_TYPE_KIND_VECTOR:
         write(writer, "\"kind\": \"vector\"");
         write(writer, ",\n");
         write(writer, "\"elementCount\": ");
-        write(writer, type->type.vector.elementCount);
+        write(writer, type->getElementCount());
         write(writer, ",\n");
         write(writer, "\"elementType\": ");
         emitReflectionTypeJSON(
             writer,
-            ((ReflectionVectorTypeNode*)type)->elementType);
+            type->getElementType());
         break;
 
     case SPIRE_TYPE_KIND_MATRIX:
         write(writer, "\"kind\": \"matrix\"");
         write(writer, ",\n");
         write(writer, "\"rowCount\": ");
-        write(writer, type->type.matrix.rowCount);
+        write(writer, type->getRowCount());
         write(writer, ",\n");
         write(writer, "\"columnCount\": ");
-        write(writer, type->type.matrix.columnCount);
+        write(writer, type->getColumnCount());
         write(writer, ",\n");
         write(writer, "\"elementType\": ");
         emitReflectionTypeJSON(
             writer,
-            ((ReflectionMatrixTypeNode*)type)->elementType);
+            type->getElementType());
         break;
 
     case SPIRE_TYPE_KIND_ARRAY:
         {
-            auto arrayType = type->AsArray();
+            auto arrayType = type;
             write(writer, "\"kind\": \"array\"");
             write(writer, ",\n");
             write(writer, "\"elementCount\": ");
-            write(writer, arrayType->GetElementCount());
+            write(writer, arrayType->getElementCount());
             write(writer, ",\n");
             write(writer, "\"elementType\": ");
-            emitReflectionTypeJSON(writer, arrayType->GetElementType());
+            emitReflectionTypeJSON(writer, arrayType->getElementType());
         }
         break;
 
@@ -1083,14 +1038,14 @@ static void emitReflectionTypeInfoJSON(PrettyWriter& writer, ReflectionTypeNode*
             write(writer, "\"fields\": [\n");
             indent(writer);
 
-            auto structType = type->AsStruct();
-            auto fieldCount = structType->GetFieldCount();
+            auto structType = type;
+            auto fieldCount = structType->getFieldCount();
             for( uint32_t ff = 0; ff < fieldCount; ++ff )
             {
                 if (ff != 0) write(writer, ",\n");
                 emitReflectionVarInfoJSON(
                     writer,
-                    structType->GetFieldByIndex(ff));
+                    structType->getFieldByIndex(ff));
             }
             dedent(writer);
             write(writer, "\n]");
@@ -1103,32 +1058,34 @@ static void emitReflectionTypeInfoJSON(PrettyWriter& writer, ReflectionTypeNode*
     }
 }
 
-static void emitReflectionTypeLayoutInfoJSON(PrettyWriter& writer, ReflectionTypeLayoutNode* type)
+static void emitReflectionTypeLayoutInfoJSON(
+    PrettyWriter&                   writer,
+    spire::TypeLayoutReflection*    typeLayout)
 {
-    switch( type->GetKind() )
+    switch( typeLayout->getKind() )
     {
     default:
-        emitReflectionTypeInfoJSON(writer, type->GetType());
+        emitReflectionTypeInfoJSON(writer, typeLayout->getType());
         break;
 
     case SPIRE_TYPE_KIND_ARRAY:
         {
-            auto arrayTypeLayout = type->AsArray();
-            auto elementTypeLayout = arrayTypeLayout->GetElementTypeLayout();
+            auto arrayTypeLayout = typeLayout;
+            auto elementTypeLayout = arrayTypeLayout->getElementTypeLayout();
             write(writer, "\"kind\": \"array\"");
             write(writer, ",\n");
             write(writer, "\"elementCount\": ");
-            write(writer, arrayTypeLayout->GetElementCount());
+            write(writer, arrayTypeLayout->getElementCount());
             write(writer, ",\n");
             write(writer, "\"elementType\": ");
             emitReflectionTypeLayoutJSON(
                 writer,
                 elementTypeLayout);
-            if (arrayTypeLayout->GetSize(SPIRE_PARAMETER_CATEGORY_UNIFORM) != 0)
+            if (arrayTypeLayout->getSize(SPIRE_PARAMETER_CATEGORY_UNIFORM) != 0)
             {
                 write(writer, ",\n");
                 write(writer, "\"uniformStride\": ");
-                write(writer, arrayTypeLayout->GetElementStride(SPIRE_PARAMETER_CATEGORY_UNIFORM));
+                write(writer, arrayTypeLayout->getElementStride(SPIRE_PARAMETER_CATEGORY_UNIFORM));
             }
         }
         break;
@@ -1139,41 +1096,49 @@ static void emitReflectionTypeLayoutInfoJSON(PrettyWriter& writer, ReflectionTyp
             write(writer, "\"fields\": [\n");
             indent(writer);
 
-            auto structTypeLayout = type->AsStruct();
-            auto fieldCount = structTypeLayout->GetFieldCount();
+            auto structTypeLayout = typeLayout;
+            auto fieldCount = structTypeLayout->getFieldCount();
             for( uint32_t ff = 0; ff < fieldCount; ++ff )
             {
                 if (ff != 0) write(writer, ",\n");
                 emitReflectionVarLayoutJSON(
                     writer,
-                    structTypeLayout->GetFieldByIndex(ff));
+                    structTypeLayout->getFieldByIndex(ff));
             }
             dedent(writer);
             write(writer, "\n]");
         }
         break;
+
+    case SPIRE_TYPE_KIND_CONSTANT_BUFFER:
+        write(writer, "\"kind\": \"constantBuffer\"");
+        write(writer, ",\n");
+        write(writer, "\"elementType\": ");
+        emitReflectionTypeLayoutJSON(
+            writer,
+            typeLayout->getElementTypeLayout());
+        break;
+
     }
 
     // TODO: emit size info for types
 }
 
-static void emitReflectionTypeLayoutJSON(PrettyWriter& writer, ReflectionTypeLayoutNode* type)
+static void emitReflectionTypeLayoutJSON(
+    PrettyWriter&                   writer,
+    spire::TypeLayoutReflection*    typeLayout)
 {
     write(writer, "{\n");
     indent(writer);
-    emitReflectionTypeLayoutInfoJSON(writer, type);
+    emitReflectionTypeLayoutInfoJSON(writer, typeLayout);
     dedent(writer);
     write(writer, "\n}");
 }
 
-static void emitReflectionTypeJSON(PrettyWriter& writer, ReflectionTypeNode* type)
+static void emitReflectionTypeJSON(
+    PrettyWriter&           writer,
+    spire::TypeReflection*  type)
 {
-    if( auto typeLayout = type->AsTypeLayout() )
-    {
-        emitReflectionTypeLayoutJSON(writer, typeLayout);
-        return;
-    }
-
     write(writer, "{\n");
     indent(writer);
     emitReflectionTypeInfoJSON(writer, type);
@@ -1181,16 +1146,22 @@ static void emitReflectionTypeJSON(PrettyWriter& writer, ReflectionTypeNode* typ
     write(writer, "\n}");
 }
 
-static void emitReflectionVarInfoJSON(PrettyWriter& writer, ReflectionVariableNode* var)
+static void emitReflectionVarInfoJSON(
+    PrettyWriter&               writer,
+    spire::VariableReflection*  var)
 {
-    emitReflectionNameInfoJSON(writer, var);
+    emitReflectionNameInfoJSON(writer, var->getName());
     write(writer, ",\n");
 
     write(writer, "\"type\": ");
-    emitReflectionTypeJSON(writer, var->GetType());
+    emitReflectionTypeJSON(writer, var->getType());
 }
 
-static void emitReflectionBindingInfoJSON(PrettyWriter& writer, ReflectionParameterNode* param)
+#if 0
+static void emitReflectionBindingInfoJSON(
+    PrettyWriter& writer,
+    
+    ReflectionParameterNode* param)
 {
     auto info = &param->binding;
 
@@ -1236,49 +1207,94 @@ static void emitReflectionBindingInfoJSON(PrettyWriter& writer, ReflectionParame
         write(writer,"}");
     }
 }
+#endif
 
-static void emitReflectionBindingInfoJSON(PrettyWriter& writer, ReflectionVariableLayoutBaseNode* varLayout)
-{
-    if( varLayout->GetFlavor() == ReflectionNodeFlavor::Parameter )
-    {
-        emitReflectionBindingInfoJSON(writer, (ReflectionParameterNode*) varLayout);
-    }
-    else
-    {
-        assert(!"unimplemented");
-    }
-}
-
-static void emitReflectionParamJSON(PrettyWriter& writer, ReflectionVariableLayoutBaseNode* param)
+static void emitReflectionParamJSON(
+    PrettyWriter&                       writer,
+    spire::VariableLayoutReflection*    param)
 {
     write(writer, "{\n");
     indent(writer);
 
-    emitReflectionNameInfoJSON(writer, param->GetName());
+    emitReflectionNameInfoJSON(writer, param->getName());
     write(writer, ",\n");
 
-    emitReflectionBindingInfoJSON(writer, param);
+    emitReflectionVarBindingInfoJSON(writer, param);
     write(writer, ",\n");
 
     write(writer, "\"type\": ");
-    emitReflectionTypeLayoutJSON(writer, param->GetTypeLayout());
+    emitReflectionTypeLayoutJSON(writer, param->getTypeLayout());
 
     dedent(writer);
     write(writer, "\n}");
 }
 
-static void emitReflectionBlobJSON(PrettyWriter& writer, ReflectionBlob* blob)
+template<typename T>
+struct Range
+{
+public:
+    Range(
+        T begin,
+        T end)
+        : mBegin(begin)
+        , mEnd(end)
+    {}
+
+    struct Iterator
+    {
+    public:
+        explicit Iterator(T value)
+            : mValue(value)
+        {}
+
+        T operator*() const { return mValue; }
+        void operator++() { mValue++; }
+
+        bool operator!=(Iterator const& other)
+        {
+            return mValue != other.mValue;
+        }
+
+    private:
+        T mValue;
+    };
+
+    Iterator begin() const { return Iterator(mBegin); }
+    Iterator end()   const { return Iterator(mEnd); }
+
+private:
+    T mBegin;
+    T mEnd;
+};
+
+template<typename T>
+Range<T> range(T begin, T end)
+{
+    return Range<T>(begin, end);
+}
+
+template<typename T>
+Range<T> range(T end)
+{
+    return Range<T>(T(0), end);
+}
+
+static void emitReflectionJSON(
+    PrettyWriter&               writer,
+    spire::ShaderReflection*    programReflection)
 {
     write(writer, "{\n");
     indent(writer);
     write(writer, "\"parameters\": [\n");
     indent(writer);
 
-    uint32_t paramCount = blob->GetParameterCount();
-    for( uint32_t pp = 0; pp < paramCount; ++pp )
+    auto parameterCount = programReflection->getParameterCount();
+    for( auto pp : range(parameterCount) )
     {
-        if (pp != 0) write(writer, ",\n");
-        emitReflectionParamJSON(writer, blob->GetParameterByIndex(pp));
+        if(pp != 0) write(writer, ",\n");
+
+        auto parameter = programReflection->getParameterByIndex(pp);
+        emitReflectionParamJSON(writer, parameter);
     }
 
     dedent(writer);
@@ -1287,6 +1303,7 @@ static void emitReflectionBlobJSON(PrettyWriter& writer, ReflectionBlob* blob)
     write(writer, "\n}\n");
 }
 
+#if 0
 ReflectionBlob* ReflectionBlob::Create(
     CollectionOfTranslationUnits*   program)
 {
@@ -1299,170 +1316,20 @@ ReflectionBlob* ReflectionBlob::Create(
 #endif
     return blob;
 }
+#endif
 
 // JSON emit logic
 
-String ReflectionBlob::emitAsJSON()
+
+
+String emitReflectionJSON(
+    ProgramLayout* programLayout)
 {
+    auto programReflection = (spire::ShaderReflection*) programLayout;
+
     PrettyWriter writer;
-    emitReflectionBlobJSON(writer, this);
+    emitReflectionJSON(writer, programReflection);
     return writer.sb.ProduceString();
-}
-
-//
-
-size_t ReflectionTypeLayoutNode::GetSize(SpireParameterCategory category) const
-{
-    auto thisCategory = GetParameterCategory();
-    if( thisCategory == SPIRE_PARAMETER_CATEGORY_MIXED )
-    {
-        // Need to search for it!
-        int categoryCount = typeLayout.categoryCount;
-        for(int cc = 0; cc < categoryCount; ++cc)
-        {
-            if(size.mixed[cc].category == category)
-                return size.mixed[cc].size;
-        }
-    }
-    else if( category == thisCategory )
-    {
-        return size.simple;
-    }
-
-    // Default case: this type doesn't consume any resources of the given kind.
-    return 0;
-}
-
-
-uint32_t ReflectionParameterNode::GetOffset(SpireParameterCategory category)
-{
-    auto thisCategory = GetCategory();
-    if( thisCategory == SPIRE_PARAMETER_CATEGORY_MIXED )
-    {
-        // Need to search for it!
-        ReflectionSize bindingCount = binding.bindingCount;
-        ReflectionParameterBindingInfo const* bindings = binding.bindings;
-        for( ReflectionSize bb = 0; bb < bindingCount; ++bb )
-        {
-            if(bindings[bb].category == category)
-                return bindings[bb].index;
-        }
-    }
-    else if( category == thisCategory )
-    {
-        return binding.index;
-    }
-
-    return 0;
-}
-
-uint32_t ReflectionParameterNode::GetSpace(SpireParameterCategory category)
-{
-    auto thisCategory = GetCategory();
-    if( thisCategory == SPIRE_PARAMETER_CATEGORY_MIXED )
-    {
-        // Need to search for it!
-        ReflectionSize bindingCount = binding.bindingCount;
-        ReflectionParameterBindingInfo const* bindings = binding.bindings;
-        for( ReflectionSize bb = 0; bb < bindingCount; ++bb )
-        {
-            if(bindings[bb].category == category)
-                return bindings[bb].space;
-        }
-    }
-    else if( category == thisCategory )
-    {
-        return binding.space;
-    }
-
-    return 0;
-}
-
-
-
-size_t ReflectionVariableLayoutNode::GetOffset(SpireParameterCategory category) const
-{
-    auto thisCategory = GetParameterCategory();
-    if( thisCategory == SPIRE_PARAMETER_CATEGORY_MIXED )
-    {
-        // Need to search for it!
-        auto typeLayout = GetTypeLayout();
-        int categoryCount = typeLayout->typeLayout.categoryCount;
-        for(int cc = 0; cc < categoryCount; ++cc)
-        {
-            if(typeLayout->size.mixed[cc].category == category)
-                return offset.mixed[cc];
-
-        }
-    }
-    else if( category == thisCategory )
-    {
-        return offset.simple;
-    }
-
-    return 0;
-}
-
-uint32_t ReflectionArrayTypeLayoutNode::GetElementStride(SpireParameterCategory category) const
-{
-    // For uniform data, the array may have a stride greater than the
-    // size of the element type (even accounting for alignment)
-    if( category == SPIRE_PARAMETER_CATEGORY_UNIFORM )
-    {
-        return elementStride;
-    }
-
-    // In all other cases, though, we can just use the size of the
-    // element (e.g., the number of texture slots) as the stride
-    // of the array.
-    return (uint32_t) elementTypeLayout->GetSize(category);
-}
-
-//
-
-
-uint32_t ReflectionBlob::GetParameterCount() const
-{
-    auto gp = getGlobalParamsTypeLayout();
-    if( gp->GetKind() == SPIRE_TYPE_KIND_CONSTANT_BUFFER )
-    {
-        gp = ((ReflectionConstantBufferTypeNode*) gp->GetType())->GetElementType();
-    }
-
-    switch( gp->GetFlavor() )
-    {
-    default:
-        return 0;
-
-    case ReflectionNodeFlavor::ParameterBlockLayout:
-        return ((ReflectionParameterBlockLayoutNode*) gp)->GetFieldCount();
-
-    case ReflectionNodeFlavor::TypeLayout:
-        return ((ReflectionStructTypeLayoutNode*) gp)->GetFieldCount();
-        break;
-    }
-}
-
-ReflectionVariableLayoutBaseNode* ReflectionBlob::GetParameterByIndex(uint32_t index) const
-{
-    auto gp = getGlobalParamsTypeLayout();
-    if( gp->GetKind() == SPIRE_TYPE_KIND_CONSTANT_BUFFER )
-    {
-        gp = ((ReflectionConstantBufferTypeNode*) gp->GetType())->GetElementType();
-    }
-
-    switch( gp->GetFlavor() )
-    {
-    default:
-        return 0;
-
-    case ReflectionNodeFlavor::ParameterBlockLayout:
-        return ((ReflectionParameterBlockLayoutNode*) gp)->GetFieldByIndex(index);
-
-    case ReflectionNodeFlavor::TypeLayout:
-        return ((ReflectionStructTypeLayoutNode*) gp)->GetFieldByIndex(index);
-        break;
-    }
 }
 
 }}

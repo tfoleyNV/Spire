@@ -5,13 +5,12 @@
 #include "Diagnostics.h"
 #include "IL.h"
 #include "Syntax.h"
+#include "TypeLayout.h"
 
 namespace Spire
 {
     namespace Compiler
     {
-        struct ReflectionBlob;
-
         class ShaderMetaData
         {
         public:
@@ -52,9 +51,6 @@ namespace Spire
             // Per-translation-unit results
             List<TranslationUnitResult> translationUnits;
 
-            // Reflection info that spans all translation units
-            ReflectionBlob* reflectionBlob = nullptr;
-
 #if 0
             void PrintDiagnostics()
             {
@@ -74,7 +70,6 @@ namespace Spire
             {}
             ~CompileResult()
             {
-                if(reflectionBlob) free(reflectionBlob);
             }
             DiagnosticSink * GetErrorWriter()
             {

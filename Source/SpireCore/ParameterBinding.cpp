@@ -99,13 +99,18 @@ struct ParameterBindingInfo
     size_t              count;
 };
 
+enum
+{
+    kLayoutResourceKindCount = SPIRE_PARAMETER_CATEGORY_MIXED,
+};
+
 // Information on a single parameter
 struct ParameterInfo : RefObject
 {
     // Layout info for the concrete variables that will make up this parameter
     List<RefPtr<VarLayout>> varLayouts;
 
-    ParameterBindingInfo    bindingInfo[(int)LayoutResourceKind::Count];
+    ParameterBindingInfo    bindingInfo[kLayoutResourceKindCount];
 
     // The next parameter that has the same name...
     ParameterInfo* nextOfSameName;
@@ -113,7 +118,7 @@ struct ParameterInfo : RefObject
     ParameterInfo()
     {
         // Make sure we aren't claiming any resources yet
-        for( int ii = 0; ii < (int) LayoutResourceKind::Count; ++ii )
+        for( int ii = 0; ii < kLayoutResourceKindCount; ++ii )
         {
             bindingInfo[ii].count = 0;
         }
@@ -140,7 +145,7 @@ struct ParameterBindingContext
     // The layout rules to use while computing usage...
     LayoutRulesImpl* layoutRules;
 
-    UsedRanges usedResourceRanges[(int)LayoutResourceKind::Count];
+    UsedRanges usedResourceRanges[kLayoutResourceKindCount];
 };
 
 // Check whether a global variable declaration represents
@@ -194,13 +199,13 @@ LayoutSemanticInfo ExtractLayoutSemanticInfo(
     LayoutSemanticInfo info;
     info.space = 0;
     info.index = 0;
-    info.kind = LayoutResourceKind::Invalid;
+    info.kind = LayoutResourceKind::None;
 
     auto registerName = semantic->registerName.Content;
     if (registerName.Length() == 0)
         return info;
 
-    LayoutResourceKind kind = LayoutResourceKind::Invalid;
+    LayoutResourceKind kind = LayoutResourceKind::None;
     switch (registerName[0])
     {
     case 'b':
@@ -333,7 +338,7 @@ void generateParameterBindings(
             // Need to extract the information encoded in the semantic
             LayoutSemanticInfo semanticInfo = ExtractLayoutSemanticInfo(context, semantic);
             auto kind = semanticInfo.kind;
-            if (kind == LayoutResourceKind::Invalid)
+            if (kind == LayoutResourceKind::None)
                 continue;
 
             // TODO: need to special-case when this is a `c` register binding...
@@ -346,7 +351,7 @@ void generateParameterBindings(
             int count = 0;
             if (typeRes)
             {
-                count = typeRes->count;
+                count = (int) typeRes->count;
             }
             else
             {
@@ -421,7 +426,7 @@ static void completeBindingsForParameter(
 
         auto count = typeRes.count;
         bindingInfo.count = count;
-        bindingInfo.index = context->usedResourceRanges[(int)kind].Allocate(count);
+        bindingInfo.index = context->usedResourceRanges[(int)kind].Allocate((int) count);
 
         // For now we only auto-generate bindings in space zero
         bindingInfo.space = 0;
@@ -433,7 +438,7 @@ static void completeBindingsForParameter(
 
     for(auto& varLayout : parameterInfo->varLayouts)
     {
-        for(auto k = 0; k < (int)LayoutResourceKind::Count; ++k)
+        for(auto k = 0; k < kLayoutResourceKindCount; ++k)
         {
             auto kind = LayoutResourceKind(k);
             auto& bindingInfo = parameterInfo->bindingInfo[k];

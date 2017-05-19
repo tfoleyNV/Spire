@@ -106,6 +106,7 @@ namespace SpireLib
     }
 #endif
 
+#if 0
     List<ShaderLibFile> CompileUnits(Spire::Compiler::CompileResult & compileResult,
         ShaderCompiler * compiler, List<CompileUnit> & units,
         Spire::Compiler::CompileOptions & options)
@@ -128,6 +129,7 @@ namespace SpireLib
         }
         return resultFiles;
     }
+#endif
 
 #if 0
     List<ShaderLibFile> CompileShaderSource(Spire::Compiler::CompileResult & compileResult,
@@ -504,12 +506,9 @@ namespace SpireLib
             CompileResult compileResult;
             compileResult.mSink = &sink;
 
-            CompilationContext compileContext;
-
             compiler->Compile(
                 compileResult,
-                compileContext,
-                collectionOfTranslationUnits.translationUnits,
+                &collectionOfTranslationUnits,
                 options);
             if(compileResult.GetErrorCount())
             {
@@ -743,7 +742,8 @@ namespace SpireLib
         DiagnosticSink mSink;
         String mDiagnosticOutput;
 
-        ReflectionBlob* mReflectionBlob = nullptr;
+        RefPtr<ProgramLayout> mReflectionData;
+
         List<String> mTranslationUnitSources;
 
         List<String> mDependencyFilePaths;
@@ -753,12 +753,7 @@ namespace SpireLib
         {}
 
         ~CompileRequest()
-        {
-            if( mReflectionBlob )
-            {
-                free(mReflectionBlob);
-            }
-        }
+        {}
 
         struct IncludeHandlerImpl : IncludeHandler
         {
@@ -897,9 +892,11 @@ namespace SpireLib
 
             // Now perform semantic checks, emit output, etc.
             mSession->compiler->Compile(
-                result, compileContext, collectionOfTranslationUnits.translationUnits, Options);
+                result, &collectionOfTranslationUnits, Options);
             if(result.GetErrorCount() != 0)
                 return 1;
+
+            mReflectionData = collectionOfTranslationUnits.layout;
 
             return 0;
         }
@@ -926,10 +923,6 @@ namespace SpireLib
             int err = executeCompilerDriverActions(result);
 
             mDiagnosticOutput = mSink.outputBuffer.ProduceString();
-
-            // Move the reflection blob over (so it doesn't get deleted)
-            mReflectionBlob = result.reflectionBlob;
-            result.reflectionBlob = NULL;
 
             if(mSink.GetErrorCount() != 0)
                 return mSink.GetErrorCount();
@@ -1216,435 +1209,11 @@ SPIRE_API char const* spGetTranslationUnitSource(
 SPIRE_API SpireReflection* spGetReflection(
     SpireCompileRequest*    request)
 {
-if( !request ) return 0;
+    if( !request ) return 0;
 
-auto req = REQ(request);
-return (SpireReflection*) req->mReflectionBlob;
-}
-
-SpireTypeKind spReflectionType_GetKind(SpireReflectionType* inType)
-{
-    return ((ReflectionNode*) inType)->AsType()->GetKind();
-}
-
-SpireParameterCategory spReflectionType_GetParameterCategory(SpireReflectionType* inType)
-{
-    auto type = ((ReflectionNode*) inType)->AsTypeLayout();
-    if( !type ) return SPIRE_PARAMETER_CATEGORY_NONE;
-    return type->GetParameterCategory();
-}
-
-unsigned int spReflectionType_GetFieldCount(SpireReflectionType* inType)
-{
-    return ((ReflectionNode*) inType)->AsType()->AsStruct()->GetFieldCount();
-}
-
-SpireReflectionVariable* spReflectionType_GetFieldByIndex(SpireReflectionType* inType, unsigned int index)
-{
-    auto node = (ReflectionNode*) inType;
-    if( !node ) return nullptr;
-    switch( node->GetFlavor() )
-    {
-    default:
-        return nullptr;
-
-    case ReflectionNodeFlavor::Type:
-        return (SpireReflectionVariable*) node->AsType()->AsStruct()->GetFieldByIndex(index);
-        break;
-
-
-    case ReflectionNodeFlavor::TypeLayout:
-        return (SpireReflectionVariable*) node->AsTypeLayout()->AsStruct()->GetFieldByIndex(index);
-        break;
-    }
-}
-
-size_t spReflectionType_GetElementCount(SpireReflectionType* inType)
-{
-    return ((ReflectionNode*) inType)->AsType()->AsArray()->GetElementCount();
-}
-
-size_t spReflectionType_GetElementStride(SpireReflectionType* inType, SpireParameterCategory category)
-{
-    return ((ReflectionNode*) inType)->AsTypeLayout()->AsArray()->GetElementStride(category);
-}
-
-SpireReflectionType* spReflectionType_GetElementType(SpireReflectionType* inType)
-{
-    auto node = (ReflectionNode*) inType;
-    if( !node ) return nullptr;
-
-    // First check if we are an array type layout
-    switch( node->GetFlavor() )
-    {
-    default:
-        return nullptr;
-
-    case ReflectionNodeFlavor::TypeLayout:
-        {
-            auto typeLayout = node->AsTypeLayout();
-            switch( typeLayout->GetKind() )
-            {
-            case SPIRE_TYPE_KIND_ARRAY:
-                return (SpireReflectionType*) typeLayout->AsArray()->GetElementTypeLayout();
-
-            default:
-                node = typeLayout->GetType();
-                assert(node);
-                break;
-            }
-        }
-        break;
-    }
-
-    // Next check for non-layout types with element type info
-    switch( node->GetFlavor() )
-    {
-    default:
-        return nullptr;
-
-    case ReflectionNodeFlavor::Type:
-        {
-            auto type = node->AsType();
-            switch( type->GetKind() )
-            {
-            case SPIRE_TYPE_KIND_ARRAY:
-                return (SpireReflectionType*) type->AsArray()->GetElementType();
-
-            case SPIRE_TYPE_KIND_CONSTANT_BUFFER:
-                return (SpireReflectionType*) ((ReflectionConstantBufferTypeNode*) type)->GetElementType();
-
-            case SPIRE_TYPE_KIND_RESOURCE:
-                {
-                    auto textureType = (ReflectionResourceTypeNode*) type;
-                    switch( textureType->GetShape() & SPIRE_RESOURCE_BASE_SHAPE_MASK )
-                    {
-                    default:
-                        return nullptr;
-
-                    case SPIRE_STRUCTURED_BUFFER:
-                        return  (SpireReflectionType*) textureType->GetElementType();
-                        break;
-                    }
-                }
-                break;
-
-            default:
-                return nullptr;
-            }
-        }
-        break;
-    }
-}
-
-unsigned int spReflectionType_GetRowCount(SpireReflectionType* inType)
-{
-    auto type = ((ReflectionNode*) inType)->AsType();
-    if(!type) return 0;
-    switch( type->GetKind() )
-    {
-    default:
-        return 0;
-
-    case SPIRE_TYPE_KIND_SCALAR:
-    case SPIRE_TYPE_KIND_VECTOR:
-        return 1;
-
-    case SPIRE_TYPE_KIND_MATRIX:
-        return ((ReflectionMatrixTypeNode*) type)->GetRowCount();
-    }
-}
-
-unsigned int spReflectionType_GetColumnCount(SpireReflectionType* inType)
-{
-    auto type = ((ReflectionNode*) inType)->AsType();
-    if(!type) return 0;
-    switch( type->GetKind() )
-    {
-    default:
-        return 0;
-
-    case SPIRE_TYPE_KIND_SCALAR:
-        return 1;
-
-    case SPIRE_TYPE_KIND_VECTOR:
-        return ((ReflectionVectorTypeNode*) type)->GetElementCount();
-
-    case SPIRE_TYPE_KIND_MATRIX:
-        return ((ReflectionMatrixTypeNode*) type)->GetColumnCount();
-    }
-}
-
-SpireScalarType spReflectionType_GetScalarType(SpireReflectionType* inType)
-{
-    auto type = ((ReflectionNode*) inType)->AsType();
-    if(!type) return SPIRE_SCALAR_TYPE_NONE;
-    switch( type->GetKind() )
-    {
-    default:
-        return SPIRE_SCALAR_TYPE_NONE;
-
-    case SPIRE_TYPE_KIND_SCALAR:
-        return (SpireScalarType) ((ReflectionScalarTypeNode*) type)->GetScalarType();
-
-    case SPIRE_TYPE_KIND_VECTOR:
-        return (SpireScalarType) ((ReflectionVectorTypeNode*) type)->GetElementType()->GetScalarType();
-
-    case SPIRE_TYPE_KIND_MATRIX:
-        return (SpireScalarType) ((ReflectionMatrixTypeNode*) type)->GetElementType()->GetScalarType();
-    }
-}
-
-SPIRE_API SpireResourceShape spReflectionType_GetResourceShape(SpireReflectionType* inType)
-{
-    auto type = ((ReflectionNode*) inType)->AsType()->UnwrapArrays();
-    if(!type) return SPIRE_RESOURCE_NONE;
-    switch( type->GetKind() )
-    {
-    default:
-        return SPIRE_RESOURCE_NONE;
-
-    case SPIRE_TYPE_KIND_RESOURCE:
-        return ((ReflectionResourceTypeNode*) type)->GetShape();
-    }
-
-}
-
-SPIRE_API SpireResourceAccess spReflectionType_GetResourceAccess(SpireReflectionType* inType)
-{
-    auto type = ((ReflectionNode*) inType)->AsType()->UnwrapArrays();
-    if(!type) return SPIRE_RESOURCE_ACCESS_NONE;
-    switch( type->GetKind() )
-    {
-    default:
-        return SPIRE_RESOURCE_ACCESS_NONE;
-
-    case SPIRE_TYPE_KIND_RESOURCE:
-        return ((ReflectionResourceTypeNode*) type)->GetAccess();
-    }
-
+    auto req = REQ(request);
+    return (SpireReflection*) req->mReflectionData.Ptr();
 }
 
 
-SPIRE_API SpireReflectionType* spReflectionType_GetResourceResultType(SpireReflectionType* inType)
-{
-    auto type = ((ReflectionNode*) inType)->AsType()->UnwrapArrays();
-    if(!type) return 0;
-    switch( type->GetKind() )
-    {
-    default:
-        return 0;
-
-    case SPIRE_TYPE_KIND_RESOURCE:
-        return (SpireReflectionType*) ((ReflectionResourceTypeNode*) type)->GetElementType();
-    }
-}
-
-
-// type layout reflection
-
-size_t spReflectionType_GetSize(SpireReflectionType* inType, SpireParameterCategory category)
-{
-    auto typeLayout = ((ReflectionNode*) inType)->AsTypeLayout();
-    if(!typeLayout) return 0;
-    return typeLayout->GetSize(category);
-}
-
-// variable reflection
-
-char const* spReflectionVariable_GetName(SpireReflectionVariable* inVar)
-{
-    auto var = ((ReflectionNode*) inVar)->AsVariable();
-    if(!var) return 0;
-    return var->GetName();
-}
-
-SpireReflectionType* spReflectionVariable_GetType(SpireReflectionVariable* inVar)
-{
-    auto node = (ReflectionNode*) inVar;
-    if(!node) return 0;
-    switch(node->GetFlavor())
-    {
-    default:
-        return 0;
-
-    case ReflectionNodeFlavor::Parameter:
-    case ReflectionNodeFlavor::Variable:
-        return (SpireReflectionType*) node->AsVariable()->GetType();
-
-    case ReflectionNodeFlavor::VariableLayout:
-        return (SpireReflectionType*) node->AsVariableLayout()->GetTypeLayout();
-    }
-}
-
-// variable layout reflection
-
-size_t spReflectionVariable_GetOffset(SpireReflectionVariable* inVar, SpireParameterCategory category)
-{
-    auto node = (ReflectionNode*) inVar;
-    if(!node) return 0;
-    switch( node->GetFlavor() )
-    {
-    default:
-        return 0;
-
-    case ReflectionNodeFlavor::Parameter:
-        return node->AsParameter()->GetOffset(category);
-
-    case ReflectionNodeFlavor::VariableLayout:
-        return node->AsVariableLayout()->GetOffset(category);
-    }
-}
-
-// shader parameter reflection
-
-SpireParameterCategory spReflectionParameter_GetCategory(SpireReflectionParameter* inParam)
-{
-    auto param = ((ReflectionNode*) inParam)->AsParameter();
-    if(!param) return 0;
-    return param->GetCategory();
-}
-
-char const* spReflectionParameter_GetName(SpireReflectionParameter* inParam)
-{
-    auto param = ((ReflectionNode*) inParam)->AsParameter();
-    if(!param) return 0;
-    return param->GetName();
-}
-
-static ReflectionParameterBindingInfo const* getParameterBindingInfo(
-    ReflectionParameterNode*    param,
-    SpireParameterCategory      category)
-{
-    if( param->GetCategory() == category )
-    {
-        return &param->binding;
-    }
-
-    if( param->GetCategory() == SPIRE_PARAMETER_CATEGORY_MIXED )
-    {
-        auto bindingCount = param->binding.bindingCount;
-        ReflectionParameterBindingInfo* bindings = param->binding.bindings;
-        for( ReflectionSize bb = 0; bb < bindingCount; ++bb )
-        {
-            if(bindings[bb].category == category)
-                return &bindings[bb];
-        }
-    }
-
-    return 0;
-}
-
-static ReflectionParameterBindingInfo const* getParameterBindingInfo(
-    ReflectionParameterNode*    param )
-{
-    switch( param->GetCategory() )
-    {
-    default:
-        return &param->binding;
-
-    case SPIRE_PARAMETER_CATEGORY_NONE:
-    case SPIRE_PARAMETER_CATEGORY_UNIFORM:
-        // This isn't a meaningful query!
-        return 0;
-
-    case SPIRE_PARAMETER_CATEGORY_MIXED:
-        // It usually isn't meaningful to ask the binding index of something
-        // with a "mixed" type, but we need to special-case constant buffers here
-        //
-        switch( param->GetType()->UnwrapArrays()->GetKind() )
-        {
-        case SPIRE_TYPE_KIND_CONSTANT_BUFFER:
-            return getParameterBindingInfo(param, SPIRE_PARAMETER_CATEGORY_CONSTANT_BUFFER);
-
-        default:
-            return 0;
-        }
-        break;
-    }
-}
-
-unsigned spReflectionParameter_GetBindingIndex(SpireReflectionParameter* inParam)
-{
-    auto param = ((ReflectionNode*) inParam)->AsParameter();
-    if(!param) return 0;
-
-    auto info = getParameterBindingInfo(param);
-    if(!info) return 0;
-
-    return info->index;
-}
-
-unsigned spReflectionParameter_GetBindingSpace(SpireReflectionParameter* inParam)
-{
-    auto param = ((ReflectionNode*) inParam)->AsParameter();
-    if(!param) return 0;
-
-    auto info = getParameterBindingInfo(param);
-    if(!info) return 0;
-
-    return info->space;
-}
-
-// constant buffers
-SpireReflectionType* spReflectionParameter_GetBufferType(SpireReflectionParameter* inParam)
-{
-    auto param = ((ReflectionNode*) inParam)->AsParameter();
-    if(!param) return 0;
-
-    auto type = param->GetType()->UnwrapArrays();
-    switch(type->GetKind())
-    {
-    default:
-        return 0;
-
-    case SPIRE_TYPE_KIND_CONSTANT_BUFFER:
-        return (SpireReflectionType*) ((ReflectionConstantBufferTypeNode*) type)->GetElementType();
-    }
-}
-
-// whole shader
-
-size_t spReflection_GetReflectionDataSize(SpireReflection* inReflection)
-{
-    auto blob = (ReflectionBlob*) inReflection;
-    if(!blob) return 0;
-    switch(blob->GetFlavor())
-    {
-    default:
-        return 0;
-
-    case ReflectionNodeFlavor::Blob:
-        return blob->GetReflectionDataSize();
-    }
-}
-
-
-unsigned spReflection_GetParameterCount(SpireReflection* inReflection)
-{
-    auto blob = (ReflectionBlob*) inReflection;
-    if(!blob) return 0;
-    switch(blob->GetFlavor())
-    {
-    default:
-        return 0;
-
-    case ReflectionNodeFlavor::Blob:
-        return blob->GetParameterCount();
-    }
-}
-
-SpireReflectionParameter* spReflection_GetParameterByIndex(SpireReflection* inReflection, unsigned index)
-{
-    auto blob = (ReflectionBlob*) inReflection;
-    if(!blob) return 0;
-    switch(blob->GetFlavor())
-    {
-    default:
-        return 0;
-
-    case ReflectionNodeFlavor::Blob:
-        return (SpireReflectionParameter*) blob->GetParameterByIndex(index);
-    }
-}
-
+// ... rest of reflection API implementation is in `Reflection.cpp`

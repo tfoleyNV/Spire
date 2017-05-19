@@ -43,6 +43,8 @@ struct ArrayLayoutInfo : LayoutInfo
     size_t elementStride;
 };
 
+typedef spire::ParameterCategory LayoutResourceKind;
+#if 0
 enum class LayoutResourceKind
 {
     Invalid = 0,
@@ -56,6 +58,7 @@ enum class LayoutResourceKind
     Count,
 };
 bool IsResourceKind(LayoutResourceKind kind);
+#endif
 
 // Layout information for an object/resource type
 struct ObjectLayoutInfo
@@ -70,7 +73,7 @@ struct ObjectLayoutInfo
     size_t alignment;
 
     ObjectLayoutInfo()
-        : kind(LayoutResourceKind::Invalid)
+        : kind(LayoutResourceKind::None)
         , size(0)
         , alignment(1)
     {}
@@ -107,6 +110,7 @@ class TypeLayout : public RefObject
 public:
     // The type that was laid out
     RefPtr<ExpressionType>  type;
+    ExpressionType* getType() { return type.Ptr(); }
 
     // The layout rules that were used to produce this type
     LayoutRulesImpl*        rules;
@@ -114,7 +118,7 @@ public:
     struct ResourceInfo
     {
         // What kind of register was it?
-        LayoutResourceKind  kind = LayoutResourceKind::Invalid;
+        LayoutResourceKind  kind = LayoutResourceKind::None;
 
         // How many registers of the above kind did we use?
         UInt                 count;
@@ -177,9 +181,13 @@ class VarLayout : public RefObject
 public:
     // The variable we are laying out
     VarDeclBaseRef          varDecl;
+    VarDeclBase* getVariable() { return varDecl.GetDecl(); }
+
+    String const& getName() { return getVariable()->getName(); }
 
     // The result of laying out the variable's type
     RefPtr<TypeLayout>      typeLayout;
+    TypeLayout* getTypeLayout() { return typeLayout.Ptr(); }
 
     // Additional flags
     VarLayoutFlags flags = 0;
@@ -188,7 +196,7 @@ public:
     struct ResourceInfo
     {
         // What kind of register was it?
-        LayoutResourceKind  kind = LayoutResourceKind::Invalid;
+        LayoutResourceKind  kind = LayoutResourceKind::None;
 
         // What binding space (HLSL) or set (Vulkan) are we placed in?
         UInt                space;
@@ -232,6 +240,13 @@ public:
 
 // Type layout for a variable that has a constant-buffer type
 class ConstantBufferTypeLayout : public TypeLayout
+{
+public:
+    RefPtr<TypeLayout> elementTypeLayout;
+};
+
+// Type layout for a variable that has a constant-buffer type
+class StructuredBufferTypeLayout : public TypeLayout
 {
 public:
     RefPtr<TypeLayout> elementTypeLayout;
@@ -432,6 +447,15 @@ createConstantBufferTypeLayout(
     RefPtr<ConstantBufferType>  constantBufferType,
     RefPtr<TypeLayout>          elementTypeLayout,
     LayoutRulesImpl*            rules);
+
+
+// Create a type layout for a structured buffer type.
+RefPtr<StructuredBufferTypeLayout>
+createStructuredBufferTypeLayout(
+    LayoutResourceKind      kind,
+    RefPtr<ExpressionType>  structuredBufferType,
+    RefPtr<ExpressionType>  elementType,
+    LayoutRulesImpl*        rules);
 
 
 //

@@ -192,6 +192,7 @@ namespace Spire
         public:
             List<CompileUnit> translationUnits;
 
+            // TODO: this is more output-oriented, but maybe okay to have here...
             RefPtr<ProgramLayout> layout;
         };
 
@@ -212,12 +213,11 @@ namespace Spire
                 IncludeHandler* includeHandler,
                 Dictionary<String,String> const& preprocessorDefinitions,
                 CompileUnit predefUnit) = 0;
-            virtual void Compile(CompileResult & result, CompilationContext & context, List<CompileUnit> & units, const CompileOptions & options) = 0;
-            void Compile(CompileResult & result, List<CompileUnit> & units, const CompileOptions & options)
-            {
-                CompilationContext context;
-                Compile(result, context, units, options);
-            }
+
+            virtual void Compile(
+                CompileResult&                  result,
+                CollectionOfTranslationUnits*   collectionOfTranslationUnits,
+                const CompileOptions&           options) = 0;
 
             virtual TranslationUnitResult PassThrough(
                 CompileResult &			result, 

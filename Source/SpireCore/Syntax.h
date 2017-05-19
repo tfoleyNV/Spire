@@ -475,6 +475,85 @@ namespace Spire
             }
         };
 
+        class SyntaxNode : public RefObject
+        {
+        public:
+            CodePosition Position;
+            virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) = 0;
+        };
+
+        class ContainerDecl;
+        class SpecializeModifier;
+
+        // Represents how much checking has been applied to a declaration.
+        enum class DeclCheckState : uint8_t
+        {
+            // The declaration has been parsed, but not checked
+            Unchecked,
+
+            // We are in the process of checking the declaration "header"
+            // (those parts of the declaration needed in order to
+            // reference it)
+            CheckingHeader,
+
+            // We are done checking the declaration header.
+            CheckedHeader,
+
+            // We have checked the declaration fully.
+            Checked,
+        };
+
+        // A syntax node which can have modifiers appled
+        class ModifiableSyntaxNode : public SyntaxNode
+        {
+        public:
+            Modifiers modifiers;
+
+            template<typename T>
+            FilteredModifierList<T> GetModifiersOfType() { return FilteredModifierList<T>(modifiers.first.Ptr()); }
+
+            // Find the first modifier of a given type, or return `nullptr` if none is found.
+            template<typename T>
+            T* FindModifier()
+            {
+                return *GetModifiersOfType<T>().begin();
+            }
+
+            template<typename T>
+            bool HasModifier() { return FindModifier<T>() != nullptr; }
+        };
+
+
+        // An intermediate type to represent either a single declaration, or a group of declarations
+        class DeclBase : public ModifiableSyntaxNode
+        {
+        public:
+        };
+
+        class Decl : public DeclBase
+        {
+        public:
+            ContainerDecl*  ParentDecl;
+
+            Token Name;
+            String const& getName() { return Name.Content; }
+            Token const& getNameToken() { return Name; }
+
+
+            DeclCheckState checkState = DeclCheckState::Unchecked;
+
+            // The next declaration defined in the same container with the same name
+            Decl* nextInContainerWithSameName = nullptr;
+
+            bool IsChecked(DeclCheckState state) { return checkState >= state; }
+            void SetCheckState(DeclCheckState state)
+            {
+                assert(state >= checkState);
+                checkState = state;
+            }
+        };
+
+
         // A reference to a declaration, which may include
         // substitutions for generic parameters.
         struct DeclRef
@@ -482,8 +561,8 @@ namespace Spire
             typedef Decl DeclType;
 
             // The underlying declaration
-            Decl* decl = nullptr;
-            Decl* GetDecl() const { return decl; }
+            RefPtr<Decl> decl;
+            Decl* GetDecl() const { return decl.Ptr(); }
 
             // Optionally, a chain of substititions to perform
             RefPtr<Substitutions> substitutions;
@@ -519,7 +598,7 @@ namespace Spire
             T As() const
             {
                 T result;
-                result.decl = dynamic_cast<T::DeclType*>(decl);
+                result.decl = dynamic_cast<T::DeclType*>(decl.Ptr());
                 result.substitutions = substitutions;
                 return result;
             }
@@ -528,16 +607,16 @@ namespace Spire
             // in a conditional context
             operator Decl*() const
             {
-                return decl;
-            }
+                return decl.Ptr();
+          }
 
             int GetHashCode() const;
         };
 
         // Helper macro for defining `DeclRef` subtypes
-        #define SPIRE_DECLARE_DECL_REF(D)				\
-            typedef D DeclType;							\
-            D* GetDecl() const { return (D*) decl; }	\
+        #define SPIRE_DECLARE_DECL_REF(D)				    \
+            typedef D DeclType;							    \
+            D* GetDecl() const { return (D*) decl.Ptr(); }	\
             /* */
 
 
@@ -885,77 +964,6 @@ namespace Spire
 
         class ContainerDecl;
 
-        class SyntaxNode : public RefObject
-        {
-        public:
-            CodePosition Position;
-            virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) = 0;
-        };
-
-        class ContainerDecl;
-        class SpecializeModifier;
-
-        // Represents how much checking has been applied to a declaration.
-        enum class DeclCheckState : uint8_t
-        {
-            // The declaration has been parsed, but not checked
-            Unchecked,
-
-            // We are in the process of checking the declaration "header"
-            // (those parts of the declaration needed in order to
-            // reference it)
-            CheckingHeader,
-
-            // We are done checking the declaration header.
-            CheckedHeader,
-
-            // We have checked the declaration fully.
-            Checked,
-        };
-
-        // A syntax node which can have modifiers appled
-        class ModifiableSyntaxNode : public SyntaxNode
-        {
-        public:
-            Modifiers modifiers;
-
-            template<typename T>
-            FilteredModifierList<T> GetModifiersOfType() { return FilteredModifierList<T>(modifiers.first.Ptr()); }
-
-            // Find the first modifier of a given type, or return `nullptr` if none is found.
-            template<typename T>
-            T* FindModifier()
-            {
-                return *GetModifiersOfType<T>().begin();
-            }
-
-            template<typename T>
-            bool HasModifier() { return FindModifier<T>() != nullptr; }
-        };
-
-        // An intermediate type to represent either a single declaration, or a group of declarations
-        class DeclBase : public ModifiableSyntaxNode
-        {
-        public:
-        };
-
-        class Decl : public DeclBase
-        {
-        public:
-            ContainerDecl*  ParentDecl;
-            Token Name;
-            DeclCheckState checkState = DeclCheckState::Unchecked;
-
-            // The next declaration defined in the same container with the same name
-            Decl* nextInContainerWithSameName = nullptr;
-
-            bool IsChecked(DeclCheckState state) { return checkState >= state; }
-            void SetCheckState(DeclCheckState state)
-            {
-                assert(state >= checkState);
-                checkState = state;
-            }
-        };
 
         // A group of declarations that should be treated as a unit
         class DeclGroup : public DeclBase
@@ -1274,6 +1282,8 @@ namespace Spire
         public:
             // Type of the variable
             TypeExp Type;
+
+            ExpressionType* getType() { return Type.type.Ptr(); }
 
             // Initializer expression (optional)
             RefPtr<ExpressionSyntaxNode> Expr;

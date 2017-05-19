@@ -256,7 +256,7 @@ bool IsResourceKind(LayoutResourceKind kind)
 {
     switch (kind)
     {
-    case LayoutResourceKind::Invalid:
+    case LayoutResourceKind::None:
     case LayoutResourceKind::Uniform:
         return false;
 
@@ -361,6 +361,62 @@ createConstantBufferTypeLayout(
         rules);
 }
 
+// Create a type layout for a structured buffer type.
+RefPtr<StructuredBufferTypeLayout>
+createStructuredBufferTypeLayout(
+    LayoutResourceKind      kind,
+    RefPtr<ExpressionType>  structuredBufferType,
+    RefPtr<TypeLayout>      elementTypeLayout,
+    LayoutRulesImpl*        rules)
+{
+    auto info = rules->GetObjectLayout(kind);
+
+    auto typeLayout = new StructuredBufferTypeLayout();
+
+    typeLayout->type = structuredBufferType;
+    typeLayout->rules = rules;
+
+    typeLayout->elementTypeLayout = elementTypeLayout;
+
+    typeLayout->uniformAlignment = info.alignment;
+    assert(!typeLayout->FindResourceInfo(LayoutResourceKind::Uniform));
+    assert(typeLayout->uniformAlignment == 1);
+
+    typeLayout->addResourceUsage(kind, 1);
+
+    // Note: for now we don't deal with the case of a structured
+    // buffer that might contain anything other than "uniform" data,
+    // because there really isn't a way to implement that.
+
+    return typeLayout;
+}
+
+// Create a type layout for a structured buffer type.
+RefPtr<StructuredBufferTypeLayout>
+createStructuredBufferTypeLayout(
+    LayoutResourceKind      kind,
+    RefPtr<ExpressionType>  structuredBufferType,
+    RefPtr<ExpressionType>  elementType,
+    LayoutRulesImpl*        rules)
+{
+    // TODO(tfoley): need to compute the layout for the constant
+    // buffer's contents...
+    auto structuredBufferLayoutRules = GetLayoutRulesImpl(
+        LayoutRule::HLSLStructuredBuffer);
+
+    // Create and save type layout for the buffer contents.
+    auto elementTypeLayout = CreateTypeLayout(
+        elementType.Ptr(),
+        structuredBufferLayoutRules);
+
+    return createStructuredBufferTypeLayout(
+        kind,
+        structuredBufferType,
+        elementTypeLayout,
+        rules);
+
+}
+
 LayoutInfo GetLayoutImpl(
     ExpressionType*     type,
     LayoutRulesImpl*    rules,
@@ -407,7 +463,7 @@ LayoutInfo GetLayoutImpl(
     {
         // TODO: the logic here should really be defined by the rules,
         // and not at this top level...
-        LayoutResourceKind kind = LayoutResourceKind::Invalid;
+        LayoutResourceKind kind = LayoutResourceKind::None;
         switch( textureType->getAccess() )
         {
         default:
@@ -427,6 +483,29 @@ LayoutInfo GetLayoutImpl(
     }
 
     // TODO: need a better way to handle this stuff...
+#define CASE(TYPE, KIND)                                                \
+    else if(auto type_##TYPE = type->As<TYPE>()) do {                   \
+        auto info = rules->GetObjectLayout(LayoutResourceKind::KIND);   \
+        if (outTypeLayout)                                              \
+        {                                                               \
+            *outTypeLayout = createStructuredBufferTypeLayout(          \
+                LayoutResourceKind::KIND,                               \
+                type_##TYPE,                                            \
+                type_##TYPE->elementType.Ptr(),                         \
+                rules);                                                 \
+        }                                                               \
+        return info;                                                    \
+    } while(0)
+
+    CASE(HLSLStructuredBufferType,          ShaderResource);
+    CASE(HLSLRWStructuredBufferType,        UnorderedAccess);
+    CASE(HLSLAppendStructuredBufferType,    UnorderedAccess);
+    CASE(HLSLConsumeStructuredBufferType,   UnorderedAccess);
+
+#undef CASE
+
+
+    // TODO: need a better way to handle this stuff...
 #define CASE(TYPE, KIND)                                        \
     else if(type->As<TYPE>()) do {                              \
         return GetSimpleLayoutImpl(                             \
@@ -436,12 +515,8 @@ LayoutInfo GetLayoutImpl(
 
     CASE(HLSLBufferType,                    ShaderResource);
     CASE(HLSLRWBufferType,                  UnorderedAccess);
-    CASE(HLSLStructuredBufferType,          ShaderResource);
-    CASE(HLSLRWStructuredBufferType,        UnorderedAccess);
     CASE(HLSLByteAddressBufferType,         ShaderResource);
     CASE(HLSLRWByteAddressBufferType,       UnorderedAccess);
-    CASE(HLSLAppendStructuredBufferType,    UnorderedAccess);
-    CASE(HLSLConsumeStructuredBufferType,   UnorderedAccess);
 
     // This case is mostly to allow users to add new resource types...
     CASE(UntypedBufferResourceType,         ShaderResource);

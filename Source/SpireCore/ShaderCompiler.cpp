@@ -402,7 +402,7 @@ namespace Spire
 
                 case CodeGenTarget::ReflectionJSON:
                     {
-                        String reflectionJSON = context.compileResult->reflectionBlob->emitAsJSON();
+                        String reflectionJSON = emitReflectionJSON(context.programLayout);
 
                         // HACK(tfoley): just print it out since that is what people probably expect.
                         // TODO: need a way to control where output gets routed across all possible targets.
@@ -412,15 +412,11 @@ namespace Spire
                 }
             }
 
-            virtual void Compile(CompileResult & result, CompilationContext & /*context*/, List<CompileUnit> & units, const CompileOptions & options) override
+            virtual void Compile(
+                CompileResult&                  result,
+                CollectionOfTranslationUnits*   collectionOfTranslationUnits,
+                const CompileOptions&           options) override
             {
-                RefPtr<CollectionOfTranslationUnits> collectionOfTranslationUnits = new CollectionOfTranslationUnits();
-                for (auto & unit : units)
-                {
-                    collectionOfTranslationUnits->translationUnits.Add(unit);
-                }
-
-                
                 RefPtr<SyntaxVisitor> visitor = CreateSemanticsVisitor(result.GetErrorWriter(), options);
                 try
                 {
@@ -468,11 +464,7 @@ namespace Spire
 
                     // Do binding generation, and then reflection (globally)
                     // before we move on to any code-generation activites.
-                    //
-                    // TODO: actually make this global!
-
-                    GenerateParameterBindings(collectionOfTranslationUnits.Ptr());
-                    result.reflectionBlob = ReflectionBlob::Create(collectionOfTranslationUnits.Ptr());
+                    GenerateParameterBindings(collectionOfTranslationUnits);
 
 
                     // HACK(tfoley): for right now I just want to pretty-print an AST
@@ -485,7 +477,7 @@ namespace Spire
                     extra.options = &options;
                     extra.programLayout = collectionOfTranslationUnits->layout.Ptr();
                     extra.compileResult = &result;
-                    DoNewEmitLogic(extra, collectionOfTranslationUnits.Ptr());
+                    DoNewEmitLogic(extra, collectionOfTranslationUnits);
                 }
                 catch (int)
                 {

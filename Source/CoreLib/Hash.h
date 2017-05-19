@@ -70,7 +70,7 @@ namespace CoreLib
 		{
 		public:
 			template<typename TKey>
-			static int GetHashCode(TKey & key)
+			static int GetHashCode(TKey const& key)
 			{
 				return (int)((CoreLib::PtrInt)key) / 16; // sizeof(typename std::remove_pointer<TKey>::type);
 			}
