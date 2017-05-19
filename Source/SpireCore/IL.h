@@ -11,7 +11,7 @@ namespace Spire
         using CoreLib::Text::CodePosition;
 
         using namespace CoreLib::Basic;
-        enum ILBaseType
+        enum class ILBaseType
         {
             Void = 0,
             Bool,

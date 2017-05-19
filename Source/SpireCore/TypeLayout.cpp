@@ -279,12 +279,11 @@ LayoutInfo GetSimpleLayoutImpl(
 
         typeLayout->type = type;
         typeLayout->rules = rules;
-        typeLayout->uniforms = info;
-        if(IsResourceKind(info.kind))
-        {
-            typeLayout->resources.kind = info.kind;
-            typeLayout->resources.count = (int) info.size;
-        }
+
+
+        typeLayout->uniformAlignment = info.alignment;
+        
+        typeLayout->addResourceUsage(info.kind, info.size);
     }
 
     return info;
@@ -310,9 +309,9 @@ createConstantBufferTypeLayout(
     // originally (which should be a single binding "slot"
     // and hence no uniform data).
     // 
-    typeLayout->uniforms = info;
-    assert(typeLayout->uniforms.size == 0);
-    assert(typeLayout->uniforms.alignment == 1);
+    typeLayout->uniformAlignment = info.alignment;
+    assert(!typeLayout->FindResourceInfo(LayoutResourceKind::Uniform));
+    assert(typeLayout->uniformAlignment == 1);
 
     // TODO(tfoley): There is a subtle question here of whether
     // a constant buffer declaration that then contains zero
@@ -324,36 +323,18 @@ createConstantBufferTypeLayout(
 
     // The CB will always allocate at least one resource
     // binding slot for the CB itself.
-    typeLayout->resources.count = 1;
-    typeLayout->resources.kind = LayoutResourceKind::ConstantBuffer;
-    typeLayout->resources.next = 0;
+
+    typeLayout->addResourceUsage(LayoutResourceKind::ConstantBuffer, 1);
 
     // Now, if the element type itself had any resources, then
     // we need to make these part of the layout for our CB
-    if( elementTypeLayout->resources.kind != LayoutResourceKind::Invalid )
+    for( auto elementResourceInfo : elementTypeLayout->resourceInfos )
     {
-        RefPtr<TypeLayout::ResourceInfo>* link = &typeLayout->resources.next;
-        for( auto rr = &elementTypeLayout->resources; rr; rr = rr->next.Ptr() )
-        {
-            assert(rr->kind != LayoutResourceKind::Invalid);
+        // Skip uniform data, since that is encapsualted behind the constant buffer
+        if(elementResourceInfo.kind == LayoutResourceKind::Uniform)
+            break;
 
-            // If we have nested constant buffers, then just increase the number of slots reserved
-            if( rr->kind == LayoutResourceKind::ConstantBuffer )
-            {
-                typeLayout->resources.count += rr->count;
-            }
-            else
-            {
-                // Otherwise, we are appending a new slot type to the array (need to make a copy here...)
-                RefPtr<TypeLayout::ResourceInfo> info = new TypeLayout::ResourceInfo();
-                info->kind = rr->kind;
-                info->count = rr->count;
-                info->next = nullptr;
-
-                *link = info;
-                link = &info->next;
-            }
-        }
+        typeLayout->addResourceUsage(elementResourceInfo);
     }
 
     return typeLayout;
@@ -520,28 +501,21 @@ LayoutInfo GetLayoutImpl(
             typeLayout->type = type;
             typeLayout->elementTypeLayout = elementTypeLayout;
             typeLayout->rules = rules;
-            typeLayout->uniforms = arrayInfo;
+            typeLayout->uniformAlignment = arrayInfo.alignment;
             typeLayout->uniformStride = arrayInfo.elementStride;
 
-            // translate element-type resources into array-type resources
-            if(IsResourceKind(elementTypeLayout->resources.kind))
-            {
-                // The first resource info is stored directly
-                typeLayout->resources.kind = elementTypeLayout->resources.kind;
-                typeLayout->resources.count = elementCount
-                    * elementTypeLayout->resources.count;
+            typeLayout->addResourceUsage(LayoutResourceKind::Uniform, arrayInfo.size);
 
-                // the rest are in a linked list that we need to copy
-                auto link = &typeLayout->resources.next;
-                for (auto rr = elementTypeLayout->resources.next; rr; rr = rr->next)
-                {
-                    RefPtr<ArrayTypeLayout::ResourceInfo> res = new ArrayTypeLayout::ResourceInfo;
-                    res->kind = rr->kind;
-                    res->count = elementCount * rr->count;
-                    
-                    *link = res;
-                    link = &res->next;
-                }
+            // translate element-type resources into array-type resources
+            for( auto elementResourceInfo : elementTypeLayout->resourceInfos )
+            {
+                // The uniform case was already handled above
+                if( elementResourceInfo.kind == LayoutResourceKind::Uniform )
+                    continue;
+            
+                typeLayout->addResourceUsage(
+                    elementResourceInfo.kind,
+                    elementResourceInfo.count * elementCount);
             }
         }
         return arrayInfo;
@@ -593,84 +567,32 @@ LayoutInfo GetLayoutImpl(
                     RefPtr<VarLayout> fieldLayout = new VarLayout();
                     fieldLayout->varDecl = field;
                     fieldLayout->typeLayout = fieldTypeLayout;
-                    typeLayout->fields999.Add(fieldLayout);
+                    typeLayout->fields.Add(fieldLayout);
                     typeLayout->mapVarToLayout.Add(field.GetDecl(), fieldLayout);
 
-                    // Uniform-related information for the field
-                    // is simple to set up.
-                    fieldLayout->uniformOffset = uniformOffset;
-
-                    // Reource-related information takes more
-                    // work, because we need to handle the possibility
-                    // of zero or more resource types...
-                    auto fieldTypeRes = &fieldTypeLayout->resources;
-                    if (IsResourceKind(fieldTypeRes->kind))
+                    // Set up uniform offset information, if there is any uniform data in the field
+                    if( fieldTypeLayout->FindResourceInfo(LayoutResourceKind::Uniform) )
                     {
-                        auto fieldRes = &fieldLayout->resources;
-                        for (;;)
-                        {
-                            fieldRes->kind = fieldTypeRes->kind;
-                            assert(fieldRes->kind != LayoutResourceKind::Invalid);
-                            fieldRes->space = 0;
+                        fieldLayout->AddResourceInfo(LayoutResourceKind::Uniform)->index = uniformOffset;
+                    }
 
-                            // To compute the right index, we need
-                            // to look for any existing information
-                            // in the struct type that will match
-                            fieldRes->index = 0;
+                    // Add offset information for any other resource kinds
+                    for( auto fieldTypeResourceInfo : fieldTypeLayout->resourceInfos )
+                    {
+                        // Uniforms were dealt with above
+                        if(fieldTypeResourceInfo.kind == LayoutResourceKind::Uniform)
+                            continue;
 
-                            auto structRes = &typeLayout->resources;
-                            TypeLayout::ResourceInfo* foundStructRes = nullptr;
-                            while (structRes)
-                            {
-                                if (structRes->kind == fieldRes->kind)
-                                {
-                                    // we found one!
-                                    foundStructRes = structRes;
-                                    break;
-                                }
-                                structRes = structRes->next.Ptr();
-                            }
-                            if (foundStructRes)
-                            {
-                                fieldRes->index = foundStructRes->count;
-                                foundStructRes->count += fieldTypeRes->count;
-                            }
-                            else
-                            {
-                                // This is the first field of its kind...
-                                fieldRes->index = 0;
+                        // We should not have already processed this resource type
+                        assert(!fieldLayout->FindResourceInfo(fieldTypeResourceInfo.kind));
 
-                                structRes = &typeLayout->resources;
-                                if (!IsResourceKind(structRes->kind))
-                                {
-                                    // first resource field in the struct
-                                    foundStructRes = structRes;
-                                }
-                                else
-                                {
-                                    // There have been other resources,
-                                    // so we place ours after those...
-                                    while (structRes->next)
-                                        structRes = structRes->next.Ptr();
+                        // The field will need offset information for this kind
+                        auto fieldResourceInfo = fieldLayout->AddResourceInfo(fieldTypeResourceInfo.kind);
 
-                                    foundStructRes = new TypeLayout::ResourceInfo();
-                                    structRes->next = foundStructRes;
-                                }
-                                foundStructRes->kind = fieldTypeRes->kind;
-                                foundStructRes->count = fieldTypeRes->count;
-                            }
-
-                            // Okay, now we move to the next resource kind
-                            fieldTypeRes = fieldTypeRes->next.Ptr();
-                            if (!fieldTypeRes)
-                                break;
-
-                            // Create a node to hold offset information in
-                            // the field layout...
-                            auto nextFieldRes = new VarLayout::ResourceInfo();
-                            fieldRes->next = nextFieldRes;
-                            fieldRes = nextFieldRes;
-                        }
+                        // Check how many slots of the given kind have already been added to the type
+                        auto structTypeResourceInfo = typeLayout->findOrAddResourceInfo(fieldTypeResourceInfo.kind);
+                        fieldResourceInfo->index = structTypeResourceInfo->count;
+                        structTypeResourceInfo->count += fieldTypeResourceInfo.count;
                     }
                 }
             }
@@ -678,7 +600,8 @@ LayoutInfo GetLayoutImpl(
             rules->EndStructLayout(&info);
             if (outTypeLayout)
             {
-                typeLayout->uniforms = info;
+                typeLayout->uniformAlignment = info.alignment;
+                typeLayout->addResourceUsage(LayoutResourceKind::Uniform, info.size);
             }
 
             return info;

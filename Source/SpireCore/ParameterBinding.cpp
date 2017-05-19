@@ -407,13 +407,11 @@ static void completeBindingsForParameter(
     auto firstVarLayout = parameterInfo->varLayouts.First();
     auto firstTypeLayout = firstVarLayout->typeLayout;
 
-    for (auto typeRes = &firstTypeLayout->resources;
-        typeRes && IsResourceKind(typeRes->kind);
-        typeRes = typeRes->next.Ptr())
+    for(auto typeRes : firstTypeLayout->resourceInfos)
     {
         // Did we already apply some explicit binding information
         // for this resource kind?
-        auto kind = typeRes->kind;
+        auto kind = typeRes.kind;
         auto& bindingInfo = parameterInfo->bindingInfo[(int)kind];
         if( bindingInfo.count != 0 )
         {
@@ -421,7 +419,7 @@ static void completeBindingsForParameter(
             continue;
         }
 
-        auto count = typeRes->count;
+        auto count = typeRes.count;
         bindingInfo.count = count;
         bindingInfo.index = context->usedResourceRanges[(int)kind].Allocate(count);
 
@@ -845,7 +843,7 @@ void GenerateParameterBindings(
         auto firstVarLayout = parameterInfo->varLayouts.First();
 
         // Does the field have any uniform data?
-        if( firstVarLayout->typeLayout->uniforms.size != 0 )
+        if( firstVarLayout->typeLayout->FindResourceInfo(LayoutResourceKind::Uniform) )
         {
             anyGlobalUniforms = true;
             break;
@@ -890,23 +888,27 @@ void GenerateParameterBindings(
         auto firstVarLayout = parameterInfo->varLayouts.First();
 
         // Does the field have any uniform data?
-        auto uniformInfo = firstVarLayout->typeLayout->uniforms;
-        size_t uniformSize = uniformInfo.size;
+        auto uniformInfo = firstVarLayout->typeLayout->FindResourceInfo(LayoutResourceKind::Uniform);
+        size_t uniformSize = uniformInfo ? uniformInfo->count : 0;
         if( uniformSize != 0 )
         {
             // Make sure uniform fields get laid out properly...
 
+            LayoutInfo fieldInfo;
+            fieldInfo.size      = uniformSize;
+            fieldInfo.alignment = firstVarLayout->typeLayout->uniformAlignment;
+
             size_t uniformOffset = rules->AddStructField(
                 &structLayoutInfo,
-                uniformInfo);
+                fieldInfo);
 
             for( auto& varLayout : parameterInfo->varLayouts )
             {
-                varLayout->uniformOffset = uniformOffset;
+                varLayout->findOrAddResourceInfo(LayoutResourceKind::Uniform)->index = uniformOffset;
             }
         }
 
-        globalScopeStructLayout->fields999.Add(firstVarLayout);
+        globalScopeStructLayout->fields.Add(firstVarLayout);
 
         for( auto& varLayout : parameterInfo->varLayouts )
         {

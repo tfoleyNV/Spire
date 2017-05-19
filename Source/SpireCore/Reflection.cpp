@@ -352,6 +352,8 @@ static SpireParameterCategory ComputeReflectionParameterCategory(
 {
     switch (kind)
     {
+    case LayoutResourceKind::Uniform:
+        return SPIRE_PARAMETER_CATEGORY_UNIFORM;
     case LayoutResourceKind::ConstantBuffer:
         return SPIRE_PARAMETER_CATEGORY_CONSTANT_BUFFER;
     case LayoutResourceKind::ShaderResource:
@@ -370,32 +372,19 @@ static SpireParameterCategory ComputeReflectionParameterCategory(
     ReflectionGenerationContext*        context,
     RefPtr<TypeLayout>                  typeLayout)
 {
-    // If we have any uniform data, then we are either uniform,
-    // or mixed-type
-    if (typeLayout->uniforms.size != 0)
-    {
-        // If we have any non-uniform data, then we are mixed.
-        if (IsResourceKind(typeLayout->resources.kind))
-        {
-            return SPIRE_PARAMETER_CATEGORY_MIXED;
-        }
-        else
-        {
-            return SPIRE_PARAMETER_CATEGORY_UNIFORM;
-        }
-    }
-
-    // Otherwise we only have resource fields.
-
-    // If we have more then one kind of resource,
-    // then the whole thing is mixed-type
-    if (typeLayout->resources.next)
+    // If we have more than one kind of resource, then we need to report that as "mixed"
+    auto resourceInfoCount = typeLayout->resourceInfos.Count();
+    if(resourceInfoCount > 1)
     {
         return SPIRE_PARAMETER_CATEGORY_MIXED;
     }
-    
-    // Otherwise look at the kind of resource
-    return ComputeReflectionParameterCategory(context, typeLayout->resources.kind);
+    else if( resourceInfoCount == 0 )
+    {
+        // TODO: should  we ever allow this to happen?
+        return SPIRE_PARAMETER_CATEGORY_NONE;
+    }
+
+    return ComputeReflectionParameterCategory(context, typeLayout->resourceInfos[0].kind);
 }
 
 
@@ -456,7 +445,7 @@ static NodePtr<ReflectionTypeLayoutNode> GenerateReflectionTypeLayout(
             auto structTypeNode = typeNode.Cast<ReflectionStructTypeNode>();
 
             size_t fieldCount = structTypeNode->GetFieldCount();
-            assert(fieldCount == structLayout->fields999.Count());
+            assert(fieldCount == structLayout->fields.Count());
 
             auto fieldLayoutNodes = AllocateNodes<ReflectionVariableLayoutNode>(context, fieldCount);
             for( size_t ff = 0; ff < fieldCount; ++ff )
@@ -464,7 +453,7 @@ static NodePtr<ReflectionTypeLayoutNode> GenerateReflectionTypeLayout(
                 auto fieldNode = MakeNodePtr(context, structTypeNode->GetFieldByIndex(ff));
                 auto fieldLayoutNode = fieldLayoutNodes + ff;
 
-                auto fieldVarLayout = structLayout->fields999[int(ff)];
+                auto fieldVarLayout = structLayout->fields[int(ff)];
                 auto fieldTypeLayout = fieldVarLayout->typeLayout;
 
                 auto fieldTypeLayoutNode = GenerateReflectionTypeLayout(
@@ -490,19 +479,12 @@ static NodePtr<ReflectionTypeLayoutNode> GenerateReflectionTypeLayout(
                     {
                         auto category = fieldTypeLayoutNode->size.mixed[cc].category;
                         ReflectionSize offset = 0;
-                        if(category == SPIRE_PARAMETER_CATEGORY_UNIFORM)
+                        for(auto rr : fieldVarLayout->resourceInfos)
                         {
-                            offset = ReflectionSize(fieldVarLayout->uniformOffset);
-                        }
-                        else
-                        {
-                            for(auto rr = &fieldVarLayout->resources; rr; rr = rr->next.Ptr())
+                            if(ComputeReflectionParameterCategory(context, rr.kind) == category)
                             {
-                                if(ComputeReflectionParameterCategory(context, rr->kind) == category)
-                                {
-                                    offset = rr->index;
-                                    break;
-                                }
+                                offset = rr.index;
+                                break;
                             }
                         }
 
@@ -517,14 +499,9 @@ static NodePtr<ReflectionTypeLayoutNode> GenerateReflectionTypeLayout(
                     }
                     fieldLayoutNode->offset.mixed = offsets;
                 }
-                else if(fieldCategory == SPIRE_PARAMETER_CATEGORY_UNIFORM)
-                {
-                    fieldLayoutNode->offset.simple = (ReflectionSize) fieldVarLayout->uniformOffset;
-                }
                 else
                 {
-                    assert(fieldVarLayout->resources.kind != LayoutResourceKind::Invalid);
-                    fieldLayoutNode->offset.simple = (ReflectionSize) fieldVarLayout->resources.index;
+                    fieldLayoutNode->offset.simple = (ReflectionSize) fieldVarLayout->resourceInfos[0].index;
                 }
             }
         }
@@ -541,22 +518,12 @@ static NodePtr<ReflectionTypeLayoutNode> GenerateReflectionTypeLayout(
     if(category == SPIRE_PARAMETER_CATEGORY_MIXED)
     {
         List<ReflectionTypeSizeInfo> sizeInfosData;
-        if(typeLayout->uniforms.size)
+        for( auto rr : typeLayout->resourceInfos )
         {
             ReflectionTypeSizeInfo sizeInfo;
-            sizeInfo.category = SPIRE_PARAMETER_CATEGORY_UNIFORM;
-            sizeInfo.size = ReflectionSize(typeLayout->uniforms.size);
+            sizeInfo.category = ComputeReflectionParameterCategory(context, rr.kind);
+            sizeInfo.size = rr.count;
             sizeInfosData.Add(sizeInfo);
-        }
-        if(typeLayout->resources.kind != LayoutResourceKind::Invalid)
-        {
-            for(auto rr = &typeLayout->resources; rr; rr = rr->next.Ptr())
-            {
-                ReflectionTypeSizeInfo sizeInfo;
-                sizeInfo.category = ComputeReflectionParameterCategory(context, rr->kind);
-                sizeInfo.size = rr->count;
-                sizeInfosData.Add(sizeInfo);
-            }
         }
 
         int categoryCount = sizeInfosData.Count();
@@ -569,11 +536,6 @@ static NodePtr<ReflectionTypeLayoutNode> GenerateReflectionTypeLayout(
         info->typeLayout.categoryCount = ReflectionSize(categoryCount);
         info->size.mixed = sizeInfos;
     }
-    else if(category == SPIRE_PARAMETER_CATEGORY_UNIFORM)
-    {
-        assert(typeLayout->uniforms.size);
-        info->size.simple = (ReflectionSize) typeLayout->uniforms.size;
-    }
     else if( category == SPIRE_PARAMETER_CATEGORY_NONE )
     {
         // This would only occur for an empty `struct` type.
@@ -581,9 +543,7 @@ static NodePtr<ReflectionTypeLayoutNode> GenerateReflectionTypeLayout(
     }
     else
     {
-        assert(typeLayout->resources.kind != LayoutResourceKind::Invalid);
-        assert(typeLayout->resources.count);
-        info->size.simple = typeLayout->resources.count;
+        info->size.simple = typeLayout->resourceInfos[0].count;
     }
 
     return info;
@@ -641,22 +601,12 @@ static void GenerateReflectionParameter(
 
         List<ReflectionParameterBindingInfo> bindingsData;
 
-        // If there is any uniform data, then give it an offset
-        if( paramLayout->typeLayout->uniforms.size )
+        for( auto rr : paramLayout->resourceInfos )
         {
             ReflectionParameterBindingInfo info;
-            info.category = SPIRE_PARAMETER_CATEGORY_UNIFORM;
-            info.space = 0;
-            info.index = (ReflectionSize) paramLayout->uniformOffset;
-
-            bindingsData.Add(info);
-        }
-        for( auto rr = &paramLayout->resources; rr; rr = rr->next.Ptr() )
-        {
-            ReflectionParameterBindingInfo info;
-            info.category = ComputeReflectionParameterCategory(context, rr->kind);
-            info.space = (ReflectionSize) rr->space;
-            info.index = (ReflectionSize) rr->index;
+            info.category = ComputeReflectionParameterCategory(context, rr.kind);
+            info.space = (ReflectionSize) rr.space;
+            info.index = (ReflectionSize) rr.index;
 
             bindingsData.Add(info);
         }
@@ -671,17 +621,11 @@ static void GenerateReflectionParameter(
         parameter->binding.bindingCount = bindingCount;
         parameter->binding.bindings = bindings;
     }
-    else if (category == SPIRE_PARAMETER_CATEGORY_UNIFORM)
-    {
-        // A uniform parameter inside of a parent buffer.
-        parameter->binding.space = 0;
-        parameter->binding.index = (ReflectionSize) paramLayout->uniformOffset;
-    }
     else
     {
         // A resource parameter
-        parameter->binding.space = (ReflectionSize) paramLayout->resources.space;
-        parameter->binding.index = (ReflectionSize) paramLayout->resources.index;
+        parameter->binding.space = (ReflectionSize) paramLayout->resourceInfos[0].space;
+        parameter->binding.index = (ReflectionSize) paramLayout->resourceInfos[0].index;
     }
 }
 
@@ -690,7 +634,7 @@ static NodePtr<ReflectionParameterBlockLayoutNode> generateReflectionParameterBl
     RefPtr<StructTypeLayout>        typeLayout)
 {
     // How many fields do we need to consider?
-    size_t fieldCount = typeLayout->fields999.Count();
+    size_t fieldCount = typeLayout->fields.Count();
 
     // Need to create a node for the plain old type as well
     NodePtr<ReflectionStructTypeNode> type = AllocateNode<ReflectionStructTypeNode>(context);
@@ -709,7 +653,7 @@ static NodePtr<ReflectionParameterBlockLayoutNode> generateReflectionParameterBl
 
     // Now allocate space for the parameters (to go right after the blob itself) and fill them in
     size_t fieldIndex = 0;
-    for( auto fieldLayout : typeLayout->fields999 )
+    for( auto fieldLayout : typeLayout->fields )
     {
         auto field = fieldLayout->varDecl;
 

@@ -8,6 +8,10 @@
 #include "../../Spire.h"
 
 namespace Spire {
+
+typedef intptr_t Int;
+typedef uintptr_t UInt;
+
 namespace Compiler {
 
 // Forward declarations
@@ -107,38 +111,57 @@ public:
     // The layout rules that were used to produce this type
     LayoutRulesImpl*        rules;
 
-    // layout information for any uniforms in this type
-    LayoutInfo              uniforms;
-
-    // layout information for any reosurces in this type
-    // (where "resources" means everything that isn't just
-    // allocated as data in a uniform buffer)
     struct ResourceInfo
     {
         // What kind of register was it?
         LayoutResourceKind  kind = LayoutResourceKind::Invalid;
 
         // How many registers of the above kind did we use?
-        int                 count;
-
-        // Further infor for other register kinds.
-        // This field will only be used in the case
-        // where a single type/parameter contains
-        // data that belongs to multiple categories.
-        RefPtr<ResourceInfo> next;
+        UInt                 count;
     };
-    ResourceInfo            resources;
+
+    List<ResourceInfo>      resourceInfos;
+
+    // For uniform data, alignment matters, but not for
+    // any other resource category, so we don't waste
+    // the space storing it in the above array
+    UInt uniformAlignment;
 
     ResourceInfo* FindResourceInfo(LayoutResourceKind kind)
     {
-        auto rr = &resources;
-        while (rr)
+        for(auto& rr : resourceInfos)
         {
-            if (rr->kind == kind)
-                return rr;
-            rr = rr->next.Ptr();
+            if(rr.kind == kind)
+                return &rr;
         }
         return nullptr;
+    }
+
+    ResourceInfo* findOrAddResourceInfo(LayoutResourceKind kind)
+    {
+        auto existing = FindResourceInfo(kind);
+        if(existing) return existing;
+
+        ResourceInfo info;
+        info.kind = kind;
+        info.count = 0;
+        resourceInfos.Add(info);
+        return &resourceInfos.Last();
+    }
+
+    void addResourceUsage(ResourceInfo info)
+    {
+        if(info.count == 0) return;
+
+        findOrAddResourceInfo(info.kind)->count += info.count;
+    }
+
+    void addResourceUsage(LayoutResourceKind kind, UInt count)
+    {
+        ResourceInfo info;
+        info.kind = kind;
+        info.count = count;
+        addResourceUsage(info);
     }
 };
 
@@ -158,9 +181,6 @@ public:
     // The result of laying out the variable's type
     RefPtr<TypeLayout>      typeLayout;
 
-    // The offset of any uniforms, inside the parent
-    size_t                  uniformOffset;
-
     // Additional flags
     VarLayoutFlags flags = 0;
 
@@ -171,47 +191,42 @@ public:
         LayoutResourceKind  kind = LayoutResourceKind::Invalid;
 
         // What binding space (HLSL) or set (Vulkan) are we placed in?
-        int                 space;
+        UInt                space;
 
         // What is our starting register in that space?
-        int                 index;
-
-        // Further infor for other register kinds.
-        // This field will only be used in the case
-        // where a single type/parameter contains
-        // data that belongs to multiple categories.
-        RefPtr<ResourceInfo>  next;
+        //
+        // (In the case of uniform data, this is a byte offset)
+        UInt                index;
     };
-    ResourceInfo            resources;
+    List<ResourceInfo>      resourceInfos;
 
     ResourceInfo* FindResourceInfo(LayoutResourceKind kind)
     {
-        auto rr = &resources;
-        while (rr)
+        for(auto& rr : resourceInfos)
         {
-            if (rr->kind == kind)
-                return rr;
-            rr = rr->next.Ptr();
+            if(rr.kind == kind)
+                return &rr;
         }
         return nullptr;
     }
 
     ResourceInfo* AddResourceInfo(LayoutResourceKind kind)
     {
-        if (!IsResourceKind(resources.kind))
-        {
-            resources.kind = kind;
-            return &resources;
-        }
+        ResourceInfo info;
+        info.kind = kind;
+        info.space = 0;
+        info.index = 0;
 
-        auto link = &resources.next;
-        while (*link)
-            link = &(*link)->next;
+        resourceInfos.Add(info);
+        return &resourceInfos.Last();
+    }
 
-        auto result = new ResourceInfo();
-        result->kind = kind;
-        *link = result;
-        return result;
+    ResourceInfo* findOrAddResourceInfo(LayoutResourceKind kind)
+    {
+        auto existing = FindResourceInfo(kind);
+        if(existing) return existing;
+
+        return AddResourceInfo(kind);
     }
 };
 
@@ -239,7 +254,7 @@ class StructTypeLayout : public TypeLayout
 {
 public:
     // An ordered list of layouts for the known fields
-    List<RefPtr<VarLayout>> fields999;
+    List<RefPtr<VarLayout>> fields;
 
     // Map a variable to its layout directly.
     //

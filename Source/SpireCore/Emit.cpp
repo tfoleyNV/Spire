@@ -98,6 +98,13 @@ static void Emit(EmitContext* context, String const& text)
     Emit(context, text.begin(), text.end());
 }
 
+static void Emit(EmitContext* context, UInt value)
+{
+    char buffer[32];
+    sprintf(buffer, "%llu", (unsigned long long)(value));
+    Emit(context, buffer);
+}
+
 static void Emit(EmitContext* context, int value)
 {
     char buffer[16];
@@ -1033,7 +1040,7 @@ enum
     kESemanticMask_Default = kESemanticMask_NoPackOffset,
 };
 
-static void EmitSemantic(EmitContext* context, RefPtr<HLSLSemantic> semantic, ESemanticMask mask)
+static void EmitSemantic(EmitContext* context, RefPtr<HLSLSemantic> semantic, ESemanticMask /*mask*/)
 {
     if (auto simple = semantic.As<HLSLSimpleSemantic>())
     {
@@ -1164,36 +1171,77 @@ static void EmitVarDeclCommon(EmitContext* context, RefPtr<VarDeclBase> decl)
 
 // Emit a single `regsiter` semantic, as appropriate for a given resource-type-specific layout info
 static void emitHLSLRegisterSemantic(
-    EmitContext*                context,
-    VarLayout::ResourceInfo*    info)
+    EmitContext*                    context,
+    VarLayout::ResourceInfo const&  info)
 {
-    assert(info);
-    Emit(context, ": register(");
-    switch( info->kind )
+    if( info.kind == LayoutResourceKind::Uniform )
     {
-    case LayoutResourceKind::ConstantBuffer:
-        Emit(context, "b");
-        break;
-    case LayoutResourceKind::ShaderResource:
-        Emit(context, "t");
-        break;
-    case LayoutResourceKind::UnorderedAccess:
-        Emit(context, "u");
-        break;
-    case LayoutResourceKind::SamplerState:
-        Emit(context, "s");
-        break;
-    default:
-        assert(!"unexpected");
-        break;
+        size_t offset = info.index;
+
+        // The HLSL `c` register space is logically grouped in 16-byte registers,
+        // while we try to traffic in byte offsets. That means we need to pick
+        // a register number, based on the starting offset in 16-byte register
+        // units, and then a "component" within that register, based on 4-byte
+        // offsets from there. We cannot support more fine-grained offsets than that.
+
+        Emit(context, ": packoffset(c");
+
+        // Size of a logical `c` register in bytes
+        auto registerSize = 16;
+
+        // Size of each component of a logical `c` register, in bytes
+        auto componentSize = 4;
+
+        size_t startRegister = offset / registerSize;
+        Emit(context, int(startRegister));
+
+        size_t byteOffsetInRegister = offset % registerSize;
+
+        // If this field doesn't start on an even register boundary,
+        // then we need to emit additional information to pick the
+        // right component to start from
+        if (byteOffsetInRegister != 0)
+        {
+            // The value had better occupy a whole number of components.
+            assert(byteOffsetInRegister % componentSize == 0);
+
+            size_t startComponent = byteOffsetInRegister / componentSize;
+
+            static const char* kComponentNames[] = {"x", "y", "z", "w"};
+            Emit(context, ".");
+            Emit(context, kComponentNames[startComponent]);
+        }
+        Emit(context, ")");
     }
-    Emit(context, info->index);
-    if(info->space)
+    else
     {
-        Emit(context, ", space");
-        Emit(context, info->space);
+        Emit(context, ": register(");
+        switch( info.kind )
+        {
+        case LayoutResourceKind::ConstantBuffer:
+            Emit(context, "b");
+            break;
+        case LayoutResourceKind::ShaderResource:
+            Emit(context, "t");
+            break;
+        case LayoutResourceKind::UnorderedAccess:
+            Emit(context, "u");
+            break;
+        case LayoutResourceKind::SamplerState:
+            Emit(context, "s");
+            break;
+        default:
+            assert(!"unexpected");
+            break;
+        }
+        Emit(context, info.index);
+        if(info.space)
+        {
+            Emit(context, ", space");
+            Emit(context, info.space);
+        }
+        Emit(context, ")");
     }
-    Emit(context, ")");
 }
 
 // Emit all the `register` semantics that are appropriate for a particular variable layout
@@ -1203,12 +1251,9 @@ static void emitHLSLRegisterSemantics(
 {
     if (!layout) return;
 
-    if(layout->resources.kind != LayoutResourceKind::Invalid)
+    for( auto rr : layout->resourceInfos )
     {
-        for( auto rr = &layout->resources; rr; rr = rr->next.Ptr() )
-        {
-            emitHLSLRegisterSemantic(context, rr);
-        }
+        emitHLSLRegisterSemantic(context, rr);
     }
 }
 
@@ -1241,7 +1286,8 @@ static void EmitConstantBufferDecl(
     EmitSemantics(context, varDecl, kESemanticMask_None);
 
     auto info = layout->FindResourceInfo(LayoutResourceKind::ConstantBuffer);
-    emitHLSLRegisterSemantic(context, info);
+    assert(info);
+    emitHLSLRegisterSemantic(context, *info);
 
     Emit(context, "\n{\n");
     if (auto structRef = declRefType->declRef.As<StructDeclRef>())
@@ -1254,78 +1300,30 @@ static void EmitConstantBufferDecl(
             structTypeLayout->mapVarToLayout.TryGetValue(field.GetDecl(), fieldLayout);
             assert(fieldLayout);
 
-            // How many bytes of uniform data does this field need to occupy?
-            size_t uniformSize = fieldLayout->typeLayout->uniforms.size;
-            if( uniformSize )
+            // Emit explicit layout annotations for every field
+            for( auto rr : fieldLayout->resourceInfos )
             {
-                // The field has uniform data, so we need to place it explicitly, just in case
-                size_t offset = fieldLayout->uniformOffset;
+                auto kind = rr.kind;
 
-                // The HLSL `c` register space is logically grouped in 16-byte registers,
-                // while we try to traffic in byte offsets. That means we need to pick
-                // a register number, based on the starting offset in 16-byte register
-                // units, and then a "component" within that register, based on 4-byte
-                // offsets from there. We cannot support more fine-grained offsets than that.
+                auto offsetResource = rr;
 
-                Emit(context, ": packoffset(c");
-
-                // Size of a logical `c` register in bytes
-                auto registerSize = 16;
-
-                // Size of each component of a logical `c` register, in bytes
-                auto componentSize = 4;
-
-                size_t startRegister = offset / registerSize;
-                Emit(context, int(startRegister));
-
-                size_t byteOffsetInRegister = offset % registerSize;
-
-                // If this field doesn't start on an even register boundary,
-                // then we need to emit additional information to pick the
-                // right component to start from
-                if (byteOffsetInRegister != 0)
+                if(kind != LayoutResourceKind::Uniform)
                 {
-                    // The value had better occupy a whole number of components,
-                    // and start on an even component boundary
-                    assert(byteOffsetInRegister % componentSize == 0);
-                    assert(uniformSize % componentSize == 0);
-
-                    // We also expect that the size of the value be smaller than
-                    // a single register (the layout rules should guarantee that
-                    // anything that spans multiple registers starts on a full
-                    // register boundary, but lets sanity check it here)
-                    assert(uniformSize < registerSize);
-
-                    size_t startComponent = byteOffsetInRegister / componentSize;
-
-                    static const char* kComponentNames[] = {"x", "y", "z", "w"};
-                    Emit(context, ".");
-                    Emit(context, kComponentNames[startComponent]);
-                }
-                Emit(context, ")");
-            }
-
-            // Next handle any resources in the field, making sure to take
-            // the layout of the cbuffer into account too
-
-            if(fieldLayout && fieldLayout->resources.kind != LayoutResourceKind::Invalid)
-            {
-                for( auto rr = &fieldLayout->resources; rr; rr = rr->next.Ptr() )
-                {
-                    auto kind = rr->kind;
+                    // Add the base index from the cbuffer into the index of the field
+                    //
+                    // TODO(tfoley): consider maybe not doing this, since it actually
+                    // complicates logic around constant buffers...
 
                     // If the member of the cbuffer uses a resource, it had better
                     // appear as part of the cubffer layout as well.
                     auto cbufferResource = layout->FindResourceInfo(kind);
                     assert(cbufferResource);
 
-                    // Add the base index from the cbuffer into the index of the field
-                    auto offsetResource = *rr;
                     offsetResource.index += cbufferResource->index;
                     offsetResource.space += cbufferResource->space;
-
-                    emitHLSLRegisterSemantic(context, &offsetResource);
                 }
+
+                emitHLSLRegisterSemantic(context, offsetResource);
             }
 
             Emit(context, ";\n");
