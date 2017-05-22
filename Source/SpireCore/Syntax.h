@@ -553,6 +553,51 @@ namespace Spire
             }
         };
 
+        struct QualType
+        {
+            RefPtr<ExpressionType>	type;
+            bool					IsLeftValue;
+
+            QualType()
+                : IsLeftValue(false)
+            {}
+
+            QualType(RefPtr<ExpressionType> type)
+                : type(type)
+                , IsLeftValue(false)
+            {}
+
+            QualType(ExpressionType* type)
+                : type(type)
+                , IsLeftValue(false)
+            {}
+
+            void operator=(RefPtr<ExpressionType> t)
+            {
+                *this = QualType(t);
+            }
+
+            void operator=(ExpressionType* t)
+            {
+                *this = QualType(t);
+            }
+
+            ExpressionType* Ptr() { return type.Ptr(); }
+
+            operator RefPtr<ExpressionType>() { return type; }
+            RefPtr<ExpressionType> operator->() { return type; }
+        };
+
+        class ExpressionSyntaxNode : public SyntaxNode
+        {
+        public:
+            QualType Type;
+            ExpressionSyntaxNode()
+            {}
+        };
+
+
+
 
         // A reference to a declaration, which may include
         // substitutions for generic parameters.
@@ -578,6 +623,9 @@ namespace Spire
             // Apply substitutions to a type or ddeclaration
             RefPtr<ExpressionType> Substitute(RefPtr<ExpressionType> type) const;
             DeclRef Substitute(DeclRef declRef) const;
+
+            // Apply substitutions to an expression
+            RefPtr<ExpressionSyntaxNode> Substitute(RefPtr<ExpressionSyntaxNode> expr) const;
 
             // Apply substitutions to this declaration reference
             DeclRef SubstituteImpl(Substitutions* subst, int* ioDiff);
@@ -1188,49 +1236,6 @@ namespace Spire
 
         };
 
-        struct QualType
-        {
-            RefPtr<ExpressionType>	type;
-            bool					IsLeftValue;
-
-            QualType()
-                : IsLeftValue(false)
-            {}
-
-            QualType(RefPtr<ExpressionType> type)
-                : type(type)
-                , IsLeftValue(false)
-            {}
-
-            QualType(ExpressionType* type)
-                : type(type)
-                , IsLeftValue(false)
-            {}
-
-            void operator=(RefPtr<ExpressionType> t)
-            {
-                *this = QualType(t);
-            }
-
-            void operator=(ExpressionType* t)
-            {
-                *this = QualType(t);
-            }
-
-            ExpressionType* Ptr() { return type.Ptr(); }
-
-            operator RefPtr<ExpressionType>() { return type; }
-            RefPtr<ExpressionType> operator->() { return type; }
-        };
-
-        class ExpressionSyntaxNode : public SyntaxNode
-        {
-        public:
-            QualType Type;
-            ExpressionSyntaxNode()
-            {}
-        };
-
         //
         // Type Expressions
         //
@@ -1294,6 +1299,8 @@ namespace Spire
             SPIRE_DECLARE_DECL_REF(VarDeclBase);
 
             RefPtr<ExpressionType> GetType() const { return Substitute(GetDecl()->Type); }
+
+            RefPtr<ExpressionSyntaxNode> getInitExpr() const { return Substitute(GetDecl()->Expr); }
         };
 
         // A field of a `struct` type

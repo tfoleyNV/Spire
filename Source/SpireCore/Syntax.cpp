@@ -1224,6 +1224,18 @@ namespace Spire
             return declRef.SubstituteImpl(substitutions.Ptr(), &diff);
         }
 
+        RefPtr<ExpressionSyntaxNode> DeclRef::Substitute(RefPtr<ExpressionSyntaxNode> expr) const
+        {
+            // No substitutions? Easy.
+            if (!substitutions)
+                return expr;
+
+            assert(!"unimplemented");
+
+            return expr;
+        }
+
+
         DeclRef DeclRef::SubstituteImpl(Substitutions* subst, int* /*ioDiff*/)
         {
             if (!substitutions) return *this;

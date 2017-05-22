@@ -777,10 +777,12 @@ namespace Spire
                 RefPtr<ExpressionType>			toType,
                 RefPtr<ExpressionSyntaxNode>	fromExpr)
             {
-                // If semantic checking is being suppressed, then don't bother.
-                if( getOptions().flags & SPIRE_COMPILE_FLAG_NO_CHECKING )
+                // If semantic checking is being suppressed, then we might see
+                // expressions without a type, and we need to ignore them.
+                if( !fromExpr->Type.type )
                 {
-                    return fromExpr;
+                    if(getOptions().flags & SPIRE_COMPILE_FLAG_NO_CHECKING )
+                        return fromExpr;
                 }
 
                 RefPtr<ExpressionSyntaxNode> expr;
@@ -791,7 +793,10 @@ namespace Spire
                     fromExpr.Ptr(),
                     nullptr))
                 {
-                    getSink()->diagnose(fromExpr->Position, Diagnostics::typeMismatch, toType, fromExpr->Type);
+                    if(!(getOptions().flags & SPIRE_COMPILE_FLAG_NO_CHECKING))
+                    {
+                        getSink()->diagnose(fromExpr->Position, Diagnostics::typeMismatch, toType, fromExpr->Type);
+                    }
 
                     // Note(tfoley): We don't call `CreateErrorExpr` here, because that would
                     // clobber the type on `fromExpr`, and an invariant here is that coercion
@@ -1639,7 +1644,7 @@ namespace Spire
             }
 
             RefPtr<IntVal> TryConstantFoldExpr(
-                RefPtr<InvokeExpressionSyntaxNode> invokeExpr)
+                InvokeExpressionSyntaxNode* invokeExpr)
             {
                 // We need all the operands to the expression
 
@@ -1749,6 +1754,61 @@ namespace Spire
                 return result;
             }
 
+            RefPtr<IntVal> TryConstantFoldExpr(
+                ExpressionSyntaxNode* expr)
+            {
+                // TODO(tfoley): more serious constant folding here
+                if (auto constExp = dynamic_cast<ConstantExpressionSyntaxNode*>(expr))
+                {
+                    return GetIntVal(constExp);
+                }
+
+                // it is possible that we are referring to a generic value param
+                if (auto declRefExpr = dynamic_cast<DeclRefExpr*>(expr))
+                {
+                    auto declRef = declRefExpr->declRef;
+
+                    if (auto genericValParamRef = declRef.As<GenericValueParamDeclRef>())
+                    {
+                        // TODO(tfoley): handle the case of non-`int` value parameters...
+                        return new GenericParamIntVal(genericValParamRef);
+                    }
+
+                    // We may also need to check for references to variables that
+                    // are defined in a way that can be used as a constant expression:
+                    if(auto varRef = declRef.As<VarDeclBaseRef>())
+                    {
+                        auto varDecl = varRef.GetDecl();
+                        if(auto staticAttr = varDecl->FindModifier<HLSLStaticModifier>())
+                        {
+                            if(auto constAttr = varDecl->FindModifier<ConstModifier>())
+                            {
+                                // HLSL `static const` can be used as a constant expression
+                                if(auto initExpr = varRef.getInitExpr())
+                                {
+                                    return TryConstantFoldExpr(initExpr.Ptr());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (auto invokeExpr = dynamic_cast<InvokeExpressionSyntaxNode*>(expr))
+                {
+                    auto val = TryConstantFoldExpr(invokeExpr);
+                    if (val)
+                        return val;
+                }
+                else if(auto castExpr = dynamic_cast<TypeCastExpressionSyntaxNode*>(expr))
+                {
+                    auto val = TryConstantFoldExpr(castExpr->Expression.Ptr());
+                    if(val)
+                        return val;
+                }
+
+                return nullptr;
+            }
+
             // Try to check an integer constant expression, either returning the value,
             // or NULL if the expression isn't recognized as a constant.
             RefPtr<IntVal> TryCheckIntegerConstantExpression(ExpressionSyntaxNode* exp)
@@ -1758,42 +1818,18 @@ namespace Spire
                     return nullptr;
                 }
 
-                // TODO(tfoley): more serious constant folding here
-                if (auto constExp = dynamic_cast<ConstantExpressionSyntaxNode*>(exp))
-                {
-                    return GetIntVal(constExp);
-                }
 
-                // it is possible that we are referring to a generic value param
-                if (auto declRefExpr = dynamic_cast<DeclRefExpr*>(exp))
-                {
-                    if (auto genericValParamRef = declRefExpr->declRef.As<GenericValueParamDeclRef>())
-                    {
-                        // TODO(tfoley): handle the case of non-`int` value parameters...
-                        return new GenericParamIntVal(genericValParamRef);
-                    }
-                }
 
                 // Otherwise, we need to consider operations that we might be able to constant-fold...
-                if (auto invokeExpr = dynamic_cast<InvokeExpressionSyntaxNode*>(exp))
-                {
-                    auto val = TryConstantFoldExpr(invokeExpr);
-                    if (val)
-                        return val;
-                }
-
-                return nullptr;
+                return TryConstantFoldExpr(exp);
             }
 
             // Enforce that an expression resolves to an integer constant, and get its value
-            RefPtr<IntVal> CheckIntegerConstantExpression(ExpressionSyntaxNode* expr)
+            RefPtr<IntVal> CheckIntegerConstantExpression(ExpressionSyntaxNode* inExpr)
             {
-                if (!expr->Type.type->Equals(ExpressionType::GetInt()))
-                {
-                    getSink()->diagnose(expr, Diagnostics::expectedIntegerConstantWrongType, expr->Type);
-                    return nullptr;
-                }
-                auto result = TryCheckIntegerConstantExpression(expr);
+                // First coerce the expression to the expected type
+                auto expr = Coerce(ExpressionType::GetInt(),inExpr);
+                auto result = TryCheckIntegerConstantExpression(expr.Ptr());
                 if (!result)
                 {
                     getSink()->diagnose(expr, Diagnostics::expectedIntegerConstantNotConstant);
