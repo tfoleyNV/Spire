@@ -1009,21 +1009,104 @@ namespace Spire
 //                        if (isShadow) sb << "Shadow";
                         sb << "\n{";
 
-                        // TODO(tfoley): properly list operations and their signatures
-                        sb << "T Load(int3 u);\n";
+                        if( !isMultisample )
+                        {
+                            sb << "float CalculateLevelOfDetail(SamplerState s, ";
+                            sb << "float" << kBaseTextureTypes[tt].coordCount << " location);\n";
+
+                            sb << "float CalculateLevelOfDetailUnclamped(SamplerState s, ";
+                            sb << "float" << kBaseTextureTypes[tt].coordCount << " location);\n";
+
+                            // TODO: `Gather` operation
+                            // (tricky because it returns a 4-vector of the element type
+                            // of the texture components...)
+                        }
+
+                        // TODO: `GetDimensions` operations
+
+                        // `GetSamplePosition()`
+                        if( isMultisample )
+                        {
+                            sb << "float2 GetSamplePosition(int s);\n";
+                        }
+
+                        // `Load()`
+
+                        if( kBaseTextureTypes[tt].coordCount + isArray < 4 )
+                        {
+                            sb << "T Load(";
+                            sb << "int" << kBaseTextureTypes[tt].coordCount + isArray + 1 << " location);\n";
+
+                            if( !isMultisample )
+                            {
+                                sb << "T Load(";
+                                sb << "int" << kBaseTextureTypes[tt].coordCount + isArray + 1 << " location, ";
+                                sb << "int" << kBaseTextureTypes[tt].coordCount << " offset);\n";
+                            }
+                            else
+                            {
+                                sb << "T Load(";
+                                sb << "int" << kBaseTextureTypes[tt].coordCount + isArray + 1 << " location, ";
+                                sb << "int sampleIndex, ";
+                                sb << "int" << kBaseTextureTypes[tt].coordCount << " offset);\n";
+                            }
+                        }
 
                         if( !isMultisample )
                         {
+                            // `Sample()`
+
                             sb << "T Sample(SamplerState s, ";
                             sb << "float" << kBaseTextureTypes[tt].coordCount + isArray << " location);\n";
 
+                            if( baseShape != TextureType::ShapeCube )
+                            {
+                                sb << "T Sample(SamplerState s, ";
+                                sb << "float" << kBaseTextureTypes[tt].coordCount + isArray << " location, ";
+                                sb << "int" << kBaseTextureTypes[tt].coordCount << " offset);\n";
+                            }
+
+                            // `SampleBias()`
+                            sb << "T SampleBias(SamplerState s, ";
+                            sb << "float" << kBaseTextureTypes[tt].coordCount + isArray << " location, float bias);\n";
+
+                            if( baseShape != TextureType::ShapeCube )
+                            {
+                                sb << "T SampleBias(SamplerState s, ";
+                                sb << "float" << kBaseTextureTypes[tt].coordCount + isArray << " location, float bias, ";
+                                sb << "int" << kBaseTextureTypes[tt].coordCount << " offset);\n";
+                            }
+
+                            // `SampleCmp()` and `SampleCmpLevelZero`
                             sb << "T SampleCmp(SamplerComparisonState s, ";
                             sb << "float" << kBaseTextureTypes[tt].coordCount + isArray << " location, ";
                             sb << "float compareValue";
                             sb << ");\n";
 
-                            sb << "T SampleBias(SamplerState s, ";
-                            sb << "float" << kBaseTextureTypes[tt].coordCount + isArray << " location, float bias);\n";
+                            sb << "T SampleCmpLevelZero(SamplerComparisonState s, ";
+                            sb << "float" << kBaseTextureTypes[tt].coordCount + isArray << " location, ";
+                            sb << "float compareValue";
+                            sb << ");\n";
+
+                            if( baseShape != TextureType::ShapeCube )
+                            {
+                                // Note(tfoley): MSDN seems confused, and claims that the `offset`
+                                // parameter for `SampleCmp` is available for everything but 3D
+                                // textures, while `Sample` and `SampleBias` are consistent in
+                                // saying they only exclude `offset` for cube maps (which makes
+                                // sense). I'm going to assume the documentation for `SampleCmp`
+                                // is just wrong.
+
+                                sb << "T SampleCmp(SamplerState s, ";
+                                sb << "float" << kBaseTextureTypes[tt].coordCount + isArray << " location, ";
+                                sb << "float compareValue, ";
+                                sb << "int" << kBaseTextureTypes[tt].coordCount << " offset);\n";
+
+                                sb << "T SampleCmpLevelZero(SamplerState s, ";
+                                sb << "float" << kBaseTextureTypes[tt].coordCount + isArray << " location, ";
+                                sb << "float compareValue, ";
+                                sb << "int" << kBaseTextureTypes[tt].coordCount << " offset);\n";
+                            }
 
                             sb << "T SampleGrad(SamplerState s, ";
                             sb << "float" << kBaseTextureTypes[tt].coordCount + isArray << " location, ";
@@ -1033,12 +1116,24 @@ namespace Spire
 
                             if( baseShape != TextureType::ShapeCube )
                             {
-                                sb << "T Sample(SamplerState s, ";
+                                sb << "T SampleGrad(SamplerState s, ";
                                 sb << "float" << kBaseTextureTypes[tt].coordCount + isArray << " location, ";
+                                sb << "float" << kBaseTextureTypes[tt].coordCount << " gradX, ";
+                                sb << "float" << kBaseTextureTypes[tt].coordCount << " gradY, ";
                                 sb << "int" << kBaseTextureTypes[tt].coordCount << " offset);\n";
+                            }
 
-                                sb << "T Sample(SamplerState s, ";
-                                sb << "float" << kBaseTextureTypes[tt].coordCount + isArray << " location, float bias, ";
+                            // `SampleLevel`
+
+                            sb << "T SampleLevel(SamplerState s, ";
+                            sb << "float" << kBaseTextureTypes[tt].coordCount + isArray << " location, ";
+                            sb << "float level);\n";
+
+                            if( baseShape != TextureType::ShapeCube )
+                            {
+                                sb << "T SampleLevel(SamplerState s, ";
+                                sb << "float" << kBaseTextureTypes[tt].coordCount + isArray << " location, ";
+                                sb << "float level, ";
                                 sb << "int" << kBaseTextureTypes[tt].coordCount << " offset);\n";
                             }
                         }
