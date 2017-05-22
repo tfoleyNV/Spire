@@ -1479,7 +1479,7 @@ namespace Spire
                     auto paramTypeExpr = new SharedTypeExpr();
                     paramTypeExpr->Position = paramDecl->Position;
                     paramTypeExpr->base.type = paramType;
-                    paramTypeExpr->Type = new TypeExpressionType(paramType);
+                    paramTypeExpr->Type = new TypeType(paramType);
 
                     paramConstraint->sub = TypeExp(paramTypeExpr);
                     paramConstraint->sup = parser->ParseTypeExp();

@@ -794,6 +794,26 @@ namespace Spire
             String intTypes[] = { "int", "ivec2", "ivec3", "ivec4" };
             String uintTypes[] = { "uint", "uvec2", "uvec3", "uvec4" };
 
+            StringBuilder pathBuilder;
+            for( auto cc = __FILE__; *cc; ++cc )
+            {
+                switch( *cc )
+                {
+                case '\n':
+                case '\t':
+                case '\\':
+                    pathBuilder << "\\";
+                default:
+                    pathBuilder << *cc;
+                    break;
+                }
+            }
+            String path = pathBuilder.ProduceString();
+
+
+
+#define EMIT_LINE_DIRECTIVE() sb << "#line " << (__LINE__+1) << " \"" << path << "\"\n"
+
             // Generate declarations for all the base types
 
             static const struct {
@@ -806,21 +826,11 @@ namespace Spire
                 { "uint",	BaseType::UInt },
                 { "bool",	BaseType::Bool },
                 { "uint64_t", BaseType::UInt64 },
-#if 0
-                { "Texture2D",				BaseType::Texture2D },
-                { "TextureCube",			BaseType::TextureCube },
-                { "Texture2DArray",			BaseType::Texture2DArray },
-                { "Texture2DShadow",		BaseType::Texture2DShadow },
-                { "TextureCubeShadow",		BaseType::TextureCubeShadow },
-                { "Texture2DArrayShadow",	BaseType::Texture2DArrayShadow },
-                { "Texture3D",				BaseType::Texture3D },
-                { "SamplerState",			BaseType::SamplerState },
-                { "SamplerComparisonState",	BaseType::SamplerComparisonState },
-#endif
             };
             static const int kBaseTypeCount = sizeof(kBaseTypes) / sizeof(kBaseTypes[0]);
             for (int tt = 0; tt < kBaseTypeCount; ++tt)
             {
+                EMIT_LINE_DIRECTIVE();
                 sb << "__builtin_type(" << int(kBaseTypes[tt].tag) << ") struct " << kBaseTypes[tt].name << "\n{\n";
 
                 // Declare trait conformances for this type
@@ -846,6 +856,16 @@ namespace Spire
 
                 default:
                     break;
+                }
+
+                // Declare initializers to convert from various other types
+                for( int ss = 0; ss < kBaseTypeCount; ++ss )
+                {
+                    if( kBaseTypes[ss].tag == BaseType::Void )
+                        continue;
+
+                    EMIT_LINE_DIRECTIVE();
+                    sb << "__init(" << kBaseTypes[ss].name << " value);\n";
                 }
 
                 sb << "};\n";
@@ -1283,21 +1303,7 @@ namespace Spire
             }
 
             // Output a suitable `#line` directive to point at our raw stdlib code above
-            sb << "\n#line " << kLibIncludeStringLine << " \"";
-            for( auto cc = __FILE__; *cc; ++cc )
-            {
-                switch( *cc )
-                {
-                case '\n':
-                case '\t':
-                case '\\':
-                    sb << "\\";
-                default:
-                    sb << *cc;
-                    break;
-                }
-            }
-            sb << "\"\n";
+            sb << "\n#line " << kLibIncludeStringLine << " \"" << path << "\"\n";
 
             int chunkCount = sizeof(LibIncludeStringChunks) / sizeof(LibIncludeStringChunks[0]);
             for (int cc = 0; cc < chunkCount; ++cc)

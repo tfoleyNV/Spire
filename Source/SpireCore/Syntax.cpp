@@ -720,32 +720,32 @@ namespace Spire
             return this;
         }
 
-        // TypeExpressionType
+        // TypeType
 
-        String TypeExpressionType::ToString() const
+        String TypeType::ToString() const
         {
             StringBuilder sb;
             sb << "typeof(" << type->ToString() << ")";
             return sb.ProduceString();
         }
 
-        bool TypeExpressionType::EqualsImpl(const ExpressionType * t) const
+        bool TypeType::EqualsImpl(const ExpressionType * t) const
         {
-            if (auto typeType = t->AsTypeType())
+            if (auto typeType = t->As<TypeType>())
             {
                 return t->Equals(typeType->type);
             }
             return false;
         }
 
-        ExpressionType* TypeExpressionType::CreateCanonicalType()
+        ExpressionType* TypeType::CreateCanonicalType()
         {
-            auto canType = new TypeExpressionType(type->GetCanonicalType());
+            auto canType = new TypeType(type->GetCanonicalType());
             sCanonicalTypes.Add(canType);
             return canType;
         }
 
-        int TypeExpressionType::GetHashCode() const
+        int TypeType::GetHashCode() const
         {
             assert(!"unreachable");
             return 0;

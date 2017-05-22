@@ -113,7 +113,7 @@ namespace Spire
             RefPtr<ExpressionType> ExtractTypeFromTypeRepr(const RefPtr<ExpressionSyntaxNode>& typeRepr)
             {
                 if (!typeRepr) return nullptr;
-                if (auto typeType = typeRepr->Type->As<TypeExpressionType>())
+                if (auto typeType = typeRepr->Type->As<TypeType>())
                 {
                     return typeType->type;
                 }
@@ -267,7 +267,7 @@ namespace Spire
                     expr = ResolveOverloadedExpr(overloadedExpr, LookupMask::Type);
                 }
 
-                if (auto typeType = expr->Type.type->As<TypeExpressionType>())
+                if (auto typeType = expr->Type.type->As<TypeType>())
                 {
                     return expr;
                 }
@@ -284,7 +284,7 @@ namespace Spire
             RefPtr<ExpressionType> ExpectAType(RefPtr<ExpressionSyntaxNode> expr)
             {
                 auto typeRepr = ExpectATypeRepr(expr);
-                if (auto typeType = typeRepr->Type->As<TypeExpressionType>())
+                if (auto typeType = typeRepr->Type->As<TypeType>())
                 {
                     return typeType->type;
                 }
@@ -309,7 +309,7 @@ namespace Spire
                     exp = ResolveOverloadedExpr(overloadedExpr, LookupMask::Type);
                 }
 
-                if (auto typeType = exp->Type->As<TypeExpressionType>())
+                if (auto typeType = exp->Type->As<TypeType>())
                 {
                     return typeType->type;
                 }
@@ -608,6 +608,7 @@ namespace Spire
                     CASE(Bool, Unsigned, Bool);
                     CASE(Int, Signed, Int32);
                     CASE(UInt, Unsigned, Int32);
+                    CASE(UInt64, Unsigned, Int64);
                     CASE(Float, Float, Int32);
                     CASE(Void, Error, Error);
 
@@ -1883,7 +1884,7 @@ namespace Spire
                 // Otherwise, we need to look at the type of the base expression,
                 // to figure out how subscripting should work.
                 auto baseType = baseExpr->Type.Ptr();
-                if (auto baseTypeType = baseType->As<TypeExpressionType>())
+                if (auto baseTypeType = baseType->As<TypeType>())
                 {
                     // We are trying to "index" into a type, so we have an expression like `float[2]`
                     // which should be interpreted as resolving to an array type.
@@ -1900,7 +1901,7 @@ namespace Spire
                     arrayType->ArrayLength = elementCount;
 
                     typeResult = arrayType;
-                    subscriptExpr->Type = new TypeExpressionType(arrayType);
+                    subscriptExpr->Type = new TypeType(arrayType);
                     return subscriptExpr;
                 }
                 else if (auto baseArrayType = baseType->As<ArrayExpressionType>())
@@ -3489,6 +3490,8 @@ namespace Spire
                 LookupResultItem		item,
                 OverloadResolveContext&	context)
             {
+                auto declRef = item.declRef;
+
                 if (auto funcDeclRef = item.declRef.As<FuncDeclBaseRef>())
                 {
                     AddFuncOverloadCandidate(item, funcDeclRef, context);
@@ -3527,6 +3530,10 @@ namespace Spire
                         AddOverloadCandidateInner(context, candidate);
                     }
                 }
+                else if( auto typeDefDeclRef = item.declRef.As<TypeDefDeclRef>() )
+                {
+                    AddTypeOverloadCandidates(typeDefDeclRef.GetType(), context);
+                }
                 else
                 {
                     // TODO(tfoley): any other cases needed here?
@@ -3539,15 +3546,6 @@ namespace Spire
             {
                 auto funcExprType = funcExpr->Type;
 
-                if (auto typeType = funcExprType->As<TypeExpressionType>())
-                {
-                    // The expression named a type, so we have a constructor call
-                    // on our hands.
-                    AddTypeOverloadCandidates(typeType->type, context);
-                }
-
-                // Note(tfoley): we aren't using `else` here, so that
-                // we can catch generic declarations in this case:
                 if (auto funcDeclRefExpr = funcExpr.As<DeclRefExpr>())
                 {
                     // The expression referenced a function declaration
@@ -3566,6 +3564,17 @@ namespace Spire
                     {
                         AddDeclRefOverloadCandidates(item, context);
                     }
+                }
+                else if (auto typeType = funcExprType->As<TypeType>())
+                {
+                    // If none of the above cases matched, but we are
+                    // looking at a type, then I suppose we have
+                    // a constructor call on our hands.
+                    //
+                    // TODO(tfoley): are there any meaningful types left
+                    // that aren't declaration references?
+                    AddTypeOverloadCandidates(typeType->type, context);
+                    return;
                 }
             }
 
@@ -4474,25 +4483,25 @@ namespace Spire
                     EnsureDecl(typeAliasDeclRef.GetDecl());
                     auto type = new NamedExpressionType(typeAliasDeclRef);
                     typeResult = type;
-                    return new TypeExpressionType(type);
+                    return new TypeType(type);
                 }
                 else if (auto aggTypeDeclRef = declRef.As<AggTypeDeclRef>())
                 {
                     auto type = DeclRefType::Create(aggTypeDeclRef);
                     typeResult = type;
-                    return new TypeExpressionType(type);
+                    return new TypeType(type);
                 }
                 else if (auto simpleTypeDeclRef = declRef.As<SimpleTypeDeclRef>())
                 {
                     auto type = DeclRefType::Create(simpleTypeDeclRef);
                     typeResult = type;
-                    return new TypeExpressionType(type);
+                    return new TypeType(type);
                 }
                 else if (auto genericDeclRef = declRef.As<GenericDeclRef>())
                 {
                     auto type = new GenericDeclRefType(genericDeclRef);
                     typeResult = type;
-                    return new TypeExpressionType(type);
+                    return new TypeType(type);
                 }
                 else if (auto funcDeclRef = declRef.As<FuncDeclBaseRef>())
                 {

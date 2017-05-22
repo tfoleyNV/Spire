@@ -290,7 +290,8 @@ namespace Spire
         class TypeDefDecl;
         class DeclRefType;
         class NamedExpressionType;
-        class TypeExpressionType;
+        class TypeType;
+        class GenericDeclRefType; 
         class VectorExpressionType;
         class MatrixExpressionType;
         class ArithmeticExpressionType;
@@ -413,8 +414,8 @@ namespace Spire
             VectorExpressionType * AsVectorType() const { return As<VectorExpressionType>(); }
             MatrixExpressionType * AsMatrixType() const { return As<MatrixExpressionType>(); }
             ArrayExpressionType * AsArrayType() const { return As<ArrayExpressionType>(); }
+
             DeclRefType* AsDeclRefType() const { return As<DeclRefType>(); }
-            TypeExpressionType* AsTypeType() const { return As<TypeExpressionType>(); }
 
             NamedExpressionType* AsNamedType() const;
 
@@ -905,10 +906,10 @@ namespace Spire
         // The "type" of an expression that resolves to a type.
         // For example, in the expression `float(2)` the sub-expression,
         // `float` would have the type `TypeType(float)`.
-        class TypeExpressionType : public ExpressionType
+        class TypeType : public ExpressionType
         {
         public:
-            TypeExpressionType(RefPtr<ExpressionType> type)
+            TypeType(RefPtr<ExpressionType> type)
                 : type(type)
             {}
 
@@ -2493,7 +2494,7 @@ namespace Spire
             {
                 TypeExp result = typeExp;
                 result.exp = typeExp.exp->Accept(this).As<ExpressionSyntaxNode>();
-                if (auto typeType = result.exp->Type.type.As<TypeExpressionType>())
+                if (auto typeType = result.exp->Type.type.As<TypeType>())
                 {
                     result.type = typeType->type;
                 }

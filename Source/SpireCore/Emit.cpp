@@ -250,7 +250,17 @@ static void EmitUnaryExpr(
 static void EmitExprWithPrecedence(EmitContext* context, RefPtr<ExpressionSyntaxNode> expr, int outerPrec)
 {
     bool needClose = false;
-    if (auto binExpr = expr.As<OperatorExpressionSyntaxNode>())
+    if (auto selectExpr = expr.As<SelectExpressionSyntaxNode>())
+    {
+        needClose = MaybeEmitParens(context, outerPrec, kPrecedence_Conditional);
+
+        EmitExprWithPrecedence(context, selectExpr->Arguments[0], kPrecedence_Conditional);
+        Emit(context, " ? ");
+        EmitExprWithPrecedence(context, selectExpr->Arguments[1], kPrecedence_Conditional);
+        Emit(context, " : ");
+        EmitExprWithPrecedence(context, selectExpr->Arguments[2], kPrecedence_Conditional);
+    }
+    else if (auto binExpr = expr.As<OperatorExpressionSyntaxNode>())
     {
         switch (binExpr->Operator)
         {
@@ -439,18 +449,6 @@ static void EmitExprWithPrecedence(EmitContext* context, RefPtr<ExpressionSyntax
         Emit(context, ") ");
         EmitExpr(context, castExpr->Expression);
     }
-#if TIMREMOVED
-    else if (auto selectExpr = expr.As<SelectExpressionSyntaxNode>())
-    {
-        needClose = MaybeEmitParens(context, outerPrec, kPrecedence_Conditional);
-
-        EmitExprWithPrecedence(context, selectExpr->SelectorExpr, kPrecedence_Conditional);
-        Emit(context, " ? ");
-        EmitExprWithPrecedence(context, selectExpr->Expr0, kPrecedence_Conditional);
-        Emit(context, " : ");
-        EmitExprWithPrecedence(context, selectExpr->Expr1, kPrecedence_Conditional);
-    }
-#endif
     else if(auto initExpr = expr.As<InitializerListExpr>())
     {
         Emit(context, "{ ");
@@ -954,6 +952,13 @@ static void EmitDeclRef(EmitContext* context, DeclRef declRef)
     auto parentDeclRef = declRef.GetParent();
     if (auto genericDeclRef = parentDeclRef.As<GenericDeclRef>())
     {
+        // Only do this for declarations of appropriate flavors
+        if(auto funcDeclRef = declRef.As<FuncDeclBaseRef>())
+        {
+            // Don't emit generic arguments for functions, because HLSL doesn't allow them
+            return;
+        }
+
         Substitutions* subst = declRef.substitutions.Ptr();
         Emit(context, "<");
         int argCount = subst->args.Count();
