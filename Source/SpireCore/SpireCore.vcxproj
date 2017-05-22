@@ -378,6 +378,7 @@
     <ClInclude Include="Naming.h" />
     <ClInclude Include="ParameterBinding.h" />
     <ClInclude Include="Preprocessor.h" />
+    <ClInclude Include="Profile.h" />
     <ClInclude Include="ProfileDefs.h" />
     <ClInclude Include="Reflection.h" />
     <ClInclude Include="SamplerUsageAnalysis.h" />

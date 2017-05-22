@@ -3,6 +3,7 @@
 
 #include "../CoreLib/Basic.h"
 #include "IL.h"
+#include "Profile.h"
 #include "Syntax.h"
 
 #include "../../Spire.h"
@@ -283,6 +284,18 @@ public:
     Dictionary<Decl*, RefPtr<VarLayout>> mapVarToLayout;
 };
 
+// Layout information for a single shader entry point
+// within a program
+class EntryPointLayout : public RefObject
+{
+public:
+    // The corresponding function declaration
+    RefPtr<FunctionSyntaxNode> entryPoint;
+
+    // The shader profile that was used to compile the entry point
+    Profile profile;
+};
+
 // Layout information for the global scope of a program
 class ProgramLayout : public RefObject
 {
@@ -301,11 +314,11 @@ public:
     // to store them).
     //
     RefPtr<TypeLayout> globalScopeLayout;
-};
 
-// Layout information for a particular shader entry point
-class EntryPointLayout : public StructTypeLayout
-{
+    // We catalog the requested entry points here,
+    // and any entry-point-specific parameter data
+    // will (eventually) belong there...
+    List<RefPtr<EntryPointLayout>> entryPoints;
 };
 
 // A modifier to be attached to syntax after we've computed layout

@@ -19,7 +19,7 @@
 #endif
 
 #ifndef PROFILE_STAGE
-#define PROFILE_STAGE(TAG, NAME) /* empty */
+#define PROFILE_STAGE(TAG, NAME, VAL) /* empty */
 #endif
 
 #ifndef PROFILE_STAGE_ALIAS
@@ -53,12 +53,12 @@ LANGUAGE_ALIAS(SPIRV,		spirv_vk)
 
 
 // Pipeline stages to target
-PROFILE_STAGE(Vertex,	vertex)
-PROFILE_STAGE(Hull,		hull)
-PROFILE_STAGE(Domain,	domain)
-PROFILE_STAGE(Geometry, geometry)
-PROFILE_STAGE(Fragment, fragment)
-PROFILE_STAGE(Compute,	compute)
+PROFILE_STAGE(Vertex,	vertex,     SPIRE_STAGE_VERTEX)
+PROFILE_STAGE(Hull,		hull,       SPIRE_STAGE_HULL)
+PROFILE_STAGE(Domain,	domain,     SPIRE_STAGE_DOMAIN)
+PROFILE_STAGE(Geometry, geometry,   SPIRE_STAGE_GEOMETRY)
+PROFILE_STAGE(Fragment, fragment,   SPIRE_STAGE_FRAGMENT)
+PROFILE_STAGE(Compute,	compute,    SPIRE_STAGE_COMPUTE)
 
 PROFILE_STAGE_ALIAS(Fragment, pixel)
 

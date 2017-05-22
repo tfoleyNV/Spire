@@ -54,6 +54,17 @@ static inline SpireReflectionVariableLayout* convert(VarLayout* var)
     return (SpireReflectionVariableLayout*) var;
 }
 
+static inline EntryPointLayout* convert(SpireReflectionEntryPoint* entryPoint)
+{
+    return (EntryPointLayout*) entryPoint;
+}
+
+static inline SpireReflectionEntryPoint* convert(EntryPointLayout* entryPoint)
+{
+    return (SpireReflectionEntryPoint*) entryPoint;
+}
+
+
 static inline ProgramLayout* convert(SpireReflection* program)
 {
     return (ProgramLayout*) program;
@@ -620,6 +631,44 @@ SPIRE_API unsigned spReflectionParameter_GetBindingSpace(SpireReflectionParamete
     return 0;
 }
 
+// Entry Point Reflection
+
+SPIRE_API SpireStage spReflectionEntryPoint_getStage(SpireReflectionEntryPoint* inEntryPoint)
+{
+    auto entryPointLayout = convert(inEntryPoint);
+
+    if(!entryPointLayout) return SPIRE_STAGE_NONE;
+
+    return SpireStage(entryPointLayout->profile.GetStage());
+}
+
+SPIRE_API void spReflectionEntryPoint_getComputeThreadGroupSize(
+    SpireReflectionEntryPoint*  inEntryPoint,
+    SpireUInt                   axisCount,
+    SpireUInt*                  outSizeAlongAxis)
+{
+    auto entryPointLayout = convert(inEntryPoint);
+
+    if(!entryPointLayout)   return;
+    if(!axisCount)          return;
+    if(!outSizeAlongAxis)   return;
+
+    auto entryPointFunc = entryPointLayout->entryPoint;
+    if(!entryPointFunc) return;
+
+    auto numThreadsAttribute = entryPointFunc->FindModifier<HLSLNumThreadsAttribute>();
+    if(!numThreadsAttribute) return;
+
+    if(axisCount > 0) outSizeAlongAxis[0] = numThreadsAttribute->x;
+    if(axisCount > 1) outSizeAlongAxis[1] = numThreadsAttribute->y;
+    if(axisCount > 2) outSizeAlongAxis[2] = numThreadsAttribute->z;
+    for( SpireUInt aa = 3; aa < axisCount; ++aa )
+    {
+        outSizeAlongAxis[aa] = 1;
+    }
+}
+
+
 // Shader Reflection
 
 SPIRE_API unsigned spReflection_GetParameterCount(SpireReflection* inProgram)
@@ -660,6 +709,21 @@ SPIRE_API SpireReflectionParameter* spReflection_GetParameterByIndex(SpireReflec
     return nullptr;
 }
 
+SPIRE_API SpireUInt spReflection_getEntryPointCount(SpireReflection* inProgram)
+{
+    auto program = convert(inProgram);
+    if(!program) return 0;
+
+    return SpireUInt(program->entryPoints.Count());
+}
+
+SPIRE_API SpireReflectionEntryPoint* spReflection_getEntryPointByIndex(SpireReflection* inProgram, SpireUInt index)
+{
+    auto program = convert(inProgram);
+    if(!program) return 0;
+
+    return convert(program->entryPoints[(int) index].Ptr());
+}
 
 
 

@@ -4,8 +4,9 @@
 #include "../CoreLib/Basic.h"
 
 #include "CodeGenBackend.h"
-#include "Diagnostics.h"
 #include "CompiledProgram.h"
+#include "Diagnostics.h"
+#include "Profile.h"
 #include "Syntax.h"
 #include "TypeLayout.h"
 
@@ -23,58 +24,6 @@ namespace Spire
             ProduceLibrary,
             ProduceShader,
             GenerateChoice
-        };
-
-        enum class Language
-        {
-            Unknown,
-#define LANGUAGE(TAG, NAME) TAG,
-#include "ProfileDefs.h"
-        };
-
-        enum class ProfileFamily
-        {
-            Unknown,
-#define PROFILE_FAMILY(TAG) TAG,
-#include "ProfileDefs.h"
-        };
-
-        enum class ProfileVersion
-        {
-            Unknown,
-#define PROFILE_VERSION(TAG, FAMILY) TAG,
-#include "ProfileDefs.h"
-        };
-
-        enum class Stage
-        {
-            Unknown,
-#define PROFILE_STAGE(TAG, NAME) TAG,
-#include "ProfileDefs.h"
-        };
-
-        struct Profile
-        {
-            typedef uint32_t RawVal;
-            enum : RawVal
-            {
-            Unknown,
-
-#define PROFILE(TAG, NAME, STAGE, VERSION) TAG = (uint32_t(Stage::STAGE) << 16) | uint32_t(ProfileVersion::VERSION),
-#include "ProfileDefs.h"
-            };
-
-            Profile() {}
-            Profile(RawVal raw)
-                : raw(raw)
-            {}
-
-            Stage GetStage() const { return Stage((uint32_t(raw) >> 16) & 0xFFFF); }
-            ProfileVersion GetVersion() const { return ProfileVersion(uint32_t(raw) & 0xFFFF); }
-
-            static Profile LookUp(char const* name);
-
-            RawVal raw = Unknown;
         };
 
         enum class StageTarget

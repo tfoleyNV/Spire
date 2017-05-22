@@ -134,6 +134,9 @@ struct SharedParameterBindingContext
 
     // A dictionary to accellerate looking up parameters by name
     Dictionary<String, ParameterInfo*> mapNameToParameterInfo;
+
+    // The program layout we are trying to construct
+    RefPtr<ProgramLayout> programLayout;
 };
 
 struct ParameterBindingContext
@@ -737,6 +740,14 @@ static void collectEntryPointParameters(
         return;
     }
 
+    // Create the layout object here
+    auto entryPointLayout = new EntryPointLayout();
+    entryPointLayout->profile = entryPoint.profile;
+    entryPointLayout->entryPoint = entryPointFuncDecl;
+
+
+    context->shared->programLayout->entryPoints.Add(entryPointLayout);
+
     // Okay, we seemingly have an entry-point function, and now we need to collect info on its parameters too
     //
     // TODO: Long-term we probably want complete information on all inputs/outputs of an entry point,
@@ -815,16 +826,27 @@ static void collectParameters(
     }
 }
 
+static RefPtr<FunctionSyntaxNode>
+findEntryPointFunc(
+    ProgramSyntaxNode*  code,
+    String const&       name)
+{
+    
+}
+
 void GenerateParameterBindings(
     CollectionOfTranslationUnits*   program)
 {
     // TODO: need to get this from somewhere!
     auto rules = GetLayoutRulesImpl(LayoutRule::HLSLConstantBuffer);
 
+    RefPtr<ProgramLayout> programLayout = new ProgramLayout;
+
     // Create a context to hold shared state during the process
     // of generating parameter bindings
     SharedParameterBindingContext sharedContext;
     sharedContext.defaultLayoutRules = rules;
+    sharedContext.programLayout = programLayout;
 
     // Create a sub-context to collect parameters that get
     // declared into the global scope
@@ -938,9 +960,7 @@ void GenerateParameterBindings(
 
     // We now have a bunch of layout information, which we should
     // record into a suitable object that represents the program
-    RefPtr<ProgramLayout> programLayout = new ProgramLayout;
     programLayout->globalScopeLayout = globalScopeLayout;
-
     program->layout = programLayout;
 }
 
