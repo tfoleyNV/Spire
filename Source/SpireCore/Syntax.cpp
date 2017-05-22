@@ -816,6 +816,9 @@ namespace Spire
 
         RefPtr<Val> VectorExpressionType::SubstituteImpl(Substitutions* subst, int* ioDiff)
         {
+            assert(elementType->EqualsVal(declRef.substitutions->args[0].Ptr()));
+            assert(elementCount->EqualsVal(declRef.substitutions->args[1].Ptr()));
+
             int diff = 0;
             auto substDeclRef = declRef.SubstituteImpl(subst, &diff);
             auto substElementType = elementType->SubstituteImpl(subst, &diff).As<ExpressionType>();
@@ -827,6 +830,10 @@ namespace Spire
             (*ioDiff)++;
             auto substType = new VectorExpressionType(substElementType, substElementCount);
             substType->declRef = substDeclRef;
+
+            assert(substElementType->EqualsVal(substDeclRef.substitutions->args[0].Ptr()));
+            assert(substElementCount->EqualsVal(substDeclRef.substitutions->args[1].Ptr()));
+
             return substType;
         }
 
@@ -1156,7 +1163,7 @@ namespace Spire
 
         // Substitutions
 
-        RefPtr<Substitutions> Substitutions::SubstituteImpl(Substitutions* subst, int* /*ioDiff*/)
+        RefPtr<Substitutions> Substitutions::SubstituteImpl(Substitutions* subst, int* ioDiff)
         {
             if (!this) return nullptr;
 
@@ -1171,6 +1178,7 @@ namespace Spire
 
             if (!diff) return this;
 
+            (*ioDiff)++;
             auto substSubst = new Substitutions();
             substSubst->genericDecl = genericDecl;
             substSubst->args = substArgs;

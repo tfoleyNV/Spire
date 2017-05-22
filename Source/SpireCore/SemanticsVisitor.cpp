@@ -2369,13 +2369,13 @@ namespace Spire
                         // TODO(tfoley): maybe support more than integers some day?
                         // TODO(tfoley): figure out how this needs to interact with
                         // compile-time integers that aren't just constants...
-                        RefPtr<ConstantIntVal> val = nullptr;
+                        RefPtr<IntVal> val = nullptr;
                         for (auto& c : system->constraints)
                         {
                             if (c.decl != valParam.GetDecl())
                                 continue;
 
-                            auto cVal = c.val.As<ConstantIntVal>();
+                            auto cVal = c.val.As<IntVal>();
                             assert(cVal.Ptr());
 
                             if (!val)
@@ -2384,7 +2384,7 @@ namespace Spire
                             }
                             else
                             {
-                                if (val->value != cVal->value)
+                                if(!val->EqualsVal(cVal.Ptr()))
                                 {
                                     // failure!
                                     return nullptr;
@@ -3211,19 +3211,11 @@ namespace Spire
                 return true;
             }
 
-            bool TryUnifyTypes(
-                ConstraintSystem&	constraints,
-                RefPtr<ExpressionType> fst,
-                RefPtr<ExpressionType> snd)
+            bool TryUnifyTypesByStructuralMatch(
+                ConstraintSystem&       constraints,
+                RefPtr<ExpressionType>  fst,
+                RefPtr<ExpressionType>  snd)
             {
-                if (fst->Equals(snd)) return true;
-
-                if (auto fstErrorType = fst->As<ErrorType>())
-                    return true;
-
-                if (auto sndErrorType = snd->As<ErrorType>())
-                    return true;
-
                 if (auto fstDeclRefType = fst->As<DeclRefType>())
                 {
                     auto fstDeclRef = fstDeclRefType->declRef;
@@ -3255,6 +3247,36 @@ namespace Spire
                     }
                 }
 
+                return false;
+            }
+
+            bool TryUnifyTypes(
+                ConstraintSystem&       constraints,
+                RefPtr<ExpressionType>  fst,
+                RefPtr<ExpressionType>  snd)
+            {
+                if (fst->Equals(snd)) return true;
+
+                // An error type can unify with anything, just so we avoid cascading errors.
+
+                if (auto fstErrorType = fst->As<ErrorType>())
+                    return true;
+
+                if (auto sndErrorType = snd->As<ErrorType>())
+                    return true;
+
+                // A generic parameter type can unify with anything.
+                // TODO: there actually needs to be some kind of "occurs check" sort
+                // of thing here...
+
+                if (auto fstDeclRefType = fst->As<DeclRefType>())
+                {
+                    auto fstDeclRef = fstDeclRefType->declRef;
+
+                    if (auto typeParamDecl = dynamic_cast<GenericTypeParamDecl*>(fstDeclRef.GetDecl()))
+                        return TryUnifyTypeParam(constraints, typeParamDecl, snd);
+                }
+
                 if (auto sndDeclRefType = snd->As<DeclRefType>())
                 {
                     auto sndDeclRef = sndDeclRefType->declRef;
@@ -3263,7 +3285,39 @@ namespace Spire
                         return TryUnifyTypeParam(constraints, typeParamDecl, fst);
                 }
 
-                throw "unimplemented";
+                // If we can unify the types structurally, then we are golden
+                if(TryUnifyTypesByStructuralMatch(constraints, fst, snd))
+                    return true;
+
+                // Now we need to consider cases where coercion might
+                // need to be applied. For now we can try to do this
+                // in a completely ad hoc fashion, but eventually we'd
+                // want to do it more formally.
+
+                if(auto fstVectorType = fst->As<VectorExpressionType>())
+                {
+                    if(auto sndScalarType = snd->As<BasicExpressionType>())
+                    {
+                        return TryUnifyTypes(
+                            constraints,
+                            fstVectorType->elementType,
+                            sndScalarType);
+                    }
+                }
+
+                if(auto fstScalarType = fst->As<BasicExpressionType>())
+                {
+                    if(auto sndVectorType = snd->As<VectorExpressionType>())
+                    {
+                        return TryUnifyTypes(
+                            constraints,
+                            fstScalarType,
+                            sndVectorType->elementType);
+                    }
+                }
+
+                // TODO: the same thing for vectors...
+
                 return false;
             }
 

@@ -430,8 +430,8 @@ namespace Spire
 
             virtual RefPtr<Val> SubstituteImpl(Substitutions* subst, int* ioDiff) override;
 
-        protected:
             virtual bool EqualsVal(Val* val) override;
+        protected:
             virtual bool IsIntegralImpl() const { return false; }
             virtual bool EqualsImpl(const ExpressionType * type) const = 0;
 
