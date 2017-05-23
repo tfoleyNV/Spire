@@ -151,6 +151,18 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="options.cpp" />
+    <ClCompile Include="render-d3d11.cpp" />
+    <ClCompile Include="render-gl.cpp" />
+    <ClCompile Include="spire-support.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="options.h" />
+    <ClInclude Include="render-d3d11.h" />
+    <ClInclude Include="render-gl.h" />
+    <ClInclude Include="render.h" />
+    <ClInclude Include="spire-support.h" />
+    <ClInclude Include="window.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

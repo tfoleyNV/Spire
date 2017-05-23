@@ -687,6 +687,8 @@ TestResult runGLSLComparisonTest(TestInput& input)
 
 TestResult doRenderComparisonTestRun(TestInput& input, char const* langOption, char const* outputKind, String* outOutput)
 {
+    // TODO: delete any existing files at the output path(s) to avoid stale outputs leading to a false pass
+
     auto filePath = input.filePath;
 
     OSProcessSpawner spawner;
