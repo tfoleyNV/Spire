@@ -1,3 +1,4 @@
+//TEST:SIMPLE:
 // test that `struct` decls work
 
 // Note(tfoley): disabled during syntax transition

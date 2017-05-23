@@ -86,6 +86,12 @@ OSFindFilesResult osFindFilesInDirectoryMatchingPattern(
     return result;
 }
 
+OSFindFilesResult osFindFilesInDirectory(
+    CoreLib::Basic::String directoryPath)
+{
+    return osFindFilesInDirectoryMatchingPattern(directoryPath, "*");
+}
+
 OSFindFilesResult osFindChildDirectories(
     CoreLib::Basic::String directoryPath)
 {

@@ -79,10 +79,9 @@ struct OSFindFilesResult
     }
 };
 
-// Enumerate files in the given `directoryPath` that match the provided
-// `pattern` as a simplified regex for files to return (e.g., "*.txt")
-// and return a logical collection of the results
-// that can be iterated with a range-based `for` loop:
+// Enumerate subdirectories in the given `directoryPath` and return a logical
+// collection of the results that can be iterated with a range-based
+// `for` loop:
 //
 // for( auto subdir : osFindChildDirectories(dir))
 // { ... }
@@ -92,9 +91,10 @@ struct OSFindFilesResult
 OSFindFilesResult osFindChildDirectories(
     CoreLib::Basic::String directoryPath);
 
-// Enumerate subdirectories in the given `directoryPath` and return a logical
-// collection of the results that can be iterated with a range-based
-// `for` loop:
+// Enumerate files in the given `directoryPath` that match the provided
+// `pattern` as a simplified regex for files to return (e.g., "*.txt")
+// and return a logical collection of the results
+// that can be iterated with a range-based `for` loop:
 //
 // for( auto file : osFindFilesInDirectoryMatchingPattern(dir, "*.txt"))
 // { ... }
@@ -104,6 +104,19 @@ OSFindFilesResult osFindChildDirectories(
 OSFindFilesResult osFindFilesInDirectoryMatchingPattern(
     CoreLib::Basic::String directoryPath,
     CoreLib::Basic::String pattern);
+
+// Enumerate files in the given `directoryPath`  and return a logical
+// collection of the results that can be iterated with a range-based
+// `for` loop:
+//
+// for( auto file : osFindFilesInDirectory(dir))
+// { ... }
+//
+// Each element in the range is a `CoreLib::Basic::String` representing the
+// path to a file in the directory.
+OSFindFilesResult osFindFilesInDirectory(
+    CoreLib::Basic::String directoryPath);
+
 
 // An `OSProcessSpawner` can be used to launch a process, and handles
 // putting together the arguments in the form required by the target

@@ -1,4 +1,4 @@
-//SPIRE_TEST_OPTS:-target dxbc-assembly -profile cs_4_0 -entry CSScanInBucket -entry CSScanBucketResult -entry CSScanAddBucketResult
+//TEST:COMPARE_HLSL: -target dxbc-assembly -profile cs_4_0 -entry CSScanInBucket -entry CSScanBucketResult -entry CSScanAddBucketResult
 //--------------------------------------------------------------------------------------
 // File: ScanCS.hlsl
 //

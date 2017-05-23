@@ -1,4 +1,4 @@
-//SPIRE_TEST_OPTS:-target dxbc-assembly -profile ps_4_0 -entry main
+//TEST:COMPARE_HLSL: -target dxbc-assembly -profile ps_4_0 -entry main
 
 // Let's first confirm that Spire can reproduce what the
 // HLSL compiler would already do in the simple case (when

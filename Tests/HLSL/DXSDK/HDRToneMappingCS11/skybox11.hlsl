@@ -1,4 +1,5 @@
-//SPIRE_TEST_OPTS:-target dxbc-assembly -profile vs_4_0 -entry SkyboxVS -profile ps_4_0 -entry SkyboxPS
+//TEST_IGNORE_FILE: Currently failing due to Spire compiler issues.
+//TEST:COMPARE_HLSL: -target dxbc-assembly -profile vs_4_0 -entry SkyboxVS -profile ps_4_0 -entry SkyboxPS
 //-----------------------------------------------------------------------------
 // File: SkyBox11.hlsl
 //

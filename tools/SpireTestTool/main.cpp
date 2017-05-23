@@ -149,10 +149,166 @@ bool match(char const** ioCursor, char const* expected)
     return true;
 }
 
+void skipHorizontalSpace(char const** ioCursor)
+{
+    char const* cursor = *ioCursor;
+    for( ;;)
+    {
+        switch( *cursor )
+        {
+        case ' ':
+        case '\t':
+            cursor++;
+            continue;
+
+        default:
+            break;
+        }
+
+        break;
+    }
+    *ioCursor = cursor;
+}
+
+void skipToEndOfLine(char const** ioCursor)
+{
+    char const* cursor = *ioCursor;
+    for( ;;)
+    {
+        int c = *cursor;
+        switch( c )
+        {
+        default:
+            cursor++;
+            continue;
+
+        case '\r': case '\n':
+            {
+                cursor++;
+                int d = *cursor;
+                if( (c ^ d) == ('\r' ^ '\n') )
+                {
+                    cursor++;
+                }
+            }
+            // fall through to:
+        case 0:
+            *ioCursor = cursor;
+            return;
+        }
+    }
+}
+
+String getString(char const* textBegin, char  const* textEnd)
+{
+    StringBuilder sb;
+    sb.Append(textBegin, textEnd - textBegin);
+    return sb.ProduceString();
+}
+
+String collectRestOfLine(char const** ioCursor)
+{
+    char const* cursor = *ioCursor;
+
+    char const* textBegin = cursor;
+    skipToEndOfLine(&cursor);
+    char const* textEnd = cursor;
+
+    *ioCursor = cursor;
+    return getString(textBegin, textEnd);
+}
+
+// Optiosn for a particular test
+struct TestOptions
+{
+    String command;
+    List<String> args;
+};
+
+// Information on tests to run for a particular file
+struct FileTestList
+{
+    List<TestOptions> tests;
+};
+
+TestResult gatherTestOptions(
+    char const**    ioCursor,
+    FileTestList*   testList)
+{
+    char const* cursor = *ioCursor;
+
+    // Start by scanning for the sub-command name:
+    char const* commandStart = cursor;
+    for(;;)
+    {
+        switch(*cursor)
+        {
+        default:
+            cursor++;
+            continue;
+
+        case ':':
+            break;
+        
+        case 0: case '\r': case '\n':
+            return kTestResult_Fail;
+        }
+
+        break;
+    }
+    char const* commandEnd = cursor;
+    if(*cursor == ':')
+        cursor++;
+
+    TestOptions testOptions;
+    testOptions.command = getString(commandStart, commandEnd);
+
+    // Now scan for arguments. For now we just assume that
+    // any whitespace separation indicates a new argument
+    // (we don't support quoting)
+    for(;;)
+    {
+        skipHorizontalSpace(&cursor);
+
+        // End of line? then no more options.
+        switch( *cursor )
+        {
+        case 0: case '\r': case '\n':
+            skipToEndOfLine(&cursor);
+            testList->tests.Add(testOptions);
+            return kTestResult_Pass;
+
+        default:
+            break;
+        }
+
+        // Let's try to read one option
+        char const* argBegin = cursor;
+        for(;;)
+        {
+            switch( *cursor )
+            {
+            default:
+                cursor++;
+                continue;
+
+            case 0: case '\r': case '\n': case ' ': case '\t':
+                break;
+            }
+
+            break;
+        }
+        char const* argEnd = cursor;
+        assert(argBegin != argEnd);
+
+        testOptions.args.Add(getString(argBegin, argEnd));
+    }
+}
+
 // Try to read command-line options from the test file itself
-TestResult gatherOptionsFromTestFile(
+TestResult gatherTestsForFile(
     String				filePath,
-    OSProcessSpawner*	ioSpawner)
+    FileTestList*       testList)
 {
     String fileContents;
     try
@@ -164,65 +320,33 @@ TestResult gatherOptionsFromTestFile(
         return kTestResult_Fail;
     }
 
+
+    // Walk through the lines of the file, looking for test commands
     char const* cursor = fileContents.begin();
 
-    // should this test be ignored?
-    if(match(&cursor, "//SPIRE_TEST_IGNORE:"))
+    while(*cursor)
     {
-        return kTestResult_Ignored;
-    }
+        // We are at the start of a line of input.
 
-    // check for our expected prefix
-    if(!match(&cursor, "//SPIRE_TEST_OPTS:"))
-    {
-        return kTestResult_Fail;
-    }
+        skipHorizontalSpace(&cursor);
 
-    // start consuming options
-    for(;;)
-    {
-        // Skip to start of an option
-        switch(*cursor)
+        // Look for a pattern that matches what we want
+        if(match(&cursor, "//TEST:"))
         {
-        // end of line/file? done with options
-        case '\r': case '\n': case 0:
-            return kTestResult_Pass;
-
-        // space? keep skipping
-        case ' ':
-            cursor++;
-            continue;
-
-        default:
-            break;
+            if(gatherTestOptions(&cursor, testList) != kTestResult_Pass)
+                return kTestResult_Fail;
         }
-
-        // start of an option!
-        char const* optBegin = cursor;
-
-        // now look for the end of the option
-        for(;;)
+        else if(match(&cursor, "//TEST_IGNORE_FILE"))
         {
-            switch(*cursor)
-            {
-            default:
-                cursor++;
-                continue;
-
-            case '\r': case '\n': case 0: case ' ':
-                // end of the option
-                break;
-            }
-
-            char const* optEnd = cursor;
-            assert(optBegin != optEnd);
-
-            StringBuilder sb;
-            sb.Append(optBegin, (int)(optEnd - optBegin));
-            ioSpawner->pushArgument(sb.ProduceString());
-            break;
+            return kTestResult_Ignored;
+        }
+        else
+        {
+            skipToEndOfLine(&cursor);
         }
     }
+
+    return kTestResult_Pass;
 }
 
 OSError spawnAndWait(String	testPath, OSProcessSpawner& spawner)
@@ -260,19 +384,30 @@ String getOutput(OSProcessSpawner& spawner)
     return actualOutputBuilder.ProduceString();
 }
 
+struct TestInput
+{
+    String              filePath;
+    TestOptions const*  testOptions;
+    FileTestList const* testList;
+};
 
-TestResult runTestImpl(
-    String	filePath)
+typedef TestResult (*TestCallback)(TestInput& input);
+
+TestResult runSimpleTest(TestInput& input)
 {
     // need to execute the stand-alone Spire compiler on the file, and compare its output to what we expect
+
+    auto filePath = input.filePath;
 
     OSProcessSpawner spawner;
 
     spawner.pushExecutableName(String(options.binDir) + "SpireCompiler.exe");
     spawner.pushArgument(filePath);
 
-    if(gatherOptionsFromTestFile(filePath, &spawner) == kTestResult_Ignored)
-        return kTestResult_Ignored;
+    for( auto arg : input.testOptions->args )
+    {
+        spawner.pushArgument(arg);
+    }
 
     if (spawnAndWait(filePath, spawner) != kOSError_None)
     {
@@ -319,15 +454,18 @@ TestResult runTestImpl(
 }
 
 #ifdef SPIRE_TEST_SUPPORT_HLSL
-TestResult generateHLSLBaseline(
-    String	filePath)
+TestResult generateHLSLBaseline(TestInput& input)
 {
+    auto filePath = input.filePath;
+
     OSProcessSpawner spawner;
     spawner.pushExecutableName(String(options.binDir) + "SpireCompiler.exe");
     spawner.pushArgument(filePath);
 
-    if(gatherOptionsFromTestFile(filePath, &spawner) == kTestResult_Ignored)
-        return kTestResult_Ignored;
+    for( auto arg : input.testOptions->args )
+    {
+        spawner.pushArgument(arg);
+    }
 
     spawner.pushArgument("-target");
     spawner.pushArgument("dxbc-assembly");
@@ -352,17 +490,15 @@ TestResult generateHLSLBaseline(
     return kTestResult_Pass;
 }
 
-TestResult runHLSLTestImpl(
-    String	filePath)
+TestResult runHLSLComparisonTest(TestInput& input)
 {
+    auto filePath = input.filePath;
+
     // We will use the Microsoft compiler to generate out expected output here
     String expectedOutputPath = filePath + ".expected";
 
-    // You know what? Let's always generate the expected output, just so we don't have problems with stale inputs
-//    if(options.generateHLSLBaselines || !CoreLib::IO::File::Exists(expectedOutputPath))
-    {
-        generateHLSLBaseline(filePath);
-    }
+    // Generate the expected output using standard HLSL compiler
+    generateHLSLBaseline(input);
 
     // need to execute the stand-alone Spire compiler on the file, and compare its output to what we expect
 
@@ -371,8 +507,10 @@ TestResult runHLSLTestImpl(
     spawner.pushExecutableName(String(options.binDir) + "SpireCompiler.exe");
     spawner.pushArgument(filePath);
 
-    if(gatherOptionsFromTestFile(filePath, &spawner) == kTestResult_Ignored)
-        return kTestResult_Ignored;
+    for( auto arg : input.testOptions->args )
+    {
+        spawner.pushArgument(arg);
+    }
 
     // TODO: The compiler should probably define this automatically...
     spawner.pushArgument("-D");
@@ -444,6 +582,41 @@ TestResult runHLSLTestImpl(
 }
 #endif
 
+TestResult runTest(
+    String const&       filePath,
+    TestOptions const&  testOptions,
+    FileTestList const& testList)
+{
+    // based on command name, dispatch to an appropriate callback
+    static const struct TestCommands
+    {
+        char const*     name;
+        TestCallback    callback;
+    } kTestCommands[] = {
+        { "SIMPLE", &runSimpleTest },
+        { "COMPARE_HLSL", &runHLSLComparisonTest },
+        { nullptr, nullptr },
+    };
+
+    for( auto ii = kTestCommands; ii->name; ++ii )
+    {
+        if(testOptions.command != ii->name)
+            continue;
+
+        TestInput testInput;
+        testInput.filePath = filePath;
+        testInput.testOptions = &testOptions;
+        testInput.testList = &testList;
+
+        return ii->callback(testInput);
+    }
+
+    // No actual test runner found!
+
+    return kTestResult_Fail;
+}
+
+
 struct TestContext
 {
     int totalTestCount;
@@ -451,72 +624,111 @@ struct TestContext
     int failedTestCount;
 };
 
-void runTest(
-    TestContext*	context,
-    String			filePath,
-    TestResult		(*runFunc)(String))
+void runTestsOnFile(
+    TestContext*    context,
+    String          filePath)
 {
+    // Gather a list of tests to run
+    FileTestList testList;
+
+    if( gatherTestsForFile(filePath, &testList) == kTestResult_Ignored )
+    {
+        // Test was explicitly ignored
+        return;
+    }
+
+    // Note cases where a test file exists, but we found nothing to run
+    if( testList.tests.Count() == 0 )
+    {
+        context->totalTestCount++;
+        context->failedTestCount++;
+
+        printf("FAILED test: '%S' (no test commands found)\n", filePath.ToWString());
+        return;
+    }
+
+    // We have found a test to run!
+    int subTestCount = 0;
+    for( auto& tt : testList.tests )
+    {
+        context->totalTestCount++;
+
+        int subTestIndex = subTestCount++;
+
+        TestResult result = runTest(filePath, tt, testList);
+        if(result == kTestResult_Ignored)
+            return;
+
+        if (result == kTestResult_Pass)
+        {
+            printf("passed");
+            context->passedTestCount++;
+        }
+        else
+        {
+            printf("FAILED");
+            context->failedTestCount++;
+        }
+
+        printf(" test: '%S'", filePath.ToWString());
+        if( subTestIndex )
+        {
+            printf(" subtest:%d", subTestIndex);
+        }
+        printf("\n");
+    }
+}
+
+
+static bool endsWithAllowedExtension(
+    TestContext*    context,
+    String          filePath)
+{
+    char const* allowedExtensions[] = { ".spire", ".hlsl", ".glsl", ".fx", nullptr };
+
+    for( auto ii = allowedExtensions; *ii; ++ii )
+    {
+        if(filePath.EndsWith(*ii))
+            return true;
+    }
+
+    return false;
+}
+
+static bool shouldRunTest(
+    TestContext*    context,
+    String          filePath)
+{
+    if(!endsWithAllowedExtension(context, filePath))
+        return false;
+
     if( options.testPrefix )
     {
         if( strncmp(options.testPrefix, filePath.begin(), strlen(options.testPrefix)) != 0 )
         {
-            return;
+            return false;
         }
     }
 
-    TestResult result = runFunc(filePath);
-    if(result == kTestResult_Ignored)
-        return;
-
-    context->totalTestCount++;
-    if (result == kTestResult_Pass)
-    {
-        printf("passed");
-        context->passedTestCount++;
-    }
-    else
-    {
-        printf("FAILED");
-        context->failedTestCount++;
-    }
-
-    printf(" test: '%S'\n", filePath.ToWString());
+    return true;
 }
 
 void runTestsInDirectory(
     TestContext*		context,
-    String				directoryPath,
-    TestResult(*runFunc)(String),
-    char const* pattern)
+    String				directoryPath)
 {
-    for (auto file : osFindFilesInDirectoryMatchingPattern(directoryPath, pattern))
+    for (auto file : osFindFilesInDirectory(directoryPath))
     {
-        runTest(context, file, runFunc);
+        if( shouldRunTest(context, file) )
+        {
+            runTestsOnFile(context, file);
+        }
     }
     for (auto subdir : osFindChildDirectories(directoryPath))
     {
-        runTestsInDirectory(context, subdir, runFunc, pattern);
+        runTestsInDirectory(context, subdir);
     }
 }
-
-void runTestsInDirectory(
-    TestContext*		context,
-    String				directoryPath)
-{
-    runTestsInDirectory(context, directoryPath, &runTestImpl, "*.spire");
-    runTestsInDirectory(context, directoryPath, &runTestImpl, "*.glsl");
-    runTestsInDirectory(context, directoryPath, &runTestImpl, "*.hlsl");
-}
-
-#ifdef SPIRE_TEST_SUPPORT_HLSL
-void runHLSLTestsInDirectory(
-    TestContext*		context,
-    String				directoryPath)
-{
-    runTestsInDirectory(context, directoryPath, &runHLSLTestImpl, "*.hlsl");
-//	runTestsInDirectory(context, directoryPath, &runHLSLTestImpl, "*.fx");
-}
-#endif
 
 //
 
@@ -531,20 +743,7 @@ int main(
     // Enumerate test files according to policy
     // TODO: add more directories to this list
     // TODO: allow for a command-line argument to select a particular directory
-    runTestsInDirectory(&context, "Tests/FrontEnd/");
-    runTestsInDirectory(&context, "Tests/Diagnostics/");
-    runTestsInDirectory(&context, "Tests/Preprocessor/");
-    runTestsInDirectory(&context, "Tests/reflection/");
-
-#ifdef SPIRE_TEST_SUPPORT_HLSL
-    // Note(tfoley): Disabling main HLSL tests for now, bercause 100% HLSL coverage
-    // is not a near-term priority.
-    //
-    //  runHLSLTestsInDirectory(&context, "Tests/HLSL/");
-    runHLSLTestsInDirectory(&context, "Tests/HLSL/simple/");
-    runHLSLTestsInDirectory(&context, "Tests/bindings/");
-    runHLSLTestsInDirectory(&context, "Tests/rewriter/");
-#endif
+    runTestsInDirectory(&context, "Tests/");
 
     if (!context.totalTestCount)
     {

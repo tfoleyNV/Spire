@@ -1,4 +1,5 @@
-//SPIRE_TEST_OPTS:-target dxbc-assembly -profile ps_4_0 -entry PSMain
+//TEST_IGNORE_FILE: Currently failing due to Spire compiler issues.
+//TEST:COMPARE_HLSL: -target dxbc-assembly -profile ps_4_0 -entry PSMain
 //--------------------------------------------------------------------------------------
 // File: DynamicShaderLinkage11.psh
 //

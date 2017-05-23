@@ -1,4 +1,4 @@
-//SPIRE_TEST_OPTS:-target reflection-json
+//TEST:SIMPLE: -target reflection-json
 
 // Confirm that basic reflection info can be output
 

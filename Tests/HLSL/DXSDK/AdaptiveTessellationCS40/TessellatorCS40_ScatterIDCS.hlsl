@@ -1,4 +1,4 @@
-//SPIRE_TEST_OPTS:-target dxbc-assembly -profile cs_4_0 -entry CSScatterVertexTriIDIndexID -entry CSScatterIndexTriIDIndexID
+//TEST:COMPARE_HLSL: -target dxbc-assembly -profile cs_4_0 -entry CSScatterVertexTriIDIndexID -entry CSScatterIndexTriIDIndexID
 //--------------------------------------------------------------------------------------
 // File: TessellatorCS40_ScatterIDCS.hlsl
 //

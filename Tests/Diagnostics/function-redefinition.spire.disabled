@@ -1,3 +1,4 @@
+//TEST:SIMPLE:
 // redefining a function
 
 int foo(int a) { return 0; }

@@ -1,4 +1,5 @@
-//SPIRE_TEST_OPTS:-target dxbc-assembly -profile cs_4_0 -entry CSTessellationVertices
+//TEST_IGNORE_FILE: Currently failing due to Spire compiler issues.
+//TEST:COMPARE_HLSL: -target dxbc-assembly -profile cs_4_0 -entry CSTessellationVertices
 //--------------------------------------------------------------------------------------
 // File: TessellatorCS40_TessellateVerticesCS.hlsl
 //

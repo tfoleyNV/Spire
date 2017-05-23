@@ -1,4 +1,4 @@
-//SPIRE_TEST_OPTS:-no-checking -target dxbc-assembly -profile cs_5_0 -entry main
+//TEST:COMPARE_HLSL: -no-checking -target dxbc-assembly -profile cs_5_0 -entry main
 
 // Confirm that we properly pass along the `numthreads` attribute on an entry point.
 

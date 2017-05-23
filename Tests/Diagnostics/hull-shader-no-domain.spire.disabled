@@ -1,3 +1,4 @@
+//TEST:SIMPLE:
 // `HullShader` without `Domain` attribute
 
 pipeline P

@@ -1,4 +1,4 @@
-//SPIRE_TEST_OPTS:-target dxbc-assembly -profile ps_4_0 -entry main
+//TEST:COMPARE_HLSL: -target dxbc-assembly -profile ps_4_0 -entry main
 
 // We want to make sure that the registers that Spire generates
 // are used, even if there are "dead" parameter earlier in the program.

@@ -1,4 +1,4 @@
-//SPIRE_TEST_OPTS:-target reflection-json Tests/bindings/multi-file-extra.hlsl
+//TEST:SIMPLE: -target reflection-json Tests/bindings/multi-file-extra.hlsl
 
 // Here we are testing the case where multiple translation units are provided
 // at once, so that we want combined reflection information for the resulting

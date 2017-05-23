@@ -1,3 +1,4 @@
+//TEST:SIMPLE:
 // #ifdef support
 
 #define A

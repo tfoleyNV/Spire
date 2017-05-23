@@ -1,4 +1,4 @@
-//SPIRE_TEST_OPTS:-target dxbc-assembly -profile vs_4_0 -entry main Tests/bindings/multi-file-extra.hlsl -profile ps_4_0 -entry main
+//TEST:COMPARE_HLSL: -target dxbc-assembly -profile vs_4_0 -entry main Tests/bindings/multi-file-extra.hlsl -profile ps_4_0 -entry main
 
 // Here we are going to test that we can correctly generating bindings when we
 // are presented with a program spanning multiple input files (and multiple entry points)

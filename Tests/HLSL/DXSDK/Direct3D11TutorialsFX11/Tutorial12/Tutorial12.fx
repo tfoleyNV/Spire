@@ -1,3 +1,4 @@
+//TEST_IGNORE_FILE:
 //
 // Constant Buffer Variables
 //

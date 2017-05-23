@@ -1,3 +1,4 @@
+//TEST:SIMPLE:
 // test that we can `typedef` a type
 
 typedef float F32;

@@ -1,3 +1,4 @@
+//TEST:SIMPLE:
 // test that we can parse all the expected kinds of declarations
 
 // global-scope `using` is another test

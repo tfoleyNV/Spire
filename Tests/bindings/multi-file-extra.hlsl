@@ -1,4 +1,4 @@
-//SPIRE_TEST_IGNORE:
+//TEST_IGNORE_FILE:
 
 // Here we are going to test that we can correctly generating bindings when we
 // are presented with a program spanning multiple input files (and multiple entry points)

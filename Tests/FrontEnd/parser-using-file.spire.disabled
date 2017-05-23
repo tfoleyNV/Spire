@@ -1,3 +1,4 @@
+//TEST:SIMPLE:
 // test that we can include a file via `using`
 
 using "parser-using-file-a.spireh";
