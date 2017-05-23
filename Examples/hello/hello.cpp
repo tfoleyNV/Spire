@@ -64,12 +64,8 @@ ID3D11PixelShader*  dxPixelShader;
 // routine (defined later) to translate that into D3D11 shader bytecode.
 ID3DBlob* compileHLSLShader(
     char const* source,
+    char const* entryPointName,
     char const* dxProfileName);
-
-// We use a utility routine to print out any diagnostic (error/warning) output
-// from the Spire compiler.
-void emitSpireDiagnostics(
-    SpireCompileRequest* request);
 
 //
 // At initialization time, we are going to load and compile our Spire shader
@@ -77,7 +73,7 @@ void emitSpireDiagnostics(
 //
 HRESULT initialize( ID3D11Device* dxDevice )
 {
-#if 0
+#if 1
     //
     // First, we will load and compile our Spire source code.
     //
@@ -93,55 +89,41 @@ HRESULT initialize( ID3D11Device* dxDevice )
     // Instruct Spire to generate code as HLSL
     spSetCodeGenTarget(spireRequest, SPIRE_HLSL);
 
-    // Load a file of Spire source code, which defines our modules
-    spLoadModuleLibrary(spireContext, "hello.spire", spireSink);
+    int translationUnitIndex = spAddTranslationUnit(spireRequest, SPIRE_SOURCE_LANGUAGE_SPIRE, nullptr);
 
-    // Inspect any error messages that got reported...
-    emitSpireDiagnostics(spireSink);
+    spAddTranslationUnitSourceFile(spireRequest, translationUnitIndex, "hello.spire");
 
-    //
-    // Once the source Spire has been loaded, we can assemble the modules
-    // there to make one or more shaders. In our case, we really only
-    // have one shader that we will use, so this step is kind of redundant.
-    //
+    char const* vertexEntryPointName    = "vertexMain";
+    char const* fragmentEntryPointName  = "fragmentMain";
 
-    // Create a shader, which will initially be empty
-    char const* shaderName = "HelloShader";
-	SpireShader* spireShader = spCreateShaderFromSource(spireContext, R"(
-		template shader HelloShader(module0) targets StandardPipeline
-		{
-			using module0;
-		}
-	)");
+    char const* vertexProfileName   = "vs_4_0";
+    char const* fragmentProfileName = "ps_4_0";
 
-	SpireModule * helloModule = spFindModule(spireContext, "HelloModule");
+    spAddTranslationUnitEntryPoint(spireRequest, translationUnitIndex, vertexEntryPointName,   spFindProfile(spireSession, vertexProfileName));
+    spAddTranslationUnitEntryPoint(spireRequest, translationUnitIndex, fragmentEntryPointName, spFindProfile(spireSession, fragmentProfileName));
 
-    // Compile the constructed shader
-    SpireCompilationResult* spireResult = spCompileShader(spireContext, spireShader, &helloModule, 1, nullptr, spireSink);
+    int compileErr = spCompile(spireRequest);
+    if(auto diagnostics = spGetDiagnosticOutput(spireRequest))
+    {
+        OutputDebugStringA(diagnostics);
+        fprintf(stderr, "%s", diagnostics);
+    }
+    if(compileErr)
+    {
+        return E_FAIL;
+    }
 
-    // Inspect any error messages that got reported...
-    emitSpireDiagnostics(spireSink);
+    char const* translatedCode = spGetTranslationUnitSource(spireRequest, translationUnitIndex);
 
-    //
-    // Once we've compiled things successfully, we can extract the HLSL kernel
-    // code for our shader, and pass it on to the D3D API.
-    //
-
-    // TODO(tfoley): The implementation should allow `NULL` for the length
-    // output parameter.
-    int sourceCodeLength;
-
-    char const* vertexShaderCode = spGetShaderStageSource(spireResult, nullptr, "vs", &sourceCodeLength);
-    char const* fragmentShaderCode = spGetShaderStageSource(spireResult, nullptr, "fs", &sourceCodeLength);
 
     // TODO(tfoley): Query the required constant-buffer size
     int constantBufferSize = 16 * sizeof(float);
 
     // Compile the generated HLSL code
-    ID3DBlob* dxVertexShaderBlob = compileHLSLShader(vertexShaderCode, "vs_4_0");
+    ID3DBlob* dxVertexShaderBlob = compileHLSLShader(translatedCode, vertexEntryPointName, vertexProfileName);
     if(!dxVertexShaderBlob) return E_FAIL;
 
-    ID3DBlob* dxPixelShaderBlob = compileHLSLShader(fragmentShaderCode, "ps_4_0");
+    ID3DBlob* dxPixelShaderBlob = compileHLSLShader(translatedCode, fragmentEntryPointName, fragmentProfileName);
     if(!dxPixelShaderBlob) return E_FAIL;
 
     HRESULT hr = S_OK;
@@ -163,8 +145,8 @@ HRESULT initialize( ID3D11Device* dxDevice )
     // we have done the HLSL-to-bytecode compilation, because Spire
     // owns the memory allocation for the generated HLSL, and will
     // free it when we destroy the compilation result.
-    spDestroyCompilationResult(spireResult);
-    spDestroyCompilationContext(spireContext);
+    spDestroyCompileRequest(spireRequest);
+    spDestroySession(spireSession);
 
     // Input Assembler (IA)
 
@@ -223,40 +205,6 @@ HRESULT initialize( ID3D11Device* dxDevice )
     return S_OK;
 }
 
-void emitSpireDiagnostics(
-    SpireCompileRequest* request)
-{
-#if 0
-    int diagnosticCount = spGetDiagnosticCount(spireSink);
-    for(int jj = 0; jj < diagnosticCount; ++jj)
-    {
-        SpireDiagnostic diagnostic;
-        spGetDiagnosticByIndex(spireSink, jj, &diagnostic);
-
-        static const char* kSeverityNames[] =
-        {
-            "note",
-            "warning",
-            "error",
-            "fatal error",
-            "internal error",
-        };
-
-        static const int kBufferSize = 1024;
-        char buffer[kBufferSize];
-        snprintf(buffer, kBufferSize, "%s(%d:%d): %s %d: %s\n",
-            diagnostic.FileName,
-            diagnostic.Line,
-            diagnostic.Col,
-            kSeverityNames[diagnostic.severity],
-            diagnostic.ErrorId,
-            diagnostic.Message);
-
-        OutputDebugStringA(buffer);
-    }
-#endif
-}
-
 void renderFrame(ID3D11DeviceContext* dxContext)
 {
     // We update our constant buffer per-frame, just for the purposes
@@ -311,6 +259,7 @@ void finalize()
 //
 ID3DBlob* compileHLSLShader(
     char const* source,
+    char const* entryPointName,
     char const* dxProfileName )
 {
     // Rather than statically link against the `d3dcompile` library, we
@@ -356,7 +305,7 @@ ID3DBlob* compileHLSLShader(
         "spireGeneratedCode", // TODO: proper path for error messages
         nullptr,
         nullptr,
-        "main",
+        entryPointName,
         dxProfileName,
         flags,
         0,
@@ -584,7 +533,11 @@ int WINAPI WinMain(
 
     // Once we've done the general-purpose initialization, we
     // initialize anything specific to the "hello world" application
-    initialize( dxDevice );
+    hr = initialize( dxDevice );
+    if( FAILED(hr) )
+    {
+        exit(1);
+    }
 
     // Once initialization is all complete, we show the window...
     ShowWindow(windowHandle, showCommand);
