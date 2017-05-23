@@ -4,6 +4,9 @@
 
 #include <Spire.h>
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "external/stb/stb_image_write.h"
+
 // We will be rendering with Direct3D 11, so we need to include
 // the Windows and D3D11 headers
 
@@ -63,17 +66,146 @@ ID3D11PixelShader*  dxPixelShader;
 // The Spire compiler currently generates HLSL source, so we'll need a utility
 // routine (defined later) to translate that into D3D11 shader bytecode.
 ID3DBlob* compileHLSLShader(
+    char const* sourcePath,
     char const* source,
     char const* entryPointName,
     char const* dxProfileName);
 
-//
-// At initialization time, we are going to load and compile our Spire shader
-// code, and then create the D3D11 API objects we need for rendering.
-//
-HRESULT initialize( ID3D11Device* dxDevice )
+enum class InputLanguage
 {
-#if 1
+    Spire,
+    HLSL,
+    GLSL,
+};
+
+struct Options
+{
+    char const* appName = "render-test";
+    char const* sourcePath = nullptr;
+    char const* outputPath = nullptr;
+    InputLanguage inputLanguage = InputLanguage::Spire;
+};
+
+Options gOptions;
+
+void parseOptions(int* argc, char** argv)
+{
+    int argCount = *argc;
+    char const* const* argCursor = argv;
+    char const* const* argEnd = argCursor + argCount;
+
+    char const** writeCursor = (char const**) argv;
+
+    // first argument is the application name
+    if( argCursor != argEnd )
+    {
+        gOptions.appName = *argCursor++;
+    }
+
+    // now iterate over arguments to collect options
+    while(argCursor != argEnd)
+    {
+        char const* arg = *argCursor++;
+        if( arg[0] != '-' )
+        {
+            *writeCursor++ = arg;
+            continue;
+        }
+
+        if( strcmp(arg, "--") == 0 )
+        {
+            while(argCursor != argEnd)
+            {
+                char const* arg = *argCursor++;
+                *writeCursor++ = arg;
+            }
+            break;
+        }
+        else if( strcmp(arg, "-o") == 0 )
+        {
+            if( argCursor == argEnd )
+            {
+                fprintf(stderr, "expected argument for '%s' option\n", arg);
+                exit(1);
+            }
+            gOptions.outputPath = *argCursor++;
+        }
+        else if( strcmp(arg, "-hlsl") == 0 )
+        {
+            gOptions.inputLanguage = InputLanguage::HLSL;
+        }
+        else if( strcmp(arg, "-spire") == 0 )
+        {
+            gOptions.inputLanguage = InputLanguage::Spire;
+        }
+        else
+        {
+            fprintf(stderr, "unknown option '%s'\n", arg);
+            exit(1);
+        }
+    }
+    
+    // any arguments left over were positional arguments
+    argCount = (int)(writeCursor - argv);
+    argCursor = argv;
+    argEnd = argCursor + argCount;
+
+    // first positional argument is source shader path
+    if( argCursor != argEnd )
+    {
+        gOptions.sourcePath = *argCursor++;
+    }
+
+    // any remaining arguments represent an error
+    if(argCursor != argEnd)
+    {
+        fprintf(stderr, "unexpected arguments\n");
+        exit(1);
+    }
+
+    *argc = 0;
+}
+
+static char const* vertexEntryPointName    = "vertexMain";
+static char const* fragmentEntryPointName  = "fragmentMain";
+
+static char const* vertexProfileName   = "vs_4_0";
+static char const* fragmentProfileName = "ps_4_0";
+
+ID3DBlob* gVertexShaderBlob;
+ID3DBlob* gPixelShaderBlob;
+
+int gConstantBufferSize;
+
+// Initialization when using HLSL for shaders
+HRESULT initializeHLSLInner(ID3D11Device* dxDevice, char const* sourcePath, char const* sourceText)
+{
+    // Compile the generated HLSL code
+    gVertexShaderBlob = compileHLSLShader(sourcePath, sourceText, vertexEntryPointName, vertexProfileName);
+    if(!gVertexShaderBlob) return E_FAIL;
+
+    gPixelShaderBlob = compileHLSLShader(sourcePath, sourceText, fragmentEntryPointName, fragmentProfileName);
+    if(!gPixelShaderBlob) return E_FAIL;
+
+
+    return S_OK;
+}
+
+// Initialization when using HLSL for shaders
+HRESULT initializeHLSL(ID3D11Device* dxDevice, char const* sourceText)
+{
+    HRESULT hr = initializeHLSLInner(dxDevice, gOptions.sourcePath, sourceText);
+    if(FAILED(hr))
+        return hr;
+
+    // TODO: any reflection stuff to do here?
+
+    return S_OK;
+}
+
+// Initialization when using Spire for shaders
+HRESULT initializeSpire(ID3D11Device* dxDevice, char const* sourceText)
+{
     //
     // First, we will load and compile our Spire source code.
     //
@@ -91,13 +223,7 @@ HRESULT initialize( ID3D11Device* dxDevice )
 
     int translationUnitIndex = spAddTranslationUnit(spireRequest, SPIRE_SOURCE_LANGUAGE_SPIRE, nullptr);
 
-    spAddTranslationUnitSourceFile(spireRequest, translationUnitIndex, "hello.spire");
-
-    char const* vertexEntryPointName    = "vertexMain";
-    char const* fragmentEntryPointName  = "fragmentMain";
-
-    char const* vertexProfileName   = "vs_4_0";
-    char const* fragmentProfileName = "ps_4_0";
+    spAddTranslationUnitSourceString(spireRequest, translationUnitIndex, gOptions.sourcePath, sourceText);
 
     spAddTranslationUnitEntryPoint(spireRequest, translationUnitIndex, vertexEntryPointName,   spFindProfile(spireSession, vertexProfileName));
     spAddTranslationUnitEntryPoint(spireRequest, translationUnitIndex, fragmentEntryPointName, spFindProfile(spireSession, fragmentProfileName));
@@ -115,22 +241,77 @@ HRESULT initialize( ID3D11Device* dxDevice )
 
     char const* translatedCode = spGetTranslationUnitSource(spireRequest, translationUnitIndex);
 
-
-    // TODO(tfoley): Query the required constant-buffer size
-    int constantBufferSize = 16 * sizeof(float);
-
     // Compile the generated HLSL code
-    ID3DBlob* dxVertexShaderBlob = compileHLSLShader(translatedCode, vertexEntryPointName, vertexProfileName);
-    if(!dxVertexShaderBlob) return E_FAIL;
+    HRESULT hr = initializeHLSLInner(dxDevice, "spireGeneratedCode", translatedCode);
+    if(FAILED(hr))
+        return hr;
 
-    ID3DBlob* dxPixelShaderBlob = compileHLSLShader(translatedCode, fragmentEntryPointName, fragmentProfileName);
-    if(!dxPixelShaderBlob) return E_FAIL;
+    // We clean up the Spire compilation context and result *after*
+    // we have done the HLSL-to-bytecode compilation, because Spire
+    // owns the memory allocation for the generated HLSL, and will
+    // free it when we destroy the compilation result.
+    spDestroyCompileRequest(spireRequest);
+    spDestroySession(spireSession);
 
+    return S_OK;
+}
+
+//
+// At initialization time, we are going to load and compile our Spire shader
+// code, and then create the D3D11 API objects we need for rendering.
+//
+HRESULT initialize( ID3D11Device* dxDevice )
+{
     HRESULT hr = S_OK;
+
+    // Read in the source code
+    char const* sourcePath = gOptions.sourcePath;
+    FILE* sourceFile = fopen(sourcePath, "rb");
+    if( !sourceFile )
+    {
+        fprintf(stderr, "error: failed to open '%s' for reading\n", sourcePath);
+        exit(1);
+    }
+    fseek(sourceFile, 0, SEEK_END);
+    size_t sourceSize = ftell(sourceFile);
+    fseek(sourceFile, 0, SEEK_SET);
+    char* sourceText = (char*) malloc(sourceSize + 1);
+    if( !sourceText )
+    {
+        fprintf(stderr, "error: out of memory");
+        exit(1);
+    }
+    fread(sourceText, sourceSize, 1, sourceFile);
+    fclose(sourceFile);
+    sourceText[sourceSize] = 0;
+
+    switch( gOptions.inputLanguage )
+    {
+    case InputLanguage::HLSL:
+        hr = initializeHLSL(dxDevice, sourceText);
+        break;
+
+    case InputLanguage::Spire:
+        hr = initializeSpire(dxDevice, sourceText);
+        break;
+
+    default:
+        hr = E_FAIL;
+        break;
+    }
+    if( FAILED(hr) )
+    {
+        return hr;
+    }
+
+    // Do other initialization that doesn't depend on the source language.
+
+    // TODO(tfoley): use each API's reflection interface to query the constant-buffer size needed
+    gConstantBufferSize = 16 * sizeof(float);
 
 
     D3D11_BUFFER_DESC dxConstantBufferDesc = { 0 };
-    dxConstantBufferDesc.ByteWidth = constantBufferSize;
+    dxConstantBufferDesc.ByteWidth = gConstantBufferSize;
     dxConstantBufferDesc.Usage = D3D11_USAGE_DYNAMIC;
     dxConstantBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     dxConstantBufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
@@ -141,12 +322,6 @@ HRESULT initialize( ID3D11Device* dxDevice )
         &dxConstantBuffer);
     if(FAILED(hr)) return hr;
 
-    // We clean up the Spire compilation context and result *after*
-    // we have done the HLSL-to-bytecode compilation, because Spire
-    // owns the memory allocation for the generated HLSL, and will
-    // free it when we destroy the compilation result.
-    spDestroyCompileRequest(spireRequest);
-    spDestroySession(spireSession);
 
     // Input Assembler (IA)
 
@@ -162,8 +337,8 @@ HRESULT initialize( ID3D11Device* dxDevice )
     hr = dxDevice->CreateInputLayout(
         &dxInputElements[0],
         2,
-        dxVertexShaderBlob->GetBufferPointer(),
-        dxVertexShaderBlob->GetBufferSize(),
+        gVertexShaderBlob->GetBufferPointer(),
+        gVertexShaderBlob->GetBufferSize(),
         &dxInputLayout);
     if(FAILED(hr)) return hr;
 
@@ -184,23 +359,22 @@ HRESULT initialize( ID3D11Device* dxDevice )
     // Vertex Shader (VS)
 
     hr = dxDevice->CreateVertexShader(
-        dxVertexShaderBlob->GetBufferPointer(),
-        dxVertexShaderBlob->GetBufferSize(),
+        gVertexShaderBlob->GetBufferPointer(),
+        gVertexShaderBlob->GetBufferSize(),
         NULL,
         &dxVertexShader);
-    dxVertexShaderBlob->Release();
+    gVertexShaderBlob->Release();
     if(FAILED(hr)) return hr;
 
     // Pixel Shader (PS)
 
     hr = dxDevice->CreatePixelShader(
-        dxPixelShaderBlob->GetBufferPointer(),
-        dxPixelShaderBlob->GetBufferSize(),
+        gPixelShaderBlob->GetBufferPointer(),
+        gPixelShaderBlob->GetBufferSize(),
         NULL,
         &dxPixelShader);
-    dxPixelShaderBlob->Release();
+    gPixelShaderBlob->Release();
     if(FAILED(hr)) return hr;
-#endif
 
     return S_OK;
 }
@@ -258,6 +432,7 @@ void finalize()
 // Definition of the HLSL-to-bytecode compilation logic.
 //
 ID3DBlob* compileHLSLShader(
+    char const* sourcePath,
     char const* source,
     char const* entryPointName,
     char const* dxProfileName )
@@ -302,7 +477,7 @@ ID3DBlob* compileHLSLShader(
     HRESULT hr = D3DCompile_(
         source,
         strlen(source),
-        "spireGeneratedCode", // TODO: proper path for error messages
+        sourcePath,
         nullptr,
         nullptr,
         entryPointName,
@@ -350,18 +525,85 @@ static LRESULT CALLBACK windowProc(
     return DefWindowProcW(windowHandle, message, wParam, lParam);
 }
 
-//
-// Our `WinMain` handles the basic task of getting a window and rendering
-// context up and running. There should be nothing suprising or interesting
-// here.
+// Capture a texture to a file
+
+static HRESULT captureTextureToFile(
+    ID3D11Device*           dxDevice,
+    ID3D11DeviceContext*    dxContext,
+    ID3D11Texture2D*        dxTexture,
+    char const*             outputPath)
+{
+    if(!dxContext) return E_INVALIDARG;
+    if(!dxTexture) return E_INVALIDARG;
+
+    D3D11_TEXTURE2D_DESC dxTextureDesc;
+    dxTexture->GetDesc(&dxTextureDesc);
+
+    // Don't bother supporing MSAA for right now
+    if(dxTextureDesc.SampleDesc.Count > 1)
+        return E_INVALIDARG;
+
+    HRESULT hr = S_OK;
+    ID3D11Texture2D* dxStagingTexture = nullptr;
+
+    if( dxTextureDesc.Usage == D3D11_USAGE_STAGING && (dxTextureDesc.CPUAccessFlags & D3D11_CPU_ACCESS_READ) )
+    {
+        dxStagingTexture = dxTexture;
+        dxStagingTexture->AddRef();
+    }
+    else
+    {
+        // Modify the descriptor to give us a staging texture
+        dxTextureDesc.BindFlags = 0;
+        dxTextureDesc.MiscFlags &= D3D11_RESOURCE_MISC_TEXTURECUBE;
+        dxTextureDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        dxTextureDesc.Usage = D3D11_USAGE_STAGING;
+
+        hr = dxDevice->CreateTexture2D(&dxTextureDesc, 0, &dxStagingTexture);
+        if(FAILED(hr))
+            return hr;
+    
+        dxContext->CopyResource(dxStagingTexture, dxTexture);
+    }
+
+    // Now just read back texels from the staging textures
+
+    D3D11_MAPPED_SUBRESOURCE dxMappedResource;
+    hr = dxContext->Map(dxStagingTexture, 0, D3D11_MAP_READ, 0, &dxMappedResource);
+    if(FAILED(hr))
+        return hr;
+
+    int stbResult = stbi_write_png(
+        outputPath,
+        dxTextureDesc.Width,
+        dxTextureDesc.Height,
+        4,
+        dxMappedResource.pData,
+        dxMappedResource.RowPitch);
+    if( !stbResult )
+    {
+        return E_UNEXPECTED;
+    }
+
+    dxContext->Unmap(dxStagingTexture, 0);
+
+    dxStagingTexture->Release();
+
+    // now we need to write the texels to a file...
+}
+
 //
 
-int WINAPI WinMain(
-    HINSTANCE instance,
-    HINSTANCE /* prevInstance */,
-    LPSTR     /* commandLine */,
-    int       showCommand)
+int main(
+    int argc,
+    char**  argv)
 {
+    // Parse command-line options
+    parseOptions(&argc, argv);
+
+    HINSTANCE instance = GetModuleHandleA(0);
+    int showCommand = SW_SHOW;
+
     // First we register a window class.
 
     WNDCLASSEXW windowClassDesc;
@@ -569,6 +811,24 @@ int WINAPI WinMain(
                 kClearColor);
 
             renderFrame( dxImmediateContext );
+
+
+
+            // If we are in a mode where output is requested, we need to snapshot the back buffer here
+            if( gOptions.outputPath )
+            {
+                hr = captureTextureToFile(
+                    dxDevice,
+                    dxImmediateContext,
+                    dxBackBufferTexture,
+                    gOptions.outputPath);
+                if( FAILED(hr) )
+                {
+                    fprintf(stderr, "error: could not capture screenshot to '%s'\n", gOptions.outputPath);
+                    exit(1);
+                }
+                return 0;
+            }
 
             dxSwapChain->Present(0, 0);
         }

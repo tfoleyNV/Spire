@@ -7,6 +7,9 @@ using namespace CoreLib::IO;
 
 #include "os.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "external/stb/stb_image.h"
+
 
 #ifdef _WIN32
 #define SPIRE_TEST_SUPPORT_HLSL 1
@@ -14,6 +17,7 @@ using namespace CoreLib::IO;
 #endif
 
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -582,6 +586,149 @@ TestResult runHLSLComparisonTest(TestInput& input)
 }
 #endif
 
+TestResult doRenderComparisonTestRun(TestInput& input, char const* langOption, char const* outputKind, String* outOutput)
+{
+    auto filePath = input.filePath;
+
+    OSProcessSpawner spawner;
+
+    spawner.pushExecutableName(String(options.binDir) + "render-test.exe");
+    spawner.pushArgument(filePath);
+
+    for( auto arg : input.testOptions->args )
+    {
+        spawner.pushArgument(arg);
+    }
+
+    spawner.pushArgument(langOption);
+    spawner.pushArgument("-o");
+    spawner.pushArgument(filePath + outputKind + ".png");
+
+    if (spawnAndWait(filePath, spawner) != kOSError_None)
+    {
+        return kTestResult_Fail;
+    }
+
+    OSProcessSpawner::ResultCode resultCode = spawner.getResultCode();
+
+    String standardOuptut = spawner.getStandardOutput();
+    String standardError = spawner.getStandardError();
+
+    // We construct a single output string that captures the results
+    StringBuilder outputBuilder;
+    outputBuilder.Append("result code = ");
+    outputBuilder.Append(resultCode);
+    outputBuilder.Append("\nstandard error = {\n");
+    outputBuilder.Append(standardError);
+    outputBuilder.Append("}\nstandard output = {\n");
+    outputBuilder.Append(standardOuptut);
+    outputBuilder.Append("}\n");
+
+    String outputPath = filePath + outputKind;
+    String output = outputBuilder.ProduceString();
+
+    *outOutput = output;
+
+    return kTestResult_Pass;
+}
+
+TestResult doImageComparison(String const& filePath)
+{
+    // Allow a difference in the low bits of the 8-bit result, just to play it safe
+    static const int kAbsoluteDiffCutoff = 2;
+
+    // Allow a relatie 1% difference
+    static const float kRelativeDiffCutoff = 0.01f;
+
+    String expectedPath = filePath + ".expected.png";
+    String actualPath = filePath + ".actual.png";
+
+    int expectedX,  expectedY,  expectedN;
+    int actualX,    actualY,    actualN;
+
+
+    unsigned char* expectedData = stbi_load(expectedPath.begin(), &expectedX, &expectedY, &expectedN, 0);
+    unsigned char* actualData = stbi_load(actualPath.begin(), &actualX, &actualY, &actualN, 0);
+
+    if(!expectedData)   return kTestResult_Fail;
+    if(!actualData)     return kTestResult_Fail;
+
+    if(expectedX != actualX)    return kTestResult_Fail;
+    if(expectedY != actualY)    return kTestResult_Fail;
+    if(expectedN != actualN)    return kTestResult_Fail;
+
+    unsigned char* expectedCursor = expectedData;
+    unsigned char* actualCursor = actualData;
+
+    for( int y = 0; y < actualY; ++y )
+    for( int x = 0; x < actualX; ++x )
+    for( int n = 0; n < actualN; ++n )
+    {
+        int expectedVal = *expectedCursor++;
+        int actualVal = *actualCursor++;
+
+        int absoluteDiff = actualVal - expectedVal;
+        if(absoluteDiff < 0) absoluteDiff = -absoluteDiff;
+
+        if( absoluteDiff < kAbsoluteDiffCutoff )
+        {
+            // There might be a difference, but we'll consider it to be inside tolerance
+            continue;
+        }
+
+        if( expectedVal != 0 )
+        {
+            float relativeDiff = fabsf(float(actualVal) - float(expectedVal)) / float(expectedVal);
+
+            if( relativeDiff < kRelativeDiffCutoff )
+            {
+                // relative difference was small enough
+                continue;
+            }
+        }
+
+        // TODO: may need to do some local search sorts of things, to deal with
+        // cases where vertex shader results lead to rendering that is off
+        // by one pixel...
+
+        // There was a difference we couldn't excuse!
+        return kTestResult_Fail;
+    }
+
+    return kTestResult_Pass;
+}
+
+TestResult runHLSLRenderComparisonTest(TestInput& input)
+{
+    auto filePath = input.filePath;
+
+    String expectedOutput;
+    String actualOutput;
+
+    TestResult hlslResult   =  doRenderComparisonTestRun(input, "-hlsl",  ".expected",    &expectedOutput);
+    TestResult spireResult  =  doRenderComparisonTestRun(input, "-spire", ".actual",      &actualOutput);
+
+    CoreLib::IO::File::WriteAllText(filePath + ".expected", expectedOutput);
+    CoreLib::IO::File::WriteAllText(filePath + ".actual",   actualOutput);
+
+    if( hlslResult  == kTestResult_Fail )   return kTestResult_Fail;
+    if( spireResult == kTestResult_Fail )   return kTestResult_Fail;
+
+    if (actualOutput != expectedOutput)
+    {
+        return kTestResult_Fail;
+    }
+
+    // Next do an image comparison on the expected output images!
+
+    TestResult imageCompareResult = doImageComparison(filePath);
+    if(imageCompareResult != kTestResult_Pass)
+        return imageCompareResult;
+
+    return kTestResult_Pass;
+}
+
+
 TestResult runTest(
     String const&       filePath,
     TestOptions const&  testOptions,
@@ -595,6 +742,7 @@ TestResult runTest(
     } kTestCommands[] = {
         { "SIMPLE", &runSimpleTest },
         { "COMPARE_HLSL", &runHLSLComparisonTest },
+        { "COMPARE_HLSL_RENDER", &runHLSLRenderComparisonTest },
         { nullptr, nullptr },
     };
 
