@@ -22,6 +22,9 @@ struct Options
 {
     char const* appName = "SpireTestTool";
 
+    // Directory to use when looking for binaries to run
+    char const* binDir = "";
+
     // only run test cases with names that have this prefix
     char const* testPrefix = nullptr;
 
@@ -65,6 +68,15 @@ void parseOptions(int* argc, char** argv)
                 *writeCursor++ = arg;
             }
             break;
+        }
+        if( strcmp(arg, "--bindir") == 0 )
+        {
+            if( argCursor == argEnd )
+            {
+                fprintf(stderr, "error: expected operand for '%s'\n", arg);
+                exit(1);
+            }
+            options.binDir = *argCursor++;
         }
         else if( strcmp(arg, "-v") == 0 )
         {
@@ -256,7 +268,7 @@ TestResult runTestImpl(
 
     OSProcessSpawner spawner;
 
-    spawner.pushExecutableName("Source/Debug/SpireCompiler.exe");
+    spawner.pushExecutableName(String(options.binDir) + "SpireCompiler.exe");
     spawner.pushArgument(filePath);
 
     if(gatherOptionsFromTestFile(filePath, &spawner) == kTestResult_Ignored)
@@ -311,7 +323,7 @@ TestResult generateHLSLBaseline(
     String	filePath)
 {
     OSProcessSpawner spawner;
-    spawner.pushExecutableName("Source/Debug/SpireCompiler.exe");
+    spawner.pushExecutableName(String(options.binDir) + "SpireCompiler.exe");
     spawner.pushArgument(filePath);
 
     if(gatherOptionsFromTestFile(filePath, &spawner) == kTestResult_Ignored)
@@ -356,7 +368,7 @@ TestResult runHLSLTestImpl(
 
     OSProcessSpawner spawner;
 
-    spawner.pushExecutableName("Source/Debug/SpireCompiler.exe");
+    spawner.pushExecutableName(String(options.binDir) + "SpireCompiler.exe");
     spawner.pushArgument(filePath);
 
     if(gatherOptionsFromTestFile(filePath, &spawner) == kTestResult_Ignored)
