@@ -1,4 +1,5 @@
 #version 450
+//TEST:COMPARE_GLSL:
 
 layout (binding = 0) uniform sampler2D fontSampler;
 

@@ -1,4 +1,5 @@
 #version 450
+//TEST:COMPARE_GLSL:
 
 layout (location = 0) in vec3 inWorldPos;
 layout (location = 1) in vec3 inNormal;

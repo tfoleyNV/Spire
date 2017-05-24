@@ -1,3 +1,4 @@
+//TEST:COMPARE_GLSL:
 // Shader is looseley based on the ray tracing coding session by Inigo Quilez (www.iquilezles.org)
 
 #version 450

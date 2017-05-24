@@ -1,3 +1,4 @@
+//TEST:COMPARE_GLSL:
 // Generates an irradiance cube from an environment map using convolution
 
 #version 450

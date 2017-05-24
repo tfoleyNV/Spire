@@ -1,3 +1,4 @@
+//TEST:COMPARE_GLSL:
 #version 450
 
 #extension GL_ARB_sparse_texture2 : enable

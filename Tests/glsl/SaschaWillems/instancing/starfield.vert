@@ -1,4 +1,5 @@
 #version 450
+//TEST:COMPARE_GLSL:
 
 layout (location = 0) out vec3 outUVW;
 

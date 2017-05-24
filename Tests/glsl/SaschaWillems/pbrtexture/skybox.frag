@@ -1,3 +1,4 @@
+//TEST:COMPARE_GLSL:
 #version 450
 
 layout (binding = 2) uniform samplerCube samplerEnv;
