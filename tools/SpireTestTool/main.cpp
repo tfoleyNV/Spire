@@ -586,6 +586,96 @@ TestResult runHLSLComparisonTest(TestInput& input)
 }
 #endif
 
+TestResult doGLSLComparisonTestRun(
+    TestInput& input,
+    char const* langDefine,
+    char const* passThrough,
+    char const* outputKind,
+    String* outOutput)
+{
+    auto filePath = input.filePath;
+
+    OSProcessSpawner spawner;
+
+    spawner.pushExecutableName(String(options.binDir) + "SpireCompiler.exe");
+    spawner.pushArgument(filePath);
+
+    if( langDefine )
+    {
+        spawner.pushArgument("-D");
+        spawner.pushArgument(langDefine);
+    }
+
+    if( passThrough )
+    {
+        spawner.pushArgument("-pass-through");
+        spawner.pushArgument(passThrough);
+    }
+
+    spawner.pushArgument("-no-checking");
+
+    spawner.pushArgument("-target");
+    spawner.pushArgument("spirv-assembly");
+
+    for( auto arg : input.testOptions->args )
+    {
+        spawner.pushArgument(arg);
+    }
+
+    if (spawnAndWait(filePath, spawner) != kOSError_None)
+    {
+        return kTestResult_Fail;
+    }
+
+    OSProcessSpawner::ResultCode resultCode = spawner.getResultCode();
+
+    String standardOuptut = spawner.getStandardOutput();
+    String standardError = spawner.getStandardError();
+
+    // We construct a single output string that captures the results
+    StringBuilder outputBuilder;
+    outputBuilder.Append("result code = ");
+    outputBuilder.Append(resultCode);
+    outputBuilder.Append("\nstandard error = {\n");
+    outputBuilder.Append(standardError);
+    outputBuilder.Append("}\nstandard output = {\n");
+    outputBuilder.Append(standardOuptut);
+    outputBuilder.Append("}\n");
+
+    String outputPath = filePath + outputKind;
+    String output = outputBuilder.ProduceString();
+
+    *outOutput = output;
+
+    return kTestResult_Pass;
+}
+
+TestResult runGLSLComparisonTest(TestInput& input)
+{
+    auto filePath = input.filePath;
+
+    String expectedOutput;
+    String actualOutput;
+
+    TestResult hlslResult   =  doGLSLComparisonTestRun(input, "__GLSL__",  "glslang", ".expected",    &expectedOutput);
+    TestResult spireResult  =  doGLSLComparisonTestRun(input, "__SPIRE__", nullptr,   ".actual",      &actualOutput);
+
+    CoreLib::IO::File::WriteAllText(filePath + ".expected", expectedOutput);
+    CoreLib::IO::File::WriteAllText(filePath + ".actual",   actualOutput);
+
+    if( hlslResult  == kTestResult_Fail )   return kTestResult_Fail;
+    if( spireResult == kTestResult_Fail )   return kTestResult_Fail;
+
+    if (actualOutput != expectedOutput)
+    {
+        return kTestResult_Fail;
+    }
+
+    return kTestResult_Pass;
+}
+
+
+
 TestResult doRenderComparisonTestRun(TestInput& input, char const* langOption, char const* outputKind, String* outOutput)
 {
     auto filePath = input.filePath;
@@ -743,6 +833,7 @@ TestResult runTest(
         { "SIMPLE", &runSimpleTest },
         { "COMPARE_HLSL", &runHLSLComparisonTest },
         { "COMPARE_HLSL_RENDER", &runHLSLRenderComparisonTest },
+        { "COMPARE_GLSL", &runGLSLComparisonTest },
         { nullptr, nullptr },
     };
 
@@ -832,7 +923,18 @@ static bool endsWithAllowedExtension(
     TestContext*    context,
     String          filePath)
 {
-    char const* allowedExtensions[] = { ".spire", ".hlsl", ".glsl", ".fx", nullptr };
+    char const* allowedExtensions[] = {
+        ".spire",
+        ".hlsl",
+        ".fx",
+        ".glsl",
+        ".vert",
+        ".frag",
+        ".geom",
+        ".tesc",
+        ".tese",
+        ".comp",
+        nullptr };
 
     for( auto ii = allowedExtensions; *ii; ++ii )
     {

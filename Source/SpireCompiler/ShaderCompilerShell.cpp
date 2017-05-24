@@ -39,6 +39,16 @@ struct OptionsParser
     SpireSession*           session = nullptr;
     SpireCompileRequest*    compileRequest = nullptr;
 
+    struct RawTranslationUnit
+    {
+        SpireSourceLanguage sourceLanguage;
+        Profile             implicitProfile;
+        int                 translationUnitIndex;
+    };
+
+    // Collect translation units so that we can futz with them later
+    List<RawTranslationUnit> rawTranslationUnits;
+
     struct RawEntryPoint
     {
         String          name;
@@ -64,6 +74,24 @@ struct OptionsParser
 
     SpireCompileFlags flags = 0;
 
+    int addTranslationUnit(
+        SpireSourceLanguage language,
+        Profile             implicitProfile = SPIRE_PROFILE_UNKNOWN)
+    {
+        auto translationUnitIndex = spAddTranslationUnit(compileRequest, language, nullptr);
+
+        assert(translationUnitIndex == rawTranslationUnits.Count());
+
+        RawTranslationUnit rawTranslationUnit;
+        rawTranslationUnit.sourceLanguage = language;
+        rawTranslationUnit.implicitProfile = implicitProfile;
+        rawTranslationUnit.translationUnitIndex = translationUnitIndex;
+
+        rawTranslationUnits.Add(rawTranslationUnit);
+
+        return translationUnitIndex;
+    }
+
     void addInputSpirePath(
         String const& path)
     {
@@ -72,10 +100,7 @@ struct OptionsParser
         if( spireTranslationUnit == -1 )
         {
             translationUnitCount++;
-            spireTranslationUnit = spAddTranslationUnit(
-                compileRequest,
-                SPIRE_SOURCE_LANGUAGE_SPIRE,
-                nullptr);
+            spireTranslationUnit = addTranslationUnit(SPIRE_SOURCE_LANGUAGE_SPIRE);
         }
 
         spAddTranslationUnitSourceFile(
@@ -89,13 +114,11 @@ struct OptionsParser
 
     void addInputForeignShaderPath(
         String const&           path,
-        SpireSourceLanguage     language)
+        SpireSourceLanguage     language,
+        Profile                 implicitProfile = SPIRE_PROFILE_UNKNOWN)
     {
         translationUnitCount++;
-        currentTranslationUnitIndex = spAddTranslationUnit(
-                compileRequest,
-                language,
-                nullptr);
+        currentTranslationUnitIndex = addTranslationUnit(language, implicitProfile);
 
         spAddTranslationUnitSourceFile(
             compileRequest,
@@ -117,16 +140,27 @@ struct OptionsParser
             // Plain old spire code
             addInputSpirePath(path);
         }
-        else if( path.EndsWith(".hlsl") )
-        {
-            // HLSL for rewriting
-            addInputForeignShaderPath(path, SPIRE_SOURCE_LANGUAGE_HLSL);
-        }
-        else if( path.EndsWith(".glsl") )
-        {
-            // HLSL for rewriting
-            addInputForeignShaderPath(path, SPIRE_SOURCE_LANGUAGE_GLSL);
-        }
+#define CASE(EXT, LANG) \
+        else if(path.EndsWith(EXT)) do { addInputForeignShaderPath(path, SPIRE_SOURCE_LANGUAGE_##LANG); } while(0)
+
+        CASE(".hlsl", HLSL);
+        CASE(".fx",   HLSL);
+
+        CASE(".glsl", GLSL);
+#undef CASE
+
+#define CASE(EXT, LANG, PROFILE) \
+        else if(path.EndsWith(EXT)) do { addInputForeignShaderPath(path, SPIRE_SOURCE_LANGUAGE_##LANG, SpireProfileID(Profile::PROFILE)); } while(0)
+        // TODO: need a way to pass along stage/profile and entry-point info for these cases...
+        CASE(".vert", GLSL, GLSL_Vertex);
+        CASE(".frag", GLSL, GLSL_Fragment);
+        CASE(".geom", GLSL, GLSL_Geometry);
+        CASE(".tesc", GLSL, GLSL_TessControl);
+        CASE(".tese", GLSL, GLSL_TessEval);
+        CASE(".comp", GLSL, GLSL_Compute);
+
+#undef CASE
+
         else
         {
             fprintf(stderr, "error: can't deduce language for input file '%S'\n", inPath);
@@ -190,6 +224,14 @@ struct OptionsParser
                     {
                         target = SPIRE_DXBC_ASM;
                     }
+                #define CASE(NAME, TARGET)  \
+                    else if(name == #NAME) do { target = SPIRE_##TARGET; } while(0)
+
+                    CASE(spirv, SPIRV);
+                    CASE(spirv-assembly, SPIRV_ASM);
+
+                #undef CASE
+
                     else if (name == "reflection-json")
                     {
                         target = SPIRE_REFLECTION_JSON;
@@ -257,6 +299,7 @@ struct OptionsParser
                     String name = tryReadCommandLineArgument(arg, &argCursor, argEnd);
                     SpirePassThrough passThrough = SPIRE_PASS_THROUGH_NONE;
                     if (name == "fxc") { passThrough = SPIRE_PASS_THROUGH_FXC; }
+                    if (name == "glslang") { passThrough = SPIRE_PASS_THROUGH_GLSLANG; }
                     else
                     {
                         fprintf(stderr, "unknown pass-through target '%S'\n", name.ToWString());
@@ -370,11 +413,60 @@ struct OptionsParser
             exit(1);
         }
 
+        // If the user didn't list any explicit entry points, then we can
+        // try to infer one from the type of input file
+        if(rawEntryPoints.Count() == 0)
+        {
+            for(auto rawTranslationUnit : rawTranslationUnits)
+            {
+                // Dont' add implicit entry points when compiling from Spire files,
+                // since Spire doesn't require entry points to be named on the
+                // command line.
+                if(rawTranslationUnit.sourceLanguage == SPIRE_SOURCE_LANGUAGE_SPIRE )
+                    continue;
+
+                // Use a default entry point name
+                char const* entryPointName = "main";
+
+                // Try to determine a profile
+                Profile entryPointProfile = SPIRE_PROFILE_UNKNOWN;
+
+                // If a profile was specified on the command line, then we use it
+                if(currentProfileID != SPIRE_PROFILE_UNKNOWN)
+                {
+                    entryPointProfile = currentProfileID;
+                }
+                // Otherwise, check if the translation unit implied a profile
+                // (e.g., a `*.vert` file implies the `GLSL_Vertex` profile)
+                else if(rawTranslationUnit.implicitProfile != Profile::Unknown)
+                {
+                    entryPointProfile = rawTranslationUnit.implicitProfile;
+                }
+
+                RawEntryPoint entry;
+                entry.name = entryPointName;
+                entry.translationUnitIndex = rawTranslationUnit.translationUnitIndex;
+                entry.profileID = entryPointProfile.raw;
+                rawEntryPoints.Add(entry);
+            }
+        }
+
         // For any entry points that were given without an explicit profile, we can now apply
         // the profile that was given to them.
         if( rawEntryPoints.Count() != 0 )
         {
-            if( currentProfileID == SPIRE_PROFILE_UNKNOWN )
+            bool anyEntryPointWithoutProfile = false;
+            for( auto& entryPoint : rawEntryPoints )
+            {
+                // Skip entry points that are already associated with a translation unit...
+                if( entryPoint.profileID != SPIRE_PROFILE_UNKNOWN )
+                    continue;
+
+                anyEntryPointWithoutProfile = true;
+                break;
+            }
+
+            if( anyEntryPointWithoutProfile )
             {
                 fprintf(stderr, "error: no profile specified; use the '-profile <profile name>' option");
                 exit(1);

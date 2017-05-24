@@ -78,6 +78,7 @@ extern "C"
         SPIRE_GLSL_VULKAN_ONE_DESC,
         SPIRE_HLSL,
         SPIRE_SPIRV,
+        SPIRE_SPIRV_ASM,
         SPIRE_DXBC,
         SPIRE_DXBC_ASM,
         SPIRE_REFLECTION_JSON,

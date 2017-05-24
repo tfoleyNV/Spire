@@ -45,6 +45,7 @@ namespace Spire
             GLSL_Vulkan_OneDesc = SPIRE_GLSL_VULKAN_ONE_DESC,
             HLSL                = SPIRE_HLSL,
             SPIRV               = SPIRE_SPIRV,
+            SPIRVAssembly       = SPIRE_SPIRV_ASM,
             DXBytecode          = SPIRE_DXBC,
             DXBytecodeAssembly  = SPIRE_DXBC_ASM,
             ReflectionJSON      = SPIRE_REFLECTION_JSON,

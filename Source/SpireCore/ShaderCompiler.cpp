@@ -16,6 +16,10 @@
 #include "Reflection.h"
 #include "Emit.h"
 
+// Utilities for pass-through modes
+#include "../../tools/glslang/glslang.h"
+
+
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -88,6 +92,21 @@ namespace Spire
 
 
             String EmitHLSL(ExtraContext& context)
+            {
+                if (context.getOptions().passThrough != PassThroughMode::None)
+                {
+                    return context.sourceText;
+                }
+                else
+                {
+                    // TODO(tfoley): probably need a way to customize the emit logic...
+                    return emitProgram(
+                        context.programSyntax.Ptr(),
+                        context.programLayout);
+                }
+            }
+
+            String emitGLSL(ExtraContext& context)
             {
                 if (context.getOptions().passThrough != PassThroughMode::None)
                 {
@@ -283,7 +302,86 @@ namespace Spire
                 }
                 return sb.ProduceString();
             }
+
+
+            HMODULE getGLSLCompilerDLL()
+            {
+                // TODO(tfoley): let user specify version of glslang DLL to use.
+                static HMODULE glslCompiler =  LoadLibraryA("glslang");
+                // TODO(tfoley): handle case where we can't find it gracefully
+                assert(glslCompiler);
+                return glslCompiler;
+            }
+
+
+            String emitSPIRVAssemblyForEntryPoint(
+                ExtraContext&				context,
+                EntryPointOption const&		entryPoint)
+            {
+                String rawGLSL = emitGLSL(context);
+
+                static glslang_CompileFunc glslang_compile = nullptr;
+                if (!glslang_compile)
+                {
+                    HMODULE glslCompiler = getGLSLCompilerDLL();
+                    assert(glslCompiler);
+
+                    glslang_compile = (glslang_CompileFunc)GetProcAddress(glslCompiler, "glslang_compile");
+                    assert(glslang_compile);
+                }
+
+                StringBuilder diagnosticBuilder;
+                StringBuilder outputBuilder;
+
+                auto outputFunc = [](char const* text, void* userData)
+                {
+                    *(StringBuilder*)userData << text;
+                };
+
+                glslang_CompileRequest request;
+                request.sourcePath = context.sourcePath.begin();
+                request.sourceText = rawGLSL.begin();
+                request.spireStage = (SpireStage) entryPoint.profile.GetStage();
+
+                request.diagnosticFunc = outputFunc;
+                request.diagnosticUserData = &diagnosticBuilder;
+
+                request.outputFunc = outputFunc;
+                request.outputUserData = &outputBuilder;
+
+                int err = glslang_compile(&request);
+
+                String diagnostics = diagnosticBuilder.ProduceString();
+                String output = outputBuilder.ProduceString();
+
+                if(err)
+                {
+                    OutputDebugStringA(diagnostics.Buffer());
+                    fprintf(stderr, "%s", diagnostics.Buffer());
+                    exit(1);
+                }
+
+                return output;
+            }
 #endif
+
+            String emitSPIRVAssembly(
+                ExtraContext&				context)
+            {
+                if(context.getTranslationUnitOptions().entryPoints.Count() == 0)
+                {
+                    // TODO(tfoley): need to write diagnostics into this whole thing...
+                    fprintf(stderr, "no entry point specified\n");
+                    return "";
+                }
+
+                StringBuilder sb;
+                for (auto entryPoint : context.getTranslationUnitOptions().entryPoints)
+                {
+                    sb << emitSPIRVAssemblyForEntryPoint(context, entryPoint);
+                }
+                return sb.ProduceString();
+            }
 
             TranslationUnitResult DoNewEmitLogic(ExtraContext& context)
             {
@@ -364,6 +462,16 @@ namespace Spire
                         // HACK(tfoley): just print it out since that is what people probably expect.
                         // TODO: need a way to control where output gets routed across all possible targets.
                         fprintf(stdout, "%s", hlslProgram.begin());
+                        return result;
+                    }
+                    break;
+
+                case CodeGenTarget::SPIRVAssembly:
+                    {
+                        String spirvAsm = emitSPIRVAssembly(context);
+
+                        // HACK(tfoley): same hack as for DXBC assembly
+                        fprintf(stdout, "%s", spirvAsm.begin());
                         return result;
                     }
                     break;

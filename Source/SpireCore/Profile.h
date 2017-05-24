@@ -52,6 +52,9 @@ namespace Spire
                 : raw(raw)
             {}
 
+            bool operator==(Profile const& other) const { return raw == other.raw; }
+            bool operator!=(Profile const& other) const { return raw != other.raw; }
+
             Stage GetStage() const { return Stage((uint32_t(raw) >> 16) & 0xFFFF); }
             ProfileVersion GetVersion() const { return ProfileVersion(uint32_t(raw) & 0xFFFF); }
 

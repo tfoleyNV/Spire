@@ -78,6 +78,8 @@ PROFILE_VERSION(DX_4_0_Level_9_3,	DX)
 PROFILE_VERSION(DX_4_1,				DX)
 PROFILE_VERSION(DX_5_0,				DX)
 
+PROFILE_VERSION(GLSL,               GLSL)
+
 
 // Specific profiles
 
@@ -101,6 +103,15 @@ PROFILE(DX_Vertex_4_0_Level_9_1,	vs_4_0_level_9_1,	Vertex,		DX_4_0_Level_9_1)
 PROFILE(DX_Vertex_4_0_Level_9_3,	vs_4_0_level_9_3,	Vertex,		DX_4_0_Level_9_3)
 PROFILE(DX_Vertex_4_1,				vs_4_1,				Vertex,		DX_4_1)
 PROFILE(DX_Vertex_5_0,				vs_5_0,				Vertex,		DX_5_0)
+
+//
+
+PROFILE(GLSL_Compute,               glsl_compute,       Compute,    GLSL)
+PROFILE(GLSL_Vertex,                glsl_vertex,        Vertex,     GLSL)
+PROFILE(GLSL_Fragment,              glsl_fragment,      Fragment,   GLSL)
+PROFILE(GLSL_Geometry,              glsl_geometry,      Geometry,   GLSL)
+PROFILE(GLSL_TessControl,           glsl_tess_control,  Hull,       GLSL)
+PROFILE(GLSL_TessEval,              glsl_tess_eval,     Domain,     GLSL)
 
 #undef LANGUAGE
 #undef LANGUAGE_ALIAS
