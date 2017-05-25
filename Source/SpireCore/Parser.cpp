@@ -842,6 +842,34 @@ namespace Spire
             }
         }
 
+        static void parseParameterList(
+            Parser*                     parser,
+            RefPtr<FunctionDeclBase>    decl)
+        {
+            parser->ReadToken(TokenType::LParent);
+
+            // Allow a declaration to use the keyword `void` for a parameter list,
+            // since that was required in ancient C, and continues to be supported
+            // in a bunc hof its derivatives even if it is a Bad Design Choice
+            //
+            // TODO: conditionalize this so we don't keep this around for "pure"
+            // Spire code
+            if( parser->LookAheadToken("void") && parser->LookAheadToken(TokenType::RParent, 1) )
+            {
+                parser->ReadToken("void");
+                parser->ReadToken(TokenType::RParent);
+                return;
+            }
+
+            while (!AdvanceIfMatch(parser, TokenType::RParent))
+            {
+                AddMember(decl, parser->ParseParameter());
+                if (AdvanceIf(parser, TokenType::RParent))
+                    break;
+                parser->ReadToken(TokenType::Comma);
+            }
+        }
+
         static void ParseFuncDeclHeader(
             Parser*                     parser,
             DeclaratorInfo const&       declaratorInfo,
@@ -854,14 +882,7 @@ namespace Spire
 
             decl->Name = declaratorInfo.nameToken;
             decl->ReturnType = TypeExp(declaratorInfo.typeSpec);
-            parser->ReadToken(TokenType::LParent);
-            while (!AdvanceIfMatch(parser, TokenType::RParent))
-            {
-                AddMember(decl, parser->ParseParameter());
-                if (AdvanceIf(parser, TokenType::RParent))
-                    break;
-                parser->ReadToken(TokenType::Comma);
-            }
+            parseParameterList(parser, decl);
             ParseOptSemantics(parser, decl.Ptr());
         }
 
@@ -1578,14 +1599,7 @@ namespace Spire
             parser->FillPosition(decl.Ptr());
             parser->ReadToken("__init");
 
-            parser->ReadToken(TokenType::LParent);
-            while (!AdvanceIfMatch(parser, TokenType::RParent))
-            {
-                AddMember(decl, parser->ParseParameter());
-                if (AdvanceIf(parser, TokenType::RParent))
-                    break;
-                parser->ReadToken(TokenType::Comma);
-            }
+            parseParameterList(parser, decl);
 
             if (AdvanceIf(parser, TokenType::Semicolon))
             {
