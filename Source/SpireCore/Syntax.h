@@ -3,6 +3,7 @@
 
 #include "../CoreLib/Basic.h"
 #include "Lexer.h"
+#include "Profile.h"
 #include "IL.h"
 
 #include "../../Spire.h"
@@ -54,23 +55,29 @@ namespace Spire
             FromStdlib = 1 << 16,
         };
 #endif
+
+        class SyntaxNodeBase : public RefObject
+        {
+        public:
+            CodePosition Position;
+        };
+
+
+
+
         //
         // Other modifiers may have more elaborate data, and so
         // are represented as heap-allocated objects, in a linked
         // list.
         //
-        class Modifier : public RefObject
+        class Modifier : public SyntaxNodeBase
         {
         public:
             // Next modifier in linked list of modifiers on same piece of syntax
             RefPtr<Modifier> next;
 
-            // Source code location where modifier was written
-            //
-            // TODO(tfoley): `Modifier` should probably extend `SyntaxNode` at some
-            // point, but I'm avoiding it for now because `SyntaxNode` has additional
-            // baggage I don't want to have to deal with.
-            CodePosition Position;
+            // The token that was used to name this modifier.
+            Token nameToken;
         };
 
 #define SIMPLE_MODIFIER(NAME) \
@@ -112,12 +119,34 @@ namespace Spire
         //
         class SharedModifiers : public Modifier {};
 
-        // A `layout` modifier
-        class LayoutModifier : public Modifier
+        // A GLSL `layout` modifier
+        class GLSLLayoutModifier : public Modifier
         {
         public:
-            String LayoutString;
+            struct Arg
+            {
+                Token keyToken;
+
+                // TODO: may want to accept a full expression here
+                Token valToken;
+            };
+
+            List<Arg> args;
         };
+
+        class SimpleModifier : public Modifier {};
+
+        class GLSLBufferModifier    : public SimpleModifier {};
+        class GLSLWriteOnlyModifier : public SimpleModifier {};
+        class GLSLReadOnlyModifier : public SimpleModifier {};
+
+        // Indicates that this is a variable declaration that corresponds to
+        // a parameter block declaration in the source program.
+        class ImplicitParameterBlockVariableModifier    : public Modifier {};
+
+        // Indicates that this is a type that corresponds to the element
+        // type of a parameter block declaration in the source program.
+        class ImplicitParameterBlockElementTypeModifier : public Modifier {};
 
         // An HLSL semantic
         class HLSLSemantic : public Modifier
@@ -150,11 +179,40 @@ namespace Spire
         {
         };
 
-        // A set of modifiers attached to a syntax node
-        struct Modifiers
+        // GLSL
+
+        // Directives that came in via the preprocessor, but
+        // that we need to keep around for later steps
+        class GLSLPreprocessorDirective : public Modifier
         {
-            // The first modifier in the linked list of heap-allocated modifiers
-            RefPtr<Modifier> first;
+        };
+
+        // A GLSL `#version` directive
+        class GLSLVersionDirective : public GLSLPreprocessorDirective
+        {
+        public:
+            // Token giving the version number to use
+            Token versionNumberToken;
+
+            // Optional token giving the sub-profile to be used
+            Token glslProfileToken;
+        };
+
+        // A GLSL `#extension` directive
+        class GLSLExtensionDirective : public GLSLPreprocessorDirective
+        {
+        public:
+            // Token giving the version number to use
+            Token extensionNameToken;
+
+            // Optional token giving the sub-profile to be used
+            Token dispositionToken;
+        };
+
+        class ParameterBlockReflectionName : public Modifier
+        {
+        public:
+            Token nameToken;
         };
 
         // Helper class for iterating over a list of heap-allocated modifiers
@@ -259,6 +317,27 @@ namespace Spire
 
             Modifier* modifiers;
         };
+
+        // A set of modifiers attached to a syntax node
+        struct Modifiers
+        {
+            // The first modifier in the linked list of heap-allocated modifiers
+            RefPtr<Modifier> first;
+
+            template<typename T>
+            FilteredModifierList<T> getModifiersOfType() { return FilteredModifierList<T>(first.Ptr()); }
+
+            // Find the first modifier of a given type, or return `nullptr` if none is found.
+            template<typename T>
+            T* findModifier()
+            {
+                return *getModifiersOfType<T>().begin();
+            }
+
+            template<typename T>
+            bool hasModifier() { return findModifier<T>() != nullptr; }
+        };
+
 
         enum class BaseType
         {
@@ -476,10 +555,9 @@ namespace Spire
             }
         };
 
-        class SyntaxNode : public RefObject
+        class SyntaxNode : public SyntaxNodeBase
         {
         public:
-            CodePosition Position;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) = 0;
         };
 
@@ -523,6 +601,10 @@ namespace Spire
             template<typename T>
             bool HasModifier() { return FindModifier<T>() != nullptr; }
         };
+
+        void addModifier(
+            RefPtr<ModifiableSyntaxNode>    syntax,
+            RefPtr<Modifier>                modifier);
 
 
         // An intermediate type to represent either a single declaration, or a group of declarations
@@ -763,7 +845,7 @@ namespace Spire
         };
 
 
-        class TextureType : public DeclRefType
+        class TextureTypeBase : public DeclRefType
         {
         public:
             // The type that results from fetching an element from this texture
@@ -813,11 +895,35 @@ namespace Spire
             SpireResourceShape getShape() const { return flavor & 0xFF; }
             SpireResourceAccess getAccess() const { return (flavor >> 8) & 0xFF; }
 
-            TextureType(
+            TextureTypeBase(
                 Flavor flavor,
                 RefPtr<ExpressionType> elementType)
                 : elementType(elementType)
                 , flavor(flavor)
+            {}
+        };
+
+        class TextureType : public TextureTypeBase
+        {
+        public:
+            TextureType(
+                Flavor flavor,
+                RefPtr<ExpressionType> elementType)
+                : TextureTypeBase(flavor, elementType)
+            {}
+
+            virtual RefPtr<Val> SubstituteImpl(Substitutions* subst, int* ioDiff) override;
+        };
+
+        // This is a base type for texture/sampler pairs,
+        // as they exist in, e.g., GLSL
+        class TextureSamplerType : public TextureTypeBase
+        {
+        public:
+            TextureSamplerType(
+                Flavor flavor,
+                RefPtr<ExpressionType> elementType)
+                : TextureTypeBase(flavor, elementType)
             {}
 
             virtual RefPtr<Val> SubstituteImpl(Substitutions* subst, int* ioDiff) override;
@@ -885,11 +991,26 @@ namespace Spire
         class HLSLLineStreamType : public HLSLStreamOutputType {};
         class HLSLTriangleStreamType : public HLSLStreamOutputType {};
 
+        // Base class for types used when desugaring parameter block
+        // declarations, includeing HLSL `cbuffer` or GLSL `uniform` blocks.
+        class ParameterBlockType : public PointerLikeType {};
+
+        class UniformParameterBlockType : public ParameterBlockType {};
+        class VaryingParameterBlockType : public ParameterBlockType {};
+
         // Type for HLSL `cbuffer` declarations, and `ConstantBuffer<T>`
-        class ConstantBufferType : public PointerLikeType {};
+        // ALso used for GLSL `uniform` blocks.
+        class ConstantBufferType : public UniformParameterBlockType {};
 
         // Type for HLSL `tbuffer` declarations, and `TextureBuffer<T>`
-        class TextureBufferType : public PointerLikeType {};
+        class TextureBufferType : public UniformParameterBlockType {};
+
+        // Type for GLSL `in` and `out` blocks
+        class GLSLInputParameterBlockType : public VaryingParameterBlockType {};
+        class GLSLOutputParameterBlockType : public VaryingParameterBlockType {};
+
+        // Type for GLLSL `buffer` blocks
+        class GLSLShaderStorageBufferType : public UniformParameterBlockType {};
 
         class ArrayExpressionType : public ExpressionType
         {
@@ -1604,12 +1725,29 @@ namespace Spire
             SPIRE_DECLARE_DECL_REF(FunctionSyntaxNode);
         };
 
+
+        struct Scope : public RefObject
+        {
+            // The parent of this scope (where lookup should go if nothing is found locally)
+            RefPtr<Scope>           parent;
+
+            // The next sibling of this scope (a peer for lookup)
+            RefPtr<Scope>           nextSibling;
+
+            // The container to use for lookup
+            //
+            // Note(tfoley): This is kept as an unowned pointer
+            // so that a scope can't keep parts of the AST alive,
+            // but the opposite it allowed.
+            ContainerDecl*          containerDecl;
+        };
+
         // Base class for expressions that will reference declarations
         class DeclRefExpr : public ExpressionSyntaxNode
         {
         public:
             // The scope in which to perform lookup
-            ContainerDecl* scope = nullptr;
+            RefPtr<Scope>   scope;
 
             // The declaration of the symbol being referenced
             DeclRef declRef;
@@ -1685,6 +1823,7 @@ namespace Spire
             {}
         };
 
+
         // Result of looking up a name in some lexical/semantic environment.
         // Can be used to enumerate all the declarations matching that name,
         // in the case where the result is overloaded.
@@ -1698,14 +1837,18 @@ namespace Spire
             // used at all, to avoid allocation.
             List<LookupResultItem> items;
 
-            ContainerDecl*	scope = nullptr;
-            ContainerDecl*	endScope = nullptr;
-            LookupMask		mask = LookupMask::All;
-
             // Was at least one result found?
             bool isValid() const { return item.declRef.GetDecl() != nullptr; }
 
             bool isOverloaded() const { return items.Count() > 1; }
+        };
+
+        struct LookupRequest
+        {
+            RefPtr<Scope>   scope       = nullptr;
+            RefPtr<Scope>   endScope    = nullptr;
+
+            LookupMask      mask        = LookupMask::All;
         };
 
         // An expression that references an overloaded set of declarations
@@ -1786,7 +1929,7 @@ namespace Spire
         {
         public:
             Operator Operator;
-            void SetOperator(ContainerDecl * scope, Spire::Compiler::Operator op);
+            void SetOperator(RefPtr<Scope> scope, Spire::Compiler::Operator op);
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
         };
 
@@ -2262,6 +2405,18 @@ namespace Spire
             virtual RefPtr<Val> SubstituteImpl(Substitutions* subst, int* ioDiff) override;
         };
 
+        // Declaration of a user-defined modifier
+        class ModifierDecl : public Decl
+        {
+        public:
+            // The name of the C++ class to instantiate
+            // (this is a reference to a class in the compiler source code,
+            // and not the user's source code)
+            Token classNameToken;
+
+            virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
+        };
+
         //
 
         class SyntaxVisitor : public Object
@@ -2269,7 +2424,14 @@ namespace Spire
         protected:
             DiagnosticSink * sink = nullptr;
             DiagnosticSink* getSink() { return sink; }
+
+            SourceLanguage sourceLanguage = SourceLanguage::Unknown;
         public:
+            void setSourceLanguage(SourceLanguage language)
+            {
+                sourceLanguage = language;
+            }
+
             SyntaxVisitor(DiagnosticSink * sink)
                 : sink(sink)
             {}
@@ -2539,6 +2701,9 @@ namespace Spire
             RefPtr<Decl>                decl,
             RefPtr<MagicTypeModifier>   modifier);
 
+        // Create an instance of a syntax class by name
+        SyntaxNodeBase* createInstanceOfSyntaxClassByName(
+            String const&   name);
 
     }
 }

@@ -764,12 +764,39 @@ typedef Texture2D texture2D;
 #line default
 )" };
 
+
 using namespace CoreLib::Basic;
 
 namespace Spire
 {
     namespace Compiler
     {
+        static String stdlibPath;
+
+        String getStdlibPath()
+        {
+            if(stdlibPath.Length() != 0)
+                return stdlibPath;
+
+            StringBuilder pathBuilder;
+            for( auto cc = __FILE__; *cc; ++cc )
+            {
+                switch( *cc )
+                {
+                case '\n':
+                case '\t':
+                case '\\':
+                    pathBuilder << "\\";
+                default:
+                    pathBuilder << *cc;
+                    break;
+                }
+            }
+            stdlibPath = pathBuilder.ProduceString();
+
+            return stdlibPath;
+        }
+
         String SpireStdLib::code;
 
         String SpireStdLib::GetCode()
@@ -790,25 +817,11 @@ namespace Spire
                 Operator::BitAnd, Operator::BitXor, Operator::BitOr,
                 Operator::And,
                 Operator::Or };
-            String floatTypes[] = { "float", "vec2", "vec3", "vec4" };
-            String intTypes[] = { "int", "ivec2", "ivec3", "ivec4" };
-            String uintTypes[] = { "uint", "uvec2", "uvec3", "uvec4" };
+            String floatTypes[] = { "float", "float2", "float3", "float4" };
+            String intTypes[] = { "int", "int2", "int3", "int4" };
+            String uintTypes[] = { "uint", "uint2", "uint3", "uint4" };
 
-            StringBuilder pathBuilder;
-            for( auto cc = __FILE__; *cc; ++cc )
-            {
-                switch( *cc )
-                {
-                case '\n':
-                case '\t':
-                case '\\':
-                    pathBuilder << "\\";
-                default:
-                    pathBuilder << *cc;
-                    break;
-                }
-            }
-            String path = pathBuilder.ProduceString();
+            String path = getStdlibPath();
 
 
 
@@ -909,18 +922,6 @@ namespace Spire
                 for (int cc = 2; cc <= 4; ++cc)
                 {
                     sb << "typedef matrix<" << kTypes[tt].name << "," << rr << "," << cc << "> " << kTypes[tt].name << rr << "x" << cc << ";\n";
-                }
-
-                // Declare GLSL aliases for HLSL types
-                for (int vv = 2; vv <= 4; ++vv)
-                {
-                    sb << "typedef " << kTypes[tt].name << vv << " " << kTypes[tt].glslPrefix << "vec" << vv << ";\n";
-                    sb << "typedef " << kTypes[tt].name << vv << "x" << vv << " " << kTypes[tt].glslPrefix << "mat" << vv << ";\n";
-                }
-                for (int rr = 2; rr <= 4; ++rr)
-                for (int cc = 2; cc <= 4; ++cc)
-                {
-                    sb << "typedef " << kTypes[tt].name << rr << "x" << cc << " " << kTypes[tt].glslPrefix << "mat" << rr << "x" << cc << ";\n";
                 }
             }
 
@@ -1176,6 +1177,7 @@ namespace Spire
             // Synthesize matrix-vector, vector-matrix, and matrix-matrix multiply operations
             // TODO(tfoley): just make these generic
 
+#if 0
             // matrix-vector
             for (int rr = 2; rr <= 4; ++rr)
             for (int kk = 2; kk <= 4; ++kk)
@@ -1203,8 +1205,9 @@ namespace Spire
                     << "float" << rr << "x" << kk << " left,"
                     << "float" << kk << "x" << cc << " right);\n";
             }
+#endif
 
-
+#if 0
             sb << "__intrinsic vec3 operator * (vec3, mat3);\n";
             sb << "__intrinsic vec3 operator * (mat3, vec3);\n";
 
@@ -1216,6 +1219,7 @@ namespace Spire
 
             sb << "__intrinsic bool operator && (bool, bool);\n";
             sb << "__intrinsic bool operator || (bool, bool);\n";
+#endif
 
             for (auto type : intTypes)
             {
@@ -1315,9 +1319,145 @@ namespace Spire
             return code;
         }
 
+
+        // GLSL-specific library code
+
+        String glslLibraryCode;
+
+        String getGLSLLibraryCode()
+        {
+            if(glslLibraryCode.Length() != 0)
+                return glslLibraryCode;
+
+            String path = getStdlibPath();
+
+            StringBuilder sb;
+
+#define RAW(TEXT)           \
+    EMIT_LINE_DIRECTIVE();  \
+    sb << TEXT;
+
+            static const struct {
+                char const* name;
+                char const* glslPrefix;
+            } kTypes[] =
+            {
+                {"float", ""},
+                {"int", "i"},
+                {"uint", "u"},
+                {"bool", "b"},
+            };
+            static const int kTypeCount = sizeof(kTypes) / sizeof(kTypes[0]);
+
+            for( int tt = 0; tt < kTypeCount; ++tt )
+            {
+                // Declare GLSL aliases for HLSL types
+                for (int vv = 2; vv <= 4; ++vv)
+                {
+                    sb << "typedef " << kTypes[tt].name << vv << " " << kTypes[tt].glslPrefix << "vec" << vv << ";\n";
+                    sb << "typedef " << kTypes[tt].name << vv << "x" << vv << " " << kTypes[tt].glslPrefix << "mat" << vv << ";\n";
+                }
+                for (int rr = 2; rr <= 4; ++rr)
+                for (int cc = 2; cc <= 4; ++cc)
+                {
+                    sb << "typedef " << kTypes[tt].name << rr << "x" << cc << " " << kTypes[tt].glslPrefix << "mat" << rr << "x" << cc << ";\n";
+                }
+            }
+
+            // TODO(tfoley): Need to handle `RW*` variants of texture types as well...
+            static const struct {
+                char const*			name;
+                TextureType::Shape	baseShape;
+                int					coordCount;
+            } kBaseTextureTypes[] = {
+                { "1D",		TextureType::Shape1D,	1 },
+                { "2D",		TextureType::Shape2D,	2 },
+                { "3D",		TextureType::Shape3D,	3 },
+                { "Cube",	TextureType::ShapeCube,	3 },
+            };
+            static const int kBaseTextureTypeCount = sizeof(kBaseTextureTypes) / sizeof(kBaseTextureTypes[0]);
+
+
+            static const struct {
+                char const*         name;
+                SpireResourceAccess access;
+            } kBaseTextureAccessLevels[] = {
+                { "",                   SPIRE_RESOURCE_ACCESS_READ },
+                { "RW",                 SPIRE_RESOURCE_ACCESS_READ_WRITE },
+                { "RasterizerOrdered",  SPIRE_RESOURCE_ACCESS_RASTER_ORDERED },
+            };
+            static const int kBaseTextureAccessLevelCount = sizeof(kBaseTextureAccessLevels) / sizeof(kBaseTextureAccessLevels[0]);
+
+            for (int tt = 0; tt < kBaseTextureTypeCount; ++tt)
+            {
+                char const* shapeName = kBaseTextureTypes[tt].name;
+                TextureType::Shape baseShape = kBaseTextureTypes[tt].baseShape;
+
+                for (int isArray = 0; isArray < 2; ++isArray)
+                {
+                    // Arrays of 3D textures aren't allowed
+                    if (isArray && baseShape == TextureType::Shape3D) continue;
+
+                    for (int isMultisample = 0; isMultisample < 2; ++isMultisample)
+                    {
+                        auto access = SPIRE_RESOURCE_ACCESS_READ;
+
+                        // TODO: any constraints to enforce on what gets to be multisampled?
+
+                        
+                        unsigned flavor = baseShape;
+                        if (isArray)		flavor |= TextureType::ArrayFlag;
+                        if (isMultisample)	flavor |= TextureType::MultisampleFlag;
+//                        if (isShadow)		flavor |= TextureType::ShadowFlag;
+
+                        flavor |= (access << 8);
+
+                        StringBuilder nameBuilder;
+                        nameBuilder << shapeName;
+                        if (isMultisample) nameBuilder << "MS";
+                        if (isArray) nameBuilder << "Array";
+                        auto name = nameBuilder.ProduceString();
+
+                        sb << "__generic<T> ";
+                        sb << "__magic_type(TextureSampler," << int(flavor) << ") struct ";
+                        sb << "__sampler" << name;
+                        sb << " {};\n";
+
+                        sb << "__generic<T> ";
+                        sb << "__magic_type(Texture," << int(flavor) << ") struct ";
+                        sb << "__texture" << name;
+                        sb << " {};\n";
+
+                        // TODO(tfoley): flesh this out for all the available prefixes
+
+                        sb << "typedef __sampler" << name << "<float4> sampler" << name << ";\n";
+                        sb << "typedef __texture" << name << "<float4> texture" << name << ";\n";
+                    }
+                }
+            }
+
+            sb << "__generic<T> __magic_type(GLSLInputParameterBlockType) struct __GLSLInputParameterBlock {};\n";
+            sb << "__generic<T> __magic_type(GLSLOutputParameterBlockType) struct __GLSLOutputParameterBlock {};\n";
+            sb << "__generic<T> __magic_type(GLSLShaderStorageBufferType) struct __GLSLShaderStorageBuffer {};\n";
+
+            // Define additional keywords
+            sb << "__modifier(GLSLBufferModifier)       buffer;\n";
+            sb << "__modifier(GLSLWriteOnlyModifier)    writeonly;\n";
+            sb << "__modifier(GLSLReadOnlyModifier)     readonly;\n";
+
+            glslLibraryCode = sb.ProduceString();
+            return glslLibraryCode;
+        }
+
+
+
+        //
+
         void SpireStdLib::Finalize()
         {
             code = nullptr;
+            stdlibPath = String();
+            glslLibraryCode = String();
         }
 
     }

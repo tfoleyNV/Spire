@@ -63,14 +63,19 @@ namespace Spire
         private:
             Dictionary<String, RefPtr<CodeGenBackend>> backends;
         public:
-            virtual CompileUnit Parse(CompileOptions& options, CompileResult & result, String source, String fileName, IncludeHandler* includeHandler, Dictionary<String,String> const& preprocesorDefinitions,
+#if 0
+            virtual CompileUnit Parse(
+                CompileOptions& options,
+                CompileResult & result, 
+                String source, String fileName, IncludeHandler* includeHandler, Dictionary<String,String> const& preprocesorDefinitions,
                 CompileUnit predefUnit) override
             {
-                auto tokens = PreprocessSource(source, fileName, result.GetErrorWriter(), includeHandler, preprocesorDefinitions);
+                auto tokens = preprocessSource(source, fileName, result.GetErrorWriter(), includeHandler, preprocesorDefinitions);
                 CompileUnit rs;
                 rs.SyntaxNode = ParseProgram(options, tokens, result.GetErrorWriter(), fileName, predefUnit.SyntaxNode.Ptr());
                 return rs;
             }
+#endif
 
             // Actual context for compilation... :(
             struct ExtraContext
@@ -102,7 +107,8 @@ namespace Spire
                     // TODO(tfoley): probably need a way to customize the emit logic...
                     return emitProgram(
                         context.programSyntax.Ptr(),
-                        context.programLayout);
+                        context.programLayout,
+                        CodeGenTarget::HLSL);
                 }
             }
 
@@ -117,7 +123,8 @@ namespace Spire
                     // TODO(tfoley): probably need a way to customize the emit logic...
                     return emitProgram(
                         context.programSyntax.Ptr(),
-                        context.programLayout);
+                        context.programLayout,
+                        CodeGenTarget::GLSL);
                 }
             }
 
@@ -530,6 +537,8 @@ namespace Spire
                 {
                     for( auto& translationUnit : collectionOfTranslationUnits->translationUnits )
                     {
+                        visitor->setSourceLanguage(translationUnit.options.sourceLanguage);
+
                         translationUnit.SyntaxNode->Accept(visitor.Ptr());
                     }
                     if (result.GetErrorCount() > 0)

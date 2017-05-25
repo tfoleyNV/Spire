@@ -109,6 +109,8 @@ int glslang_compile(glslang_CompileRequest* request)
 
     int sourceTextLength = (int) strlen(request->sourceText);
 
+    shader->setPreamble("#extension GL_GOOGLE_cpp_style_line_directive : require\n");
+
     shader->setStringsWithLengthsAndNames(
         &request->sourceText,
         &sourceTextLength,

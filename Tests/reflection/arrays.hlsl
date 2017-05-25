@@ -1,4 +1,4 @@
-//TEST:SIMPLE: -target reflection-json
+//TEST:SIMPLE:-profile ps_4_0 -target reflection-json
 
 // Confirm that we can generate reflection info for arrays
 //

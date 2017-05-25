@@ -2,6 +2,23 @@
 setlocal
 pushd %~dp0
 
+:: Argument parsing loop, for arguments that we need to handle at the .bat level
+
+:ARGLOOP
+
+if "%1"=="-debug" (
+	set SPIRE_TEST_CONFIG=Debug
+	shift
+	goto :ARGLOOP
+)
+if "%1"=="-release" (
+	set SPIRE_TEST_CONFIG=Release
+	shift
+	goto :ARGLOOP
+)
+
+:: When done with arguments, we'll just fall through here
+
 SET "SPIRE_TEST_ROOT=%~dp0"
 
 IF "%SPIRE_TEST_PLATFORM%" == "" ( SET "SPIRE_TEST_PLATFORM=x86" )

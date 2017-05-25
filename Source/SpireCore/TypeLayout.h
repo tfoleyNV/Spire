@@ -26,43 +26,61 @@ enum class LayoutRule
 {
     Std140,
     Std430,
-    Packed,
     HLSLConstantBuffer,
     HLSLStructuredBuffer,
 };
 
+enum class LayoutRulesFamily
+{
+    HLSL,
+    GLSL,
+};
+
 // Layout appropriate to "just memory" scenarios,
 // such as laying out the members of a constant buffer.
-struct LayoutInfo
+struct UniformLayoutInfo
 {
     size_t size;
     size_t alignment;
+
+    UniformLayoutInfo()
+        : size(0)
+        , alignment(1)
+    {}
+
+    UniformLayoutInfo(
+        size_t size,
+        size_t alignment)
+        : size(size)
+        , alignment(alignment)
+    {}
 };
 
-struct ArrayLayoutInfo : LayoutInfo
+// Extended information required for an array of uniform data,
+// including the "stride" of the array (the space between
+// consecutive elements).
+struct UniformArrayLayoutInfo : UniformLayoutInfo
 {
     size_t elementStride;
+
+    UniformArrayLayoutInfo()
+        : elementStride(0)
+    {}
+
+    UniformArrayLayoutInfo(
+        size_t size,
+        size_t alignment,
+        size_t elementStride)
+        : UniformLayoutInfo(size, alignment)
+        , elementStride(elementStride)
+    {}
 };
 
 typedef spire::ParameterCategory LayoutResourceKind;
-#if 0
-enum class LayoutResourceKind
-{
-    Invalid = 0,
-    Uniform,            // HLSL `c` register
-    //
-    ConstantBuffer,     // HLSL `b` register
-    ShaderResource,     // HLSL `t` register
-    UnorderedAccess,    // HLSL 'u` register
-    SamplerState,       // HLSL `s` register
-    //
-    Count,
-};
-bool IsResourceKind(LayoutResourceKind kind);
-#endif
 
-// Layout information for an object/resource type
-struct ObjectLayoutInfo
+// Layout information for a value that only consumes
+// a single reosurce kind.
+struct SimpleLayoutInfo
 {
     // What kind of resource should we consume?
     LayoutResourceKind kind;
@@ -73,33 +91,64 @@ struct ObjectLayoutInfo
     // only useful in the uniform case
     size_t alignment;
 
-    ObjectLayoutInfo()
+    SimpleLayoutInfo()
         : kind(LayoutResourceKind::None)
         , size(0)
         , alignment(1)
     {}
 
-    ObjectLayoutInfo(LayoutResourceKind kind)
-        : kind(kind)
-        , size(1)
-        , alignment(1)
-    {}
-
-    ObjectLayoutInfo(LayoutInfo const& uniform)
+    SimpleLayoutInfo(
+        UniformLayoutInfo uniformInfo)
         : kind(LayoutResourceKind::Uniform)
-        , size(uniform.size)
-        , alignment(uniform.alignment)
+        , size(uniformInfo.size)
+        , alignment(uniformInfo.alignment)
     {}
 
-    operator LayoutInfo() const
+#if 0
+    ObjectLayoutInfo(size_t size, size_t alignment=1)
+        : kind(LayoutResourceKind::Uniform)
+        , size(size)
+        , alignment(alignment)
+    {}
+#endif
+
+    SimpleLayoutInfo(LayoutResourceKind kind, size_t size, size_t alignment=1)
+        : kind(kind)
+        , size(size)
+        , alignment(alignment)
+    {}
+
+    // Convert to layout for uniform data
+    UniformLayoutInfo getUniformLayout()
     {
-        LayoutInfo info = { 0, 1 };
-        if (kind == LayoutResourceKind::Uniform)
+        if(kind == LayoutResourceKind::Uniform)
         {
-            info.size = size;
-            info.alignment = alignment;
+            return UniformLayoutInfo(size, alignment);
         }
-        return info;
+        else
+        {
+            return UniformLayoutInfo(0, 1);
+        }
+    }
+};
+
+// Only useful in the case of a homogeneous array
+struct SimpleArrayLayoutInfo : SimpleLayoutInfo
+{
+    // This field is only useful in the uniform case
+    size_t elementStride;
+
+    // Convert to layout for uniform data
+    UniformArrayLayoutInfo getUniformLayout()
+    {
+        if(kind == LayoutResourceKind::Uniform)
+        {
+            return UniformArrayLayoutInfo(size, alignment, elementStride);
+        }
+        else
+        {
+            return UniformArrayLayoutInfo(0, 1, 0);
+        }
     }
 };
 
@@ -130,7 +179,7 @@ public:
     // For uniform data, alignment matters, but not for
     // any other resource category, so we don't waste
     // the space storing it in the above array
-    UInt uniformAlignment;
+    UInt uniformAlignment = 1;
 
     ResourceInfo* FindResourceInfo(LayoutResourceKind kind)
     {
@@ -240,7 +289,7 @@ public:
 };
 
 // Type layout for a variable that has a constant-buffer type
-class ConstantBufferTypeLayout : public TypeLayout
+class ParameterBlockTypeLayout : public TypeLayout
 {
 public:
     RefPtr<TypeLayout> elementTypeLayout;
@@ -303,7 +352,7 @@ public:
     // We store a layout for the declarations at the global
     // scope. Note that this will *either* be a single
     // `StructTypeLayout` with the fields stored directly,
-    // or it will be a single `ConstantBufferTypeLayout`,
+    // or it will be a single `ParameterBlockTypeLayout`,
     // where the global-scope fields are the members of
     // that constant buffer.
     //
@@ -329,101 +378,153 @@ public:
 };
 
 
+struct LayoutRulesFamilyImpl;
+
+// A delineation of shader parameter types into fine-grained
+// categories that can then be mapped down to actual resources
+// by a given set of rules.
+//
+// TODO(tfoley): `SpireParameterCategory` and `spire::ParameterCategory`
+// are badly named, and need to be revised so they can't be confused
+// with this concept.
+enum class ShaderParameterKind
+{
+    ConstantBuffer,
+    TextureUniformBuffer,
+    ShaderStorageBuffer,
+
+    StructuredBuffer,
+    MutableStructuredBuffer,
+
+    SampledBuffer,
+    MutableSampledBuffer,
+
+    RawBuffer,
+    MutableRawBuffer,
+
+    Buffer,
+    MutableBuffer,
+
+    Texture,
+    MutableTexture,
+
+    TextureSampler,
+    MutableTextureSampler,
+
+    SamplerState,
+};
+
+struct SimpleLayoutRulesImpl
+{
+    // Get size and alignment for a single value of base type.
+    virtual SimpleLayoutInfo GetScalarLayout(BaseType baseType) = 0;
+    virtual SimpleLayoutInfo GetScalarLayout(spire::TypeReflection::ScalarType scalarType) = 0;
+
+    // Get size and alignment for an array of elements
+    virtual SimpleArrayLayoutInfo GetArrayLayout(SimpleLayoutInfo elementInfo, size_t elementCount) = 0;
+
+    // Get layout for a vector or matrix type
+    virtual SimpleLayoutInfo GetVectorLayout(SimpleLayoutInfo elementInfo, size_t elementCount) = 0;
+    virtual SimpleLayoutInfo GetMatrixLayout(SimpleLayoutInfo elementInfo, size_t rowCount, size_t columnCount) = 0;
+
+    // Begin doing layout on a `struct` type
+    virtual UniformLayoutInfo BeginStructLayout() = 0;
+
+    // Add a field to a `struct` type, and return the offset for the field
+    virtual size_t AddStructField(UniformLayoutInfo* ioStructInfo, UniformLayoutInfo fieldInfo) = 0;
+
+    // End layout for a struct, and finalize its size/alignment.
+    virtual void EndStructLayout(UniformLayoutInfo* ioStructInfo) = 0;
+};
+
+struct ObjectLayoutRulesImpl
+{
+    // Compute layout info for an object type
+    virtual SimpleLayoutInfo GetObjectLayout(ShaderParameterKind kind) = 0;
+};
 
 struct LayoutRulesImpl
 {
-    // Get size and alignment for a single value of base type.
-    virtual LayoutInfo GetScalarLayout(BaseType baseType) = 0;
-    virtual LayoutInfo GetScalarLayout(ILBaseType baseType) = 0;
-    virtual LayoutInfo GetScalarLayout(spire::TypeReflection::ScalarType scalarType) = 0;
+    LayoutRulesFamilyImpl*  family;
+    SimpleLayoutRulesImpl*  simpleRules;
+    ObjectLayoutRulesImpl*  objectRules;
 
-    // Compute layout info for an object type
-    virtual ObjectLayoutInfo GetObjectLayout(LayoutResourceKind kind) = 0;
+    // Forward `SimpleLayoutRulesImpl` interface
 
-    // Get size and alignment for an array of elements
-    virtual ArrayLayoutInfo GetArrayLayout(LayoutInfo elementInfo, size_t elementCount) = 0;
-
-#if 0
-    ExtendedArrayLayoutInfo GetArrayLayoutExt(ExtendedLayoutInfo elementInfo, size_t elementCount)
+    SimpleLayoutInfo GetScalarLayout(BaseType baseType)
     {
-        auto uniformInfo = GetArrayLayout(
-            elementInfo.uniforms,
-            elementCount);
-
-        ExtendedArrayLayoutInfo arrayInfo;
-        arrayInfo.uniforms = uniformInfo;
-        arrayInfo.uniformElementStride = uniformInfo.elementStride;
-
-        for (int ii = 0; ii < (int)LayoutResourceKind::Count; ++ii)
-        {
-            arrayInfo.resourceCounts[ii] = elementCount*elementInfo.resourceCounts[ii];
-        }
-        return arrayInfo;
+        return simpleRules->GetScalarLayout(baseType);
     }
-#endif
 
-    // Get layout for a vector or matrix type
-    virtual LayoutInfo GetVectorLayout(LayoutInfo elementInfo, size_t elementCount) = 0;
-    virtual LayoutInfo GetMatrixLayout(LayoutInfo elementInfo, size_t rowCount, size_t columnCount) = 0;
-
-    // Begin doing layout on a `struct` type
-    virtual LayoutInfo BeginStructLayout() = 0;
-
-#if 0
-    ExtendedLayoutInfo BeginStructLayoutExt()
+    SimpleLayoutInfo GetScalarLayout(spire::TypeReflection::ScalarType scalarType)
     {
-        return ExtendedLayoutInfo(BeginStructLayout());
+        return simpleRules->GetScalarLayout(scalarType);
     }
-#endif
 
-    // Add a field to a `struct` type, and return the offset for the field
-    virtual size_t AddStructField(LayoutInfo* ioStructInfo, LayoutInfo fieldInfo) = 0;
-
-#if 0
-    ExtendedOffsetInfo AddStructFieldExt(ExtendedLayoutInfo* ioStructInfo, ExtendedLayoutInfo fieldInfo)
+    SimpleArrayLayoutInfo GetArrayLayout(SimpleLayoutInfo elementInfo, size_t elementCount)
     {
-        ExtendedOffsetInfo extOffset;
-
-        // Skip fields with no uniform data, so that they don't
-        // screw up layout computation for other fields
-        if (fieldInfo.uniforms.size != 0)
-        {
-            extOffset.uniformOffset = AddStructField(
-                &ioStructInfo->uniforms,
-                fieldInfo.uniforms);
-        }
-
-        for (int ii = 0; ii < (int)LayoutResourceKind::Count; ++ii)
-        {
-            extOffset.resourceIndices[ii] = ioStructInfo->resourceCounts[ii];
-            ioStructInfo->resourceCounts[ii] += fieldInfo.resourceCounts[ii];
-        }
-
-        return extOffset;
+        return simpleRules->GetArrayLayout(elementInfo, elementCount);
     }
-#endif
 
-    // End layout for a struct, and finalize its size/alignment.
-    virtual void EndStructLayout(LayoutInfo* ioStructInfo) = 0;
-
-#if 0
-    void EndStructLayoutExt(ExtendedLayoutInfo* ioStructInfo)
+    SimpleLayoutInfo GetVectorLayout(SimpleLayoutInfo elementInfo, size_t elementCount)
     {
-        EndStructLayout(&ioStructInfo->uniforms);
+        return simpleRules->GetVectorLayout(elementInfo, elementCount);
     }
-#endif
+
+    SimpleLayoutInfo GetMatrixLayout(SimpleLayoutInfo elementInfo, size_t rowCount, size_t columnCount)
+    {
+        return simpleRules->GetMatrixLayout(elementInfo, rowCount, columnCount);
+    }
+
+    UniformLayoutInfo BeginStructLayout()
+    {
+        return simpleRules->BeginStructLayout();
+    }
+
+    size_t AddStructField(UniformLayoutInfo* ioStructInfo, UniformLayoutInfo fieldInfo)
+    {
+        return simpleRules->AddStructField(ioStructInfo, fieldInfo);
+    }
+
+    void EndStructLayout(UniformLayoutInfo* ioStructInfo)
+    {
+        return simpleRules->EndStructLayout(ioStructInfo);
+    }
+
+    // Forward `ObjectLayoutRulesImpl` interface
+
+    SimpleLayoutInfo GetObjectLayout(ShaderParameterKind kind)
+    {
+        return objectRules->GetObjectLayout(kind);
+    }
+
+    //
+
+    LayoutRulesFamilyImpl* getLayoutRulesFamily() { return family; }
+};
+
+struct LayoutRulesFamilyImpl
+{
+    virtual LayoutRulesImpl* getConstantBufferRules()   = 0;
+    virtual LayoutRulesImpl* getTextureBufferRules()    = 0;
+    virtual LayoutRulesImpl* getVaryingInputRules()     = 0;
+    virtual LayoutRulesImpl* getVaryingOutputRules()    = 0;
+    virtual LayoutRulesImpl* getSpecializationConstantRules()   = 0;
+    virtual LayoutRulesImpl* getShaderStorageBufferRules()      = 0;
 };
 
 LayoutRulesImpl* GetLayoutRulesImpl(LayoutRule rule);
+LayoutRulesFamilyImpl* GetLayoutRulesFamilyImpl(LayoutRulesFamily rule);
+LayoutRulesFamilyImpl* GetLayoutRulesFamilyImpl(SourceLanguage language);
 
-LayoutInfo GetLayout(ExpressionType* type, LayoutRulesImpl* rules);
-LayoutInfo GetLayout(ILType* type, LayoutRulesImpl* rules);
+SimpleLayoutInfo GetLayout(ExpressionType* type, LayoutRulesImpl* rules);
 
-LayoutInfo GetLayout(ExpressionType* type, LayoutRule rule = LayoutRule::Std430);
-LayoutInfo GetLayout(ILType* type, LayoutRule rule = LayoutRule::Std430);
+SimpleLayoutInfo GetLayout(ExpressionType* type, LayoutRule rule = LayoutRule::Std430);
 
 RefPtr<TypeLayout> CreateTypeLayout(ExpressionType* type, LayoutRulesImpl* rules);
 
+
+#if 0
 inline size_t GetTypeSize(ExpressionType* type, LayoutRule rule = LayoutRule::Std430)
 {
     return GetLayout(type, rule).size;
@@ -443,21 +544,22 @@ inline size_t GetTypeAlignment(ILType* type, LayoutRule rule = LayoutRule::Std43
 {
     return GetLayout(type, rule).alignment;
 }
+#endif
 
 //
 
-// Create a type layout for a constant buffer type.
-RefPtr<ConstantBufferTypeLayout>
-createConstantBufferTypeLayout(
-    RefPtr<ConstantBufferType>  constantBufferType,
+// Create a type layout for a parameter block type.
+RefPtr<ParameterBlockTypeLayout>
+createParameterBlockTypeLayout(
+    RefPtr<ParameterBlockType>  parameterBlockType,
     LayoutRulesImpl*            rules);
 
 // Create a type layout for a constant buffer type,
 // in the case where we already know the layout
 // for the element type.
-RefPtr<ConstantBufferTypeLayout>
-createConstantBufferTypeLayout(
-    RefPtr<ConstantBufferType>  constantBufferType,
+RefPtr<ParameterBlockTypeLayout>
+createParameterBlockTypeLayout(
+    RefPtr<ParameterBlockType>  parameterBlockType,
     RefPtr<TypeLayout>          elementTypeLayout,
     LayoutRulesImpl*            rules);
 
@@ -465,7 +567,7 @@ createConstantBufferTypeLayout(
 // Create a type layout for a structured buffer type.
 RefPtr<StructuredBufferTypeLayout>
 createStructuredBufferTypeLayout(
-    LayoutResourceKind      kind,
+    ShaderParameterKind     kind,
     RefPtr<ExpressionType>  structuredBufferType,
     RefPtr<ExpressionType>  elementType,
     LayoutRulesImpl*        rules);

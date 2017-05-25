@@ -26,10 +26,10 @@ static size_t RoundUpToPowerOfTwo( size_t value )
     return result;
 }
 
-struct DefaultLayoutRulesImpl : LayoutRulesImpl
+struct DefaultLayoutRulesImpl : SimpleLayoutRulesImpl
 {
     // Get size and alignment for a single value of base type.
-    LayoutInfo GetScalarLayout(BaseType baseType) override
+    SimpleLayoutInfo GetScalarLayout(BaseType baseType) override
     {
         switch (baseType)
         {
@@ -37,94 +37,79 @@ struct DefaultLayoutRulesImpl : LayoutRulesImpl
         case BaseType::UInt:
         case BaseType::Float:
         case BaseType::Bool:
-            return{ 4, 4 };
+            return SimpleLayoutInfo( LayoutResourceKind::Uniform, 4, 4 );
 
         default:
             assert(!"unimplemented");
-            return{ 0, 1 };
+            return SimpleLayoutInfo( LayoutResourceKind::Uniform, 0, 1 );
         }
     }
 
-    LayoutInfo GetScalarLayout(ILBaseType baseType) override
-    {
-        switch (baseType)
-        {
-        case ILBaseType::Int:
-        case ILBaseType::UInt:
-        case ILBaseType::Float:
-            return{ 4, 4 };
-        default:
-            assert(!"unimplemented");
-            return{ 0, 1 };
-        }
-    }
-
-    virtual LayoutInfo GetScalarLayout(spire::TypeReflection::ScalarType scalarType)
+    virtual SimpleLayoutInfo GetScalarLayout(spire::TypeReflection::ScalarType scalarType)
     {
         switch( scalarType )
         {
-        case spire::TypeReflection::ScalarType::Void:       return {0,1};
-        case spire::TypeReflection::ScalarType::None:       return {0,1};
+        case spire::TypeReflection::ScalarType::Void:       return SimpleLayoutInfo();
+        case spire::TypeReflection::ScalarType::None:       return SimpleLayoutInfo();
 
         // TODO(tfoley): At some point we don't want to lay out `bool` as 4 bytes by default...
-        case spire::TypeReflection::ScalarType::Bool:       return {4,4};
-        case spire::TypeReflection::ScalarType::Int32:      return {4,4};
-        case spire::TypeReflection::ScalarType::UInt32:     return {4,4};
-        case spire::TypeReflection::ScalarType::Int64:      return {8,8};
-        case spire::TypeReflection::ScalarType::UInt64:     return {8,8};
+        case spire::TypeReflection::ScalarType::Bool:       return SimpleLayoutInfo( LayoutResourceKind::Uniform, 4,4);
+        case spire::TypeReflection::ScalarType::Int32:      return SimpleLayoutInfo( LayoutResourceKind::Uniform, 4,4);
+        case spire::TypeReflection::ScalarType::UInt32:     return SimpleLayoutInfo( LayoutResourceKind::Uniform, 4,4);
+        case spire::TypeReflection::ScalarType::Int64:      return SimpleLayoutInfo( LayoutResourceKind::Uniform, 8,8);
+        case spire::TypeReflection::ScalarType::UInt64:     return SimpleLayoutInfo( LayoutResourceKind::Uniform, 8,8);
 
         // TODO(tfoley): What actually happens if you use `half` in a constant buffer?
-        case spire::TypeReflection::ScalarType::Float16:    return {2,2};
-        case spire::TypeReflection::ScalarType::Float32:    return {4,4};
-        case spire::TypeReflection::ScalarType::Float64:    return {8,8};
+        case spire::TypeReflection::ScalarType::Float16:    return SimpleLayoutInfo( LayoutResourceKind::Uniform, 2,2);
+        case spire::TypeReflection::ScalarType::Float32:    return SimpleLayoutInfo( LayoutResourceKind::Uniform, 4,4);
+        case spire::TypeReflection::ScalarType::Float64:    return SimpleLayoutInfo( LayoutResourceKind::Uniform, 8,8);
 
         default:
             assert(!"unimplemented");
-            return{ 0, 1 };
+            return SimpleLayoutInfo();
         }
     }
 
-    virtual ObjectLayoutInfo GetObjectLayout(LayoutResourceKind kind) override
-    {
-        return ObjectLayoutInfo(kind);
-    }
-
-    ArrayLayoutInfo GetArrayLayout( LayoutInfo elementInfo, size_t elementCount) override
+    SimpleArrayLayoutInfo GetArrayLayout( SimpleLayoutInfo elementInfo, size_t elementCount) override
     {
         size_t stride = elementInfo.size;
 
-        ArrayLayoutInfo arrayInfo;
+        SimpleArrayLayoutInfo arrayInfo;
+        arrayInfo.kind = elementInfo.kind;
         arrayInfo.size = stride * elementCount;
         arrayInfo.alignment = elementInfo.alignment;
         arrayInfo.elementStride = stride;
         return arrayInfo;
     }
 
-    LayoutInfo GetVectorLayout(LayoutInfo elementInfo, size_t elementCount) override
+    SimpleLayoutInfo GetVectorLayout(SimpleLayoutInfo elementInfo, size_t elementCount) override
     {
-        LayoutInfo vectorInfo;
+        SimpleLayoutInfo vectorInfo;
+        vectorInfo.kind = elementInfo.kind;
         vectorInfo.size = elementInfo.size * elementCount;
         vectorInfo.alignment = elementInfo.alignment;
         return vectorInfo;
     }
 
-    LayoutInfo GetMatrixLayout(LayoutInfo elementInfo, size_t rowCount, size_t columnCount) override
+    SimpleLayoutInfo GetMatrixLayout(SimpleLayoutInfo elementInfo, size_t rowCount, size_t columnCount) override
     {
         return GetArrayLayout(
             GetVectorLayout(elementInfo, columnCount),
             rowCount);
     }
 
-    LayoutInfo BeginStructLayout() override
+    UniformLayoutInfo BeginStructLayout() override
     {
-        LayoutInfo structInfo;
-        structInfo.size = 0;
-        structInfo.alignment = 1;
+        UniformLayoutInfo structInfo(0, 1);
         return structInfo;
     }
 
-    size_t AddStructField(LayoutInfo* ioStructInfo, LayoutInfo fieldInfo) override
+    size_t AddStructField(UniformLayoutInfo* ioStructInfo, UniformLayoutInfo fieldInfo) override
     {
+        // Skip zero-size fields
+        if(fieldInfo.size == 0)
+            return ioStructInfo->size;
+
         ioStructInfo->alignment = std::max(ioStructInfo->alignment, fieldInfo.alignment);
         ioStructInfo->size = RoundToAlignment(ioStructInfo->size, fieldInfo.alignment);
         size_t fieldOffset = ioStructInfo->size;
@@ -133,7 +118,7 @@ struct DefaultLayoutRulesImpl : LayoutRulesImpl
     }
 
 
-    void EndStructLayout(LayoutInfo* ioStructInfo) override
+    void EndStructLayout(UniformLayoutInfo* ioStructInfo) override
     {
         ioStructInfo->size = RoundToAlignment(ioStructInfo->size, ioStructInfo->alignment);
     }
@@ -146,39 +131,43 @@ struct DefaultConstantBufferLayoutRulesImpl : DefaultLayoutRulesImpl
     // be a multiple of 16 bytes.
     //
     // HLSL agrees.
-    ArrayLayoutInfo GetArrayLayout(LayoutInfo elementInfo, size_t elementCount) override
+    SimpleArrayLayoutInfo GetArrayLayout(SimpleLayoutInfo elementInfo, size_t elementCount) override
     {
-        if (elementInfo.alignment < 16)
-            elementInfo.alignment = 16;
-        elementInfo.size = RoundToAlignment(elementInfo.size, elementInfo.alignment);
-
+        if(elementInfo.kind == LayoutResourceKind::Uniform)
+        {
+            if (elementInfo.alignment < 16)
+                elementInfo.alignment = 16;
+            elementInfo.size = RoundToAlignment(elementInfo.size, elementInfo.alignment);
+        }
         return DefaultLayoutRulesImpl::GetArrayLayout(elementInfo, elementCount);
     }
 
     // The `std140` rules require that a `struct` type be
-    // alinged to at least 16.
+    // aligned to at least 16.
     //
     // HLSL agrees.
-    LayoutInfo BeginStructLayout() override
+    UniformLayoutInfo BeginStructLayout() override
     {
-        LayoutInfo structInfo;
-        structInfo.size = 0;
-        structInfo.alignment = 16;
-        return structInfo;
+        return UniformLayoutInfo(0, 16);
     }
 };
 
+struct GLSLConstantBufferLayoutRulesImpl : DefaultConstantBufferLayoutRulesImpl
+{
+};
 
-struct Std140LayoutRulesImpl : DefaultConstantBufferLayoutRulesImpl
+struct Std140LayoutRulesImpl : GLSLConstantBufferLayoutRulesImpl
 {
     // The `std140` rules require vectors to be aligned to the next power of two
     // up from their size (so a `float2` is 8-byte aligned, and a `float3` is
     // 16-byte aligned).
-    LayoutInfo GetVectorLayout(LayoutInfo elementInfo, size_t elementCount) override
+    SimpleLayoutInfo GetVectorLayout(SimpleLayoutInfo elementInfo, size_t elementCount) override
     {
-        LayoutInfo vectorInfo;
-        vectorInfo.size = elementInfo.size * elementCount;
-        vectorInfo.alignment = RoundUpToPowerOfTwo(elementInfo.size * elementInfo.alignment);
+        assert(elementInfo.kind == LayoutResourceKind::Uniform);
+        SimpleLayoutInfo vectorInfo(
+            LayoutResourceKind::Uniform,
+            elementInfo.size * elementCount,
+            RoundUpToPowerOfTwo(elementInfo.size * elementInfo.alignment));
         return vectorInfo;
     }
 };
@@ -186,8 +175,12 @@ struct Std140LayoutRulesImpl : DefaultConstantBufferLayoutRulesImpl
 struct HLSLConstantBufferLayoutRulesImpl : DefaultConstantBufferLayoutRulesImpl
 {
     // Can't let a `struct` field straddle a register (16-byte) boundary
-    size_t AddStructField(LayoutInfo* ioStructInfo, LayoutInfo fieldInfo) override
+    size_t AddStructField(UniformLayoutInfo* ioStructInfo, UniformLayoutInfo fieldInfo) override
     {
+        // Skip zero-size fields
+        if(fieldInfo.size == 0)
+            return ioStructInfo->size;
+
         ioStructInfo->alignment = std::max(ioStructInfo->alignment, fieldInfo.alignment);
         ioStructInfo->size = RoundToAlignment(ioStructInfo->size, fieldInfo.alignment);
 
@@ -214,33 +207,359 @@ struct HLSLStructuredBufferLayoutRulesImpl : DefaultLayoutRulesImpl
     // TODO: customize these to be correct...
 };
 
-struct Std430LayoutRulesImpl : DefaultLayoutRulesImpl
+struct Std430LayoutRulesImpl : GLSLConstantBufferLayoutRulesImpl
 {
 };
 
-struct PackedLayoutRulesImpl : DefaultLayoutRulesImpl
+struct DefaultVaryingLayoutRulesImpl : DefaultLayoutRulesImpl
 {
+    LayoutResourceKind kind;
+
+    DefaultVaryingLayoutRulesImpl(LayoutResourceKind kind)
+        : kind(kind)
+    {}
+
+
+    // hook to allow differentiating for input/output
+    virtual LayoutResourceKind getKind()
+    {
+        return kind;
+    }
+
+    SimpleLayoutInfo GetScalarLayout(BaseType baseType) override
+    {
+        // Assume that all scalars take up one "slot"
+        return SimpleLayoutInfo(
+            getKind(),
+            1);
+    }
+
+    virtual SimpleLayoutInfo GetScalarLayout(spire::TypeReflection::ScalarType scalarType)
+    {
+        // Assume that all scalars take up one "slot"
+        return SimpleLayoutInfo(
+            getKind(),
+            1);
+    }
+
+    SimpleLayoutInfo GetVectorLayout(SimpleLayoutInfo elementInfo, size_t elementCount) override
+    {
+        // Vectors take up one slot by default
+        //
+        // TODO: some platforms may decide that vectors of `double` need
+        // special handling
+        return SimpleLayoutInfo(
+            getKind(),
+            1);
+    }
 };
+
+struct GLSLVaryingLayoutRulesImpl : DefaultVaryingLayoutRulesImpl
+{
+    GLSLVaryingLayoutRulesImpl(LayoutResourceKind kind)
+        : DefaultVaryingLayoutRulesImpl(kind)
+    {}
+};
+
+struct HLSLVaryingLayoutRulesImpl : DefaultVaryingLayoutRulesImpl
+{
+    HLSLVaryingLayoutRulesImpl(LayoutResourceKind kind)
+        : DefaultVaryingLayoutRulesImpl(kind)
+    {}
+};
+
+//
+
+struct GLSLSpecializationConstantLayoutRulesImpl : DefaultLayoutRulesImpl
+{
+    LayoutResourceKind getKind()
+    {
+        return LayoutResourceKind::SpecializationConstant;
+    }
+
+    SimpleLayoutInfo GetScalarLayout(BaseType baseType) override
+    {
+        // Assume that all scalars take up one "slot"
+        return SimpleLayoutInfo(
+            getKind(),
+            1);
+    }
+
+    virtual SimpleLayoutInfo GetScalarLayout(spire::TypeReflection::ScalarType scalarType)
+    {
+        // Assume that all scalars take up one "slot"
+        return SimpleLayoutInfo(
+            getKind(),
+            1);
+    }
+
+    SimpleLayoutInfo GetVectorLayout(SimpleLayoutInfo elementInfo, size_t elementCount) override
+    {
+        // GLSL doesn't support vectors of specialization constants,
+        // but we will assume that, if supported, they would use one slot per element.
+        return SimpleLayoutInfo(
+            getKind(),
+            elementCount);
+    }
+};
+
+GLSLSpecializationConstantLayoutRulesImpl kGLSLSpecializationConstantLayoutRulesImpl;
+
+//
+
+struct GLSLObjectLayoutRulesImpl : ObjectLayoutRulesImpl
+{
+    virtual SimpleLayoutInfo GetObjectLayout(ShaderParameterKind kind) override
+    {
+        switch( kind )
+        {
+        case ShaderParameterKind::ConstantBuffer:
+        case ShaderParameterKind::TextureUniformBuffer:
+        case ShaderParameterKind::ShaderStorageBuffer:
+        case ShaderParameterKind::StructuredBuffer:
+        case ShaderParameterKind::SampledBuffer:
+        case ShaderParameterKind::RawBuffer:
+        case ShaderParameterKind::Buffer:
+        case ShaderParameterKind::Texture:
+        case ShaderParameterKind::MutableStructuredBuffer:
+        case ShaderParameterKind::MutableSampledBuffer:
+        case ShaderParameterKind::MutableRawBuffer:
+        case ShaderParameterKind::MutableBuffer:
+        case ShaderParameterKind::MutableTexture:
+        case ShaderParameterKind::TextureSampler:
+        case ShaderParameterKind::MutableTextureSampler:
+        case ShaderParameterKind::SamplerState:
+            return SimpleLayoutInfo(LayoutResourceKind::DescriptorTableSlot, 1);
+
+        default:
+            assert(!"unimplemented");
+            return SimpleLayoutInfo();
+        }
+    }
+};
+GLSLObjectLayoutRulesImpl kGLSLObjectLayoutRulesImpl;
+
+struct HLSLObjectLayoutRulesImpl : ObjectLayoutRulesImpl
+{
+    virtual SimpleLayoutInfo GetObjectLayout(ShaderParameterKind kind) override
+    {
+        switch( kind )
+        {
+        case ShaderParameterKind::ConstantBuffer:
+            return SimpleLayoutInfo(LayoutResourceKind::ConstantBuffer, 1);
+
+        case ShaderParameterKind::TextureUniformBuffer:
+        case ShaderParameterKind::StructuredBuffer:
+        case ShaderParameterKind::SampledBuffer:
+        case ShaderParameterKind::RawBuffer:
+        case ShaderParameterKind::Buffer:
+        case ShaderParameterKind::Texture:
+            return SimpleLayoutInfo(LayoutResourceKind::ShaderResource, 1);
+
+        case ShaderParameterKind::MutableStructuredBuffer:
+        case ShaderParameterKind::MutableSampledBuffer:
+        case ShaderParameterKind::MutableRawBuffer:
+        case ShaderParameterKind::MutableBuffer:
+        case ShaderParameterKind::MutableTexture:
+            return SimpleLayoutInfo(LayoutResourceKind::UnorderedAccess, 1);
+
+        case ShaderParameterKind::SamplerState:
+            return SimpleLayoutInfo(LayoutResourceKind::SamplerState, 1);
+
+        case ShaderParameterKind::TextureSampler:
+        case ShaderParameterKind::MutableTextureSampler:
+            // TODO: how to handle these?
+        default:
+            assert(!"unimplemented");
+            return SimpleLayoutInfo();
+        }
+    }
+};
+HLSLObjectLayoutRulesImpl kHLSLObjectLayoutRulesImpl;
 
 Std140LayoutRulesImpl kStd140LayoutRulesImpl;
 Std430LayoutRulesImpl kStd430LayoutRulesImpl;
-PackedLayoutRulesImpl kPackedLayoutRulesImpl;
 HLSLConstantBufferLayoutRulesImpl kHLSLConstantBufferLayoutRulesImpl;
 HLSLStructuredBufferLayoutRulesImpl kHLSLStructuredBufferLayoutRulesImpl;
+
+GLSLVaryingLayoutRulesImpl kGLSLVaryingInputLayoutRulesImpl(LayoutResourceKind::VertexInput);
+GLSLVaryingLayoutRulesImpl kGLSLVaryingOutputLayoutRulesImpl(LayoutResourceKind::FragmentOutput);
+
+HLSLVaryingLayoutRulesImpl kHLSLVaryingInputLayoutRulesImpl(LayoutResourceKind::VertexInput);
+HLSLVaryingLayoutRulesImpl kHLSLVaryingOutputLayoutRulesImpl(LayoutResourceKind::FragmentOutput);
+
+//
+
+struct GLSLLayoutRulesFamilyImpl : LayoutRulesFamilyImpl
+{
+    virtual LayoutRulesImpl* getConstantBufferRules() override;
+    virtual LayoutRulesImpl* getTextureBufferRules() override;
+    virtual LayoutRulesImpl* getVaryingInputRules() override;
+    virtual LayoutRulesImpl* getVaryingOutputRules() override;
+    virtual LayoutRulesImpl* getSpecializationConstantRules() override;
+    virtual LayoutRulesImpl* getShaderStorageBufferRules() override;
+};
+
+struct HLSLLayoutRulesFamilyImpl : LayoutRulesFamilyImpl
+{
+    virtual LayoutRulesImpl* getConstantBufferRules() override;
+    virtual LayoutRulesImpl* getTextureBufferRules() override;
+    virtual LayoutRulesImpl* getVaryingInputRules() override;
+    virtual LayoutRulesImpl* getVaryingOutputRules() override;
+    virtual LayoutRulesImpl* getSpecializationConstantRules() override;
+    virtual LayoutRulesImpl* getShaderStorageBufferRules() override;
+};
+
+GLSLLayoutRulesFamilyImpl kGLSLLayoutRulesFamilyImpl;
+HLSLLayoutRulesFamilyImpl kHLSLLayoutRulesFamilyImpl;
+
+
+// GLSL cases
+
+LayoutRulesImpl kStd140LayoutRulesImpl_ = {
+    &kGLSLLayoutRulesFamilyImpl, &kStd140LayoutRulesImpl, &kGLSLObjectLayoutRulesImpl,
+};
+
+LayoutRulesImpl kStd430LayoutRulesImpl_ = {
+    &kGLSLLayoutRulesFamilyImpl, &kStd430LayoutRulesImpl, &kGLSLObjectLayoutRulesImpl,
+};
+
+LayoutRulesImpl kGLSLVaryingInputLayoutRulesImpl_ = {
+    &kGLSLLayoutRulesFamilyImpl, &kGLSLVaryingInputLayoutRulesImpl, &kGLSLObjectLayoutRulesImpl,
+};
+
+LayoutRulesImpl kGLSLVaryingOutputLayoutRulesImpl_ = {
+    &kGLSLLayoutRulesFamilyImpl, &kGLSLVaryingOutputLayoutRulesImpl, &kGLSLObjectLayoutRulesImpl,
+};
+
+LayoutRulesImpl kGLSLSpecializationConstantLayoutRulesImpl_ = {
+    &kGLSLLayoutRulesFamilyImpl, &kGLSLSpecializationConstantLayoutRulesImpl, &kGLSLObjectLayoutRulesImpl,
+};
+
+// HLSL cases
+
+LayoutRulesImpl kHLSLConstantBufferLayoutRulesImpl_ = {
+    &kHLSLLayoutRulesFamilyImpl, &kHLSLConstantBufferLayoutRulesImpl, &kHLSLObjectLayoutRulesImpl,
+};
+
+LayoutRulesImpl kHLSLStructuredBufferLayoutRulesImpl_ = {
+    &kHLSLLayoutRulesFamilyImpl, &kHLSLStructuredBufferLayoutRulesImpl, &kHLSLObjectLayoutRulesImpl,
+};
+
+LayoutRulesImpl kHLSLVaryingInputLayoutRulesImpl_ = {
+    &kHLSLLayoutRulesFamilyImpl, &kHLSLVaryingInputLayoutRulesImpl, &kHLSLObjectLayoutRulesImpl,
+};
+
+LayoutRulesImpl kHLSLVaryingOutputLayoutRulesImpl_ = {
+    &kHLSLLayoutRulesFamilyImpl, &kHLSLVaryingOutputLayoutRulesImpl, &kHLSLObjectLayoutRulesImpl,
+};
+
+//
+
+LayoutRulesImpl* GLSLLayoutRulesFamilyImpl::getConstantBufferRules()
+{
+    return &kStd140LayoutRulesImpl_;
+}
+
+LayoutRulesImpl* GLSLLayoutRulesFamilyImpl::getTextureBufferRules()
+{
+    return nullptr;
+}
+
+LayoutRulesImpl* GLSLLayoutRulesFamilyImpl::getVaryingInputRules()
+{
+    return &kGLSLVaryingInputLayoutRulesImpl_;
+}
+
+LayoutRulesImpl* GLSLLayoutRulesFamilyImpl::getVaryingOutputRules()
+{
+    return &kGLSLVaryingOutputLayoutRulesImpl_;
+}
+
+LayoutRulesImpl* GLSLLayoutRulesFamilyImpl::getSpecializationConstantRules()
+{
+    return &kGLSLSpecializationConstantLayoutRulesImpl_;
+}
+
+LayoutRulesImpl* GLSLLayoutRulesFamilyImpl::getShaderStorageBufferRules()
+{
+    return &kStd430LayoutRulesImpl_;
+}
+
+//
+
+LayoutRulesImpl* HLSLLayoutRulesFamilyImpl::getConstantBufferRules()
+{
+    return &kHLSLConstantBufferLayoutRulesImpl_;
+}
+
+LayoutRulesImpl* HLSLLayoutRulesFamilyImpl::getTextureBufferRules()
+{
+    return nullptr;
+}
+
+LayoutRulesImpl* HLSLLayoutRulesFamilyImpl::getVaryingInputRules()
+{
+    return &kHLSLVaryingInputLayoutRulesImpl_;
+}
+
+LayoutRulesImpl* HLSLLayoutRulesFamilyImpl::getVaryingOutputRules()
+{
+    return &kHLSLVaryingOutputLayoutRulesImpl_;
+}
+
+LayoutRulesImpl* HLSLLayoutRulesFamilyImpl::getSpecializationConstantRules()
+{
+    return nullptr;
+}
+
+LayoutRulesImpl* HLSLLayoutRulesFamilyImpl::getShaderStorageBufferRules()
+{
+    return nullptr;
+}
+
+//
 
 LayoutRulesImpl* GetLayoutRulesImpl(LayoutRule rule)
 {
     switch (rule)
     {
-    case LayoutRule::Std140:                return &kStd140LayoutRulesImpl;
-    case LayoutRule::Std430:                return &kStd430LayoutRulesImpl;
-    case LayoutRule::Packed:                return &kPackedLayoutRulesImpl;
-    case LayoutRule::HLSLConstantBuffer:    return &kHLSLConstantBufferLayoutRulesImpl;
-    case LayoutRule::HLSLStructuredBuffer:  return &kHLSLStructuredBufferLayoutRulesImpl;
+    case LayoutRule::Std140:                return &kStd140LayoutRulesImpl_;
+    case LayoutRule::Std430:                return &kStd430LayoutRulesImpl_;
+    case LayoutRule::HLSLConstantBuffer:    return &kHLSLConstantBufferLayoutRulesImpl_;
+    case LayoutRule::HLSLStructuredBuffer:  return &kHLSLStructuredBufferLayoutRulesImpl_;
     default:
         return nullptr;
     }
 }
+
+LayoutRulesFamilyImpl* GetLayoutRulesFamilyImpl(LayoutRulesFamily rule)
+{
+    switch (rule)
+    {
+    case LayoutRulesFamily::HLSL:   return &kHLSLLayoutRulesFamilyImpl;
+    case LayoutRulesFamily::GLSL:   return &kGLSLLayoutRulesFamilyImpl;
+    default:
+        return nullptr;
+    }
+}
+
+LayoutRulesFamilyImpl* GetLayoutRulesFamilyImpl(SourceLanguage language)
+{
+    switch (language)
+    {
+    case SourceLanguage::Spire:
+    case SourceLanguage::HLSL:
+        return &kHLSLLayoutRulesFamilyImpl;
+
+    case SourceLanguage::GLSL:
+        return &kGLSLLayoutRulesFamilyImpl;
+
+    default:
+        return nullptr;
+    }
+}
+
 
 static int GetElementCount(RefPtr<IntVal> val)
 {
@@ -266,8 +585,8 @@ bool IsResourceKind(LayoutResourceKind kind)
 
 }
 
-LayoutInfo GetSimpleLayoutImpl(
-    ObjectLayoutInfo        info,
+SimpleLayoutInfo GetSimpleLayoutImpl(
+    SimpleLayoutInfo        info,
     RefPtr<ExpressionType>  type,
     LayoutRulesImpl*        rules,
     RefPtr<TypeLayout>*     outTypeLayout)
@@ -280,26 +599,62 @@ LayoutInfo GetSimpleLayoutImpl(
         typeLayout->type = type;
         typeLayout->rules = rules;
 
-
         typeLayout->uniformAlignment = info.alignment;
-        
+
         typeLayout->addResourceUsage(info.kind, info.size);
     }
 
     return info;
 }
 
-RefPtr<ConstantBufferTypeLayout>
-createConstantBufferTypeLayout(
-    RefPtr<ConstantBufferType>  constantBufferType,
+static SimpleLayoutInfo getParameterBlockLayoutInfo(
+    RefPtr<ParameterBlockType>  type,
+    LayoutRulesImpl*            rules)
+{
+    if( type->As<ConstantBufferType>() )
+    {
+        return rules->GetObjectLayout(ShaderParameterKind::ConstantBuffer);
+    }
+    else if( type->As<TextureBufferType>() )
+    {
+        return rules->GetObjectLayout(ShaderParameterKind::TextureUniformBuffer);
+    }
+    else if( type->As<GLSLShaderStorageBufferType>() )
+    {
+        return rules->GetObjectLayout(ShaderParameterKind::ShaderStorageBuffer);
+    }
+    // TODO: the vertex-input and fragment-output cases should
+    // only actually apply when we are at the appropriate stage in
+    // the pipeline...
+    else if( type->As<GLSLInputParameterBlockType>() )
+    {
+        return SimpleLayoutInfo(LayoutResourceKind::VertexInput, 0);
+    }
+    else if( type->As<GLSLOutputParameterBlockType>() )
+    {
+        return SimpleLayoutInfo(LayoutResourceKind::FragmentOutput, 0);
+    }
+    else
+    {
+        assert(!"unexpected");
+        return SimpleLayoutInfo();
+    }
+}
+
+
+RefPtr<ParameterBlockTypeLayout>
+createParameterBlockTypeLayout(
+    RefPtr<ParameterBlockType>  parameterBlockType,
     RefPtr<TypeLayout>          elementTypeLayout,
     LayoutRulesImpl*            rules)
 {
-    auto info = rules->GetObjectLayout(LayoutResourceKind::ConstantBuffer);
+    auto info = getParameterBlockLayoutInfo(
+        parameterBlockType,
+        rules);
 
-    auto typeLayout = new ConstantBufferTypeLayout();
+    auto typeLayout = new ParameterBlockTypeLayout();
 
-    typeLayout->type = constantBufferType;
+    typeLayout->type = parameterBlockType;
     typeLayout->rules = rules;
 
     typeLayout->elementTypeLayout = elementTypeLayout;
@@ -321,13 +676,20 @@ createConstantBufferTypeLayout(
     // simply handle the "global scope" as a giant outer
     // CB declaration...
 
-    // The CB will always allocate at least one resource
-    // binding slot for the CB itself.
-
-    typeLayout->addResourceUsage(LayoutResourceKind::ConstantBuffer, 1);
+    // Make sure that we allocate resource usage for the
+    // parameter block itself.
+    if( info.size )
+    {
+        typeLayout->addResourceUsage(
+            info.kind,
+            info.size);
+    }
 
     // Now, if the element type itself had any resources, then
-    // we need to make these part of the layout for our CB
+    // we need to make these part of the layout for our block
+    //
+    // TODO: re-consider this decision, since it creates
+    // complications...
     for( auto elementResourceInfo : elementTypeLayout->resourceInfos )
     {
         // Skip uniform data, since that is encapsualted behind the constant buffer
@@ -340,23 +702,54 @@ createConstantBufferTypeLayout(
     return typeLayout;
 }
 
-RefPtr<ConstantBufferTypeLayout>
-createConstantBufferTypeLayout(
-    RefPtr<ConstantBufferType>  constantBufferType,
+LayoutRulesImpl* getParameterBufferElementTypeLayoutRules(
+    RefPtr<ParameterBlockType>  parameterBlockType,
     LayoutRulesImpl*            rules)
 {
-    // TODO(tfoley): need to compute the layout for the constant
-    // buffer's contents...
-    auto constantBufferLayoutRules = GetLayoutRulesImpl(
-        LayoutRule::HLSLConstantBuffer);
+    if( parameterBlockType->As<ConstantBufferType>() )
+    {
+        return rules->getLayoutRulesFamily()->getConstantBufferRules();
+    }
+    else if( parameterBlockType->As<TextureBufferType>() )
+    {
+        return rules->getLayoutRulesFamily()->getTextureBufferRules();
+    }
+    else if( parameterBlockType->As<GLSLInputParameterBlockType>() )
+    {
+        return rules->getLayoutRulesFamily()->getVaryingInputRules();
+    }
+    else if( parameterBlockType->As<GLSLOutputParameterBlockType>() )
+    {
+        return rules->getLayoutRulesFamily()->getVaryingOutputRules();
+    }
+    else if( parameterBlockType->As<GLSLShaderStorageBufferType>() )
+    {
+        return rules->getLayoutRulesFamily()->getShaderStorageBufferRules();
+    }
+    else
+    {
+        assert(!"unexpected");
+        return nullptr;
+    }
+}
+
+RefPtr<ParameterBlockTypeLayout>
+createParameterBlockTypeLayout(
+    RefPtr<ParameterBlockType>  parameterBlockType,
+    LayoutRulesImpl*            rules)
+{
+    // Determine the layout rules to use for the contents of the block
+    auto parameterBlockLayoutRules = getParameterBufferElementTypeLayoutRules(
+        parameterBlockType,
+        rules);
 
     // Create and save type layout for the buffer contents.
     auto elementTypeLayout = CreateTypeLayout(
-        constantBufferType->elementType.Ptr(),
-        constantBufferLayoutRules);
+        parameterBlockType->elementType.Ptr(),
+        parameterBlockLayoutRules);
 
-    return createConstantBufferTypeLayout(
-        constantBufferType,
+    return createParameterBlockTypeLayout(
+        parameterBlockType,
         elementTypeLayout,
         rules);
 }
@@ -364,7 +757,7 @@ createConstantBufferTypeLayout(
 // Create a type layout for a structured buffer type.
 RefPtr<StructuredBufferTypeLayout>
 createStructuredBufferTypeLayout(
-    LayoutResourceKind      kind,
+    ShaderParameterKind     kind,
     RefPtr<ExpressionType>  structuredBufferType,
     RefPtr<TypeLayout>      elementTypeLayout,
     LayoutRulesImpl*        rules)
@@ -382,7 +775,10 @@ createStructuredBufferTypeLayout(
     assert(!typeLayout->FindResourceInfo(LayoutResourceKind::Uniform));
     assert(typeLayout->uniformAlignment == 1);
 
-    typeLayout->addResourceUsage(kind, 1);
+    if( info.size != 0 )
+    {
+        typeLayout->addResourceUsage(info.kind, info.size);
+    }
 
     // Note: for now we don't deal with the case of a structured
     // buffer that might contain anything other than "uniform" data,
@@ -394,7 +790,7 @@ createStructuredBufferTypeLayout(
 // Create a type layout for a structured buffer type.
 RefPtr<StructuredBufferTypeLayout>
 createStructuredBufferTypeLayout(
-    LayoutResourceKind      kind,
+    ShaderParameterKind     kind,
     RefPtr<ExpressionType>  structuredBufferType,
     RefPtr<ExpressionType>  elementType,
     LayoutRulesImpl*        rules)
@@ -417,19 +813,19 @@ createStructuredBufferTypeLayout(
 
 }
 
-LayoutInfo GetLayoutImpl(
+SimpleLayoutInfo GetLayoutImpl(
     ExpressionType*     type,
     LayoutRulesImpl*    rules,
     RefPtr<TypeLayout>* outTypeLayout)
 {
-    if (auto constantBufferType = type->As<ConstantBufferType>())
+    if (auto parameterBlockType = type->As<ParameterBlockType>())
     {
         // If the user is just interested in uniform layout info,
         // then this is easy: a `ConstantBuffer<T>` is really no
         // different from a `Texture2D<U>` in terms of how it
         // should be handled as a member of a container.
         //
-        auto info = rules->GetObjectLayout(LayoutResourceKind::ConstantBuffer);
+        auto info = getParameterBlockLayoutInfo(parameterBlockType, rules);
 
         // The more interesting case, though, is when the user
         // is requesting us to actually create a `TypeLayout`,
@@ -444,8 +840,8 @@ LayoutInfo GetLayoutImpl(
         //
         if (outTypeLayout)
         {
-            *outTypeLayout = createConstantBufferTypeLayout(
-                constantBufferType,
+            *outTypeLayout = createParameterBlockTypeLayout(
+                parameterBlockType,
                 rules);
         }
 
@@ -454,7 +850,7 @@ LayoutInfo GetLayoutImpl(
     else if (auto samplerStateType = type->As<SamplerStateType>())
     {
         return GetSimpleLayoutImpl(
-            rules->GetObjectLayout(LayoutResourceKind::SamplerState),
+            rules->GetObjectLayout(ShaderParameterKind::SamplerState),
             type,
             rules,
             outTypeLayout);
@@ -463,15 +859,37 @@ LayoutInfo GetLayoutImpl(
     {
         // TODO: the logic here should really be defined by the rules,
         // and not at this top level...
-        LayoutResourceKind kind = LayoutResourceKind::None;
+        ShaderParameterKind kind;
         switch( textureType->getAccess() )
         {
         default:
-            kind = LayoutResourceKind::UnorderedAccess;
+            kind = ShaderParameterKind::MutableTexture;
             break;
 
         case SPIRE_RESOURCE_ACCESS_READ:
-            kind = LayoutResourceKind::ShaderResource;
+            kind = ShaderParameterKind::Texture;
+            break;
+        }
+
+        return GetSimpleLayoutImpl(
+            rules->GetObjectLayout(kind),
+            type,
+            rules,
+            outTypeLayout);
+    }
+    else if (auto textureSamplerType = type->As<TextureSamplerType>())
+    {
+        // TODO: the logic here should really be defined by the rules,
+        // and not at this top level...
+        ShaderParameterKind kind;
+        switch( textureSamplerType->getAccess() )
+        {
+        default:
+            kind = ShaderParameterKind::MutableTextureSampler;
+            break;
+
+        case SPIRE_RESOURCE_ACCESS_READ:
+            kind = ShaderParameterKind::TextureSampler;
             break;
         }
 
@@ -485,11 +903,11 @@ LayoutInfo GetLayoutImpl(
     // TODO: need a better way to handle this stuff...
 #define CASE(TYPE, KIND)                                                \
     else if(auto type_##TYPE = type->As<TYPE>()) do {                   \
-        auto info = rules->GetObjectLayout(LayoutResourceKind::KIND);   \
+        auto info = rules->GetObjectLayout(ShaderParameterKind::KIND);  \
         if (outTypeLayout)                                              \
         {                                                               \
             *outTypeLayout = createStructuredBufferTypeLayout(          \
-                LayoutResourceKind::KIND,                               \
+                ShaderParameterKind::KIND,                              \
                 type_##TYPE,                                            \
                 type_##TYPE->elementType.Ptr(),                         \
                 rules);                                                 \
@@ -497,10 +915,10 @@ LayoutInfo GetLayoutImpl(
         return info;                                                    \
     } while(0)
 
-    CASE(HLSLStructuredBufferType,          ShaderResource);
-    CASE(HLSLRWStructuredBufferType,        UnorderedAccess);
-    CASE(HLSLAppendStructuredBufferType,    UnorderedAccess);
-    CASE(HLSLConsumeStructuredBufferType,   UnorderedAccess);
+    CASE(HLSLStructuredBufferType,          StructuredBuffer);
+    CASE(HLSLRWStructuredBufferType,        MutableStructuredBuffer);
+    CASE(HLSLAppendStructuredBufferType,    MutableStructuredBuffer);
+    CASE(HLSLConsumeStructuredBufferType,   MutableStructuredBuffer);
 
 #undef CASE
 
@@ -509,17 +927,17 @@ LayoutInfo GetLayoutImpl(
 #define CASE(TYPE, KIND)                                        \
     else if(type->As<TYPE>()) do {                              \
         return GetSimpleLayoutImpl(                             \
-            rules->GetObjectLayout(LayoutResourceKind::KIND),   \
+            rules->GetObjectLayout(ShaderParameterKind::KIND),  \
             type, rules, outTypeLayout);                        \
     } while(0)
 
-    CASE(HLSLBufferType,                    ShaderResource);
-    CASE(HLSLRWBufferType,                  UnorderedAccess);
-    CASE(HLSLByteAddressBufferType,         ShaderResource);
-    CASE(HLSLRWByteAddressBufferType,       UnorderedAccess);
+    CASE(HLSLBufferType,                    SampledBuffer);
+    CASE(HLSLRWBufferType,                  MutableSampledBuffer);
+    CASE(HLSLByteAddressBufferType,         RawBuffer);
+    CASE(HLSLRWByteAddressBufferType,       MutableRawBuffer);
 
     // This case is mostly to allow users to add new resource types...
-    CASE(UntypedBufferResourceType,         ShaderResource);
+    CASE(UntypedBufferResourceType,         RawBuffer);
 
 #undef CASE
 
@@ -563,10 +981,15 @@ LayoutInfo GetLayoutImpl(
             rules,
             outTypeLayout ? &elementTypeLayout : nullptr);
 
-        auto elementCount = GetElementCount(arrayType->ArrayLength);
-        auto arrayInfo = rules->GetArrayLayout(
+        // For layout purposes, we treat an unsized array as an array of zero elements.
+        //
+        // TODO: Longer term we are going to need to be careful to include some indication
+        // that a type has logically "infinite" size in some resource kind. In particular
+        // this affects how we would allocate space for parameter binding purposes.
+        auto elementCount = arrayType->ArrayLength ? GetElementCount(arrayType->ArrayLength) : 0;
+        auto arrayUniformInfo = rules->GetArrayLayout(
             elementInfo,
-            elementCount);
+            elementCount).getUniformLayout();
 
         if (outTypeLayout)
         {
@@ -576,10 +999,11 @@ LayoutInfo GetLayoutImpl(
             typeLayout->type = type;
             typeLayout->elementTypeLayout = elementTypeLayout;
             typeLayout->rules = rules;
-            typeLayout->uniformAlignment = arrayInfo.alignment;
-            typeLayout->uniformStride = arrayInfo.elementStride;
 
-            typeLayout->addResourceUsage(LayoutResourceKind::Uniform, arrayInfo.size);
+            typeLayout->uniformAlignment = arrayUniformInfo.alignment;
+            typeLayout->uniformStride = arrayUniformInfo.elementStride;
+
+            typeLayout->addResourceUsage(LayoutResourceKind::Uniform, arrayUniformInfo.size);
 
             // translate element-type resources into array-type resources
             for( auto elementResourceInfo : elementTypeLayout->resourceInfos )
@@ -593,7 +1017,7 @@ LayoutInfo GetLayoutImpl(
                     elementResourceInfo.count * elementCount);
             }
         }
-        return arrayInfo;
+        return arrayUniformInfo;
     }
     else if (auto declRefType = type->As<DeclRefType>())
     {
@@ -610,15 +1034,15 @@ LayoutInfo GetLayoutImpl(
                 *outTypeLayout = typeLayout;
             }
 
-            LayoutInfo info = rules->BeginStructLayout();
+            UniformLayoutInfo info = rules->BeginStructLayout();
 
             for (auto field : structDeclRef.GetFields())
             {
                 RefPtr<TypeLayout> fieldTypeLayout;
-                LayoutInfo fieldInfo = GetLayoutImpl(
+                UniformLayoutInfo fieldInfo = GetLayoutImpl(
                     field.GetType().Ptr(),
                     rules,
-                    outTypeLayout ? &fieldTypeLayout : nullptr);
+                    outTypeLayout ? &fieldTypeLayout : nullptr).getUniformLayout();
 
                 // Note: we don't add any zero-size fields
                 // when computing structure layout, just
@@ -629,7 +1053,7 @@ LayoutInfo GetLayoutImpl(
                 // declarations needs to *also* eliminate zero-size
                 // fields to be safe...
                 size_t uniformOffset = info.size;
-                if (fieldInfo.size != 0)
+                if(fieldInfo.size != 0)
                 {
                     uniformOffset = rules->AddStructField(&info, fieldInfo);
                 }
@@ -685,7 +1109,7 @@ LayoutInfo GetLayoutImpl(
 
     // catch-all case in case nothing matched
     assert(!"unimplemented");
-    LayoutInfo info = { 0, 1 };
+    SimpleLayoutInfo info;
     return GetSimpleLayoutImpl(
         info,
         type,
@@ -693,7 +1117,7 @@ LayoutInfo GetLayoutImpl(
         outTypeLayout);
 }
 
-LayoutInfo GetLayout(ExpressionType* inType, LayoutRulesImpl* rules)
+SimpleLayoutInfo GetLayout(ExpressionType* inType, LayoutRulesImpl* rules)
 {
     return GetLayoutImpl(inType, rules, nullptr);
 }
@@ -705,75 +1129,7 @@ RefPtr<TypeLayout> CreateTypeLayout(ExpressionType* type, LayoutRulesImpl* rules
     return typeLayout;
 }
 
-LayoutInfo GetLayout(ILType* type, LayoutRulesImpl* rules)
-{
-    if (auto basicType = dynamic_cast<ILBasicType*>(type))
-    {
-        return rules->GetScalarLayout(basicType->Type);
-    }
-    else if (auto vectorType = dynamic_cast<ILVectorType*>(type))
-    {
-        return rules->GetVectorLayout(rules->GetScalarLayout(vectorType->BaseType), vectorType->Size);
-    }
-    else if (auto matrixType = dynamic_cast<ILMatrixType*>(type))
-    {
-        return rules->GetVectorLayout(rules->GetScalarLayout(matrixType->BaseType), matrixType->Size[1]);
-    }
-    else if (auto textureType = dynamic_cast<TextureType*>(type))
-    {
-        return{ 8, 8 };
-    }
-    else if (auto ptrLike = dynamic_cast<ILPointerLikeType*>(type))
-    {
-        return{ 8, 8 };
-    }
-    else if (auto arrayLike = dynamic_cast<ILArrayLikeType*>(type))
-    {
-        return{ 8, 8 };
-    }
-    else if (auto arrayType = dynamic_cast<ILArrayType*>(type))
-    {
-        return rules->GetArrayLayout(
-            GetLayout(arrayType->BaseType.Ptr(), rules),
-            arrayType->ArrayLength);
-    }
-    else if (auto structType = dynamic_cast<ILStructType*>(type))
-    {
-        LayoutInfo info = rules->BeginStructLayout();
-
-        for (auto field : structType->Members)
-        {
-            rules->AddStructField(&info,
-                GetLayout(field.Type.Ptr(), rules));
-        }
-
-        rules->EndStructLayout(&info);
-        return info;
-    }
-    else if (auto recordType = dynamic_cast<ILRecordType*>(type))
-    {
-        // TODO: this need to be implemented
-        LayoutInfo info = { 0, 1 };
-        return info;
-    }
-    else if (auto genericType = dynamic_cast<ILGenericType*>(type))
-    {
-        return GetLayout(genericType->BaseType.Ptr(), rules);
-    }
-    else
-    {
-        assert(!"unimplemented");
-        return{ 0, 1 };
-    }
-}
-
-LayoutInfo GetLayout(ExpressionType* type, LayoutRule rule)
-{
-    LayoutRulesImpl* rulesImpl = GetLayoutRulesImpl(rule);
-    return GetLayout(type, rulesImpl);
-}
-
-LayoutInfo GetLayout(ILType* type, LayoutRule rule)
+SimpleLayoutInfo GetLayout(ExpressionType* type, LayoutRule rule)
 {
     LayoutRulesImpl* rulesImpl = GetLayoutRulesImpl(rule);
     return GetLayout(type, rulesImpl);

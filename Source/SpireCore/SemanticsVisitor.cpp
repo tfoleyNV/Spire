@@ -1,5 +1,6 @@
 #include "SyntaxVisitors.h"
 
+#include "lookup.h"
 #include "ShaderCompiler.h"
 
 #include <assert.h>
@@ -42,44 +43,6 @@ namespace Spire
             else
                 return name;
         }
-
-        void BuildMemberDictionary(ContainerDecl* decl)
-        {
-            // Don't rebuild if already built
-            if (decl->memberDictionaryIsValid)
-                return;
-
-            decl->memberDictionary.Clear();
-            decl->transparentMembers.Clear();
-
-            for (auto m : decl->Members)
-            {
-                auto name = m->Name.Content;
-
-                // Add any transparent members to a separate list for lookup
-                if (m->HasModifier<TransparentModifier>())
-                {
-                    TransparentMemberInfo info;
-                    info.decl = m.Ptr();
-                    decl->transparentMembers.Add(info);
-                }
-
-                // Ignore members with an empty name
-                if (name.Length() == 0)
-                    continue;
-
-                m->nextInContainerWithSameName = nullptr;
-
-                Decl* next = nullptr;
-                if (decl->memberDictionary.TryGetValue(name, next))
-                    m->nextInContainerWithSameName = next;
-
-                decl->memberDictionary[name] = m.Ptr();
-
-            }
-            decl->memberDictionaryIsValid = true;
-        }
-
 
         class SemanticsVisitor : public SyntaxVisitor
         {
@@ -171,22 +134,6 @@ namespace Spire
                 }
             }
 
-            LookupResult RefineLookup(LookupResult const& inResult, LookupMask mask)
-            {
-                if (!inResult.isValid()) return inResult;
-                if (!inResult.isOverloaded()) return inResult;
-
-                LookupResult result;
-                for (auto item : inResult.items)
-                {
-                    if (!DeclPassesLookupMask(item.declRef.GetDecl(), mask))
-                        continue;
-
-                    AddToLookupResult(result, item);
-                }
-                return result;
-            }
-
             RefPtr<ExpressionSyntaxNode> ConstructDerefExpr(
                 RefPtr<ExpressionSyntaxNode> base,
                 RefPtr<ExpressionSyntaxNode> originalExpr)
@@ -237,7 +184,7 @@ namespace Spire
                 assert(lookupResult.isValid() && lookupResult.isOverloaded());
 
                 // Take the lookup result we had, and refine it based on what is expected in context.
-                lookupResult = RefineLookup(lookupResult, mask);
+                lookupResult = refineLookup(lookupResult, mask);
 
                 if (!lookupResult.isValid())
                 {
@@ -249,7 +196,13 @@ namespace Spire
                 if (lookupResult.isOverloaded())
                 {
                     // We had an ambiguity anyway, so report it.
-                    getSink()->diagnose(overloadedExpr, Diagnostics::unimplemented, "ambiguous reference");
+                    getSink()->diagnose(overloadedExpr, Diagnostics::ambiguousReference, lookupResult.items[0].declRef.GetName());
+
+                    for(auto item : lookupResult.items)
+                    {
+                        String declString = getDeclSignatureString(item);
+                        getSink()->diagnose(item.declRef, Diagnostics::overloadCandidate, declString);
+                    }
 
                     // TODO(tfoley): should we construct a new ErrorExpr here?
                     overloadedExpr->Type = ExpressionType::Error;
@@ -1236,7 +1189,7 @@ namespace Spire
 
                 // Look at previously-declared functions with the same name,
                 // in the same container
-                BuildMemberDictionary(parentDecl);
+                buildMemberDictionary(parentDecl);
 
                 for (auto prevDecl = funcDecl->nextInContainerWithSameName; prevDecl; prevDecl = prevDecl->nextInContainerWithSameName)
                 {
@@ -1780,8 +1733,33 @@ namespace Spire
                     if(auto varRef = declRef.As<VarDeclBaseRef>())
                     {
                         auto varDecl = varRef.GetDecl();
-                        if(auto staticAttr = varDecl->FindModifier<HLSLStaticModifier>())
+
+                        switch(sourceLanguage)
                         {
+                        case SourceLanguage::Spire:
+                        case SourceLanguage::HLSL:
+                            // HLSL: `static const` is used to mark compile-time constant expressions
+                            if(auto staticAttr = varDecl->FindModifier<HLSLStaticModifier>())
+                            {
+                                if(auto constAttr = varDecl->FindModifier<ConstModifier>())
+                                {
+                                    // HLSL `static const` can be used as a constant expression
+                                    if(auto initExpr = varRef.getInitExpr())
+                                    {
+                                        return TryConstantFoldExpr(initExpr.Ptr());
+                                    }
+                                }
+                            }
+                            break;
+
+                        case SourceLanguage::GLSL:
+                            // GLSL: `const` indicates compile-time constant expression
+                            //
+                            // TODO(tfoley): The current logic here isn't robust against
+                            // GLSL "specialization constants" - we will extract the
+                            // initializer for a `const` variable and use it to extract
+                            // a value, when we really should be using an opaque
+                            // reference to the variable.
                             if(auto constAttr = varDecl->FindModifier<ConstModifier>())
                             {
                                 // HLSL `static const` can be used as a constant expression
@@ -1790,7 +1768,9 @@ namespace Spire
                                     return TryConstantFoldExpr(initExpr.Ptr());
                                 }
                             }
+                            break;
                         }
+
                     }
                 }
 
@@ -4091,283 +4071,6 @@ namespace Spire
             }
 
 
-            bool DeclPassesLookupMask(Decl* decl, LookupMask mask)
-            {
-                // type declarations
-                if(auto aggTypeDecl = dynamic_cast<AggTypeDecl*>(decl))
-                {
-                    return int(mask) & int(LookupMask::Type);
-                }
-                else if(auto simpleTypeDecl = dynamic_cast<SimpleTypeDecl*>(decl))
-                {
-                    return int(mask) & int(LookupMask::Type);
-                }
-                // function declarations
-                else if(auto funcDecl = dynamic_cast<FunctionDeclBase*>(decl))
-                {
-                    return (int(mask) & int(LookupMask::Function)) != 0;
-                }
-
-                // default behavior is to assume a value declaration
-                // (no overloading allowed)
-
-                return (int(mask) & int(LookupMask::Value)) != 0;
-            }
-
-            void AddToLookupResult(
-                LookupResult&		result,
-                LookupResultItem	item)
-            {
-                if (!result.isValid())
-                {
-                    // If we hadn't found a hit before, we have one now
-                    result.item = item;
-                }
-                else if (!result.isOverloaded())
-                {
-                    // We are about to make this overloaded
-                    result.items.Add(result.item);
-                    result.items.Add(item);
-                }
-                else
-                {
-                    // The result was already overloaded, so we pile on
-                    result.items.Add(item);
-                }
-            }
-
-            // Helper for constructing breadcrumb trails during lookup, without
-            // any heap allocation
-            struct BreadcrumbInfo
-            {
-                LookupResultItem::Breadcrumb::Kind kind;
-                DeclRef declRef;
-                BreadcrumbInfo* prev = nullptr;
-            };
-
-            LookupResultItem CreateLookupResultItem(
-                DeclRef declRef,
-                BreadcrumbInfo* breadcrumbInfos)
-            {
-                LookupResultItem item;
-                item.declRef = declRef;
-
-                // breadcrumbs were constructed "backwards" on the stack, so we
-                // reverse them here by building a linked list the other way
-                RefPtr<LookupResultItem::Breadcrumb> breadcrumbs;
-                for (auto bb = breadcrumbInfos; bb; bb = bb->prev)
-                {
-                    breadcrumbs = new LookupResultItem::Breadcrumb(
-                        bb->kind,
-                        bb->declRef,
-                        breadcrumbs);
-                }
-                item.breadcrumbs = breadcrumbs;
-                return item;
-            }
-
-            // Look for members of the given name in the given container for declarations
-            void DoLocalLookupImpl(
-                String const&		name,
-                ContainerDeclRef	containerDeclRef,
-                LookupResult&		result,
-                BreadcrumbInfo*		inBreadcrumbs)
-            {
-                ContainerDecl* containerDecl = containerDeclRef.GetDecl();
-
-                // Ensure that the lookup dictionary in the container is up to date
-                if (!containerDecl->memberDictionaryIsValid)
-                {
-                    BuildMemberDictionary(containerDecl);
-                }
-
-                // Look up the declarations with the chosen name in the container.
-                Decl* firstDecl = nullptr;
-                containerDecl->memberDictionary.TryGetValue(name, firstDecl);
-
-                // Now iterate over those declarations (if any) and see if
-                // we find any that meet our filtering criteria.
-                // For example, we might be filtering so that we only consider
-                // type declarations.
-                for (auto m = firstDecl; m; m = m->nextInContainerWithSameName)
-                {
-                    if (!DeclPassesLookupMask(m, result.mask))
-                        continue;
-
-                    // The declaration passed the test, so add it!
-                    AddToLookupResult(result, CreateLookupResultItem(DeclRef(m, containerDeclRef.substitutions), inBreadcrumbs));
-                }
-
-
-                // TODO(tfoley): should we look up in the transparent decls
-                // if we already has a hit in the current container?
-
-                for(auto transparentInfo : containerDecl->transparentMembers)
-                {
-                    // The reference to the transparent member should use whatever
-                    // substitutions we used in referring to its outer container
-                    DeclRef transparentMemberDeclRef(transparentInfo.decl, containerDeclRef.substitutions);
-
-                    // We need to leave a breadcrumb so that we know that the result
-                    // of lookup involves a member lookup step here
-
-                    BreadcrumbInfo memberRefBreadcrumb;
-                    memberRefBreadcrumb.kind = LookupResultItem::Breadcrumb::Kind::Member;
-                    memberRefBreadcrumb.declRef = transparentMemberDeclRef;
-                    memberRefBreadcrumb.prev = inBreadcrumbs;
-
-                    DoMemberLookupImpl(name, transparentMemberDeclRef, result, &memberRefBreadcrumb);
-                }
-
-                // TODO(tfoley): need to consider lookup via extension here?
-            }
-
-            void DoMemberLookupImpl(
-                String const&			name,
-                RefPtr<ExpressionType>	baseType,
-                LookupResult&			ioResult,
-                BreadcrumbInfo*			breadcrumbs)
-            {
-                // If the type was pointer-like, then dereference it
-                // automatically here.
-                if (auto pointerLikeType = baseType->As<PointerLikeType>())
-                {
-                    // Need to leave a breadcrumb to indicate that we
-                    // did an implicit dereference here
-                    BreadcrumbInfo derefBreacrumb;
-                    derefBreacrumb.kind = LookupResultItem::Breadcrumb::Kind::Deref;
-                    derefBreacrumb.prev = breadcrumbs;
-
-                    // Recursively perform lookup on the result of deref
-                    return DoMemberLookupImpl(name, pointerLikeType->elementType, ioResult, &derefBreacrumb);
-                }
-
-                // Default case: no dereference needed
-
-                if (auto baseDeclRefType = baseType->As<DeclRefType>())
-                {
-                    if (auto baseAggTypeDeclRef = baseDeclRefType->declRef.As<AggTypeDeclRef>())
-                    {
-                        DoLocalLookupImpl(name, baseAggTypeDeclRef, ioResult, breadcrumbs);
-                    }
-                }
-
-                // TODO(tfoley): any other cases to handle here?
-            }
-
-            void DoMemberLookupImpl(
-                String const&	name,
-                DeclRef			baseDeclRef,
-                LookupResult&	ioResult,
-                BreadcrumbInfo*	breadcrumbs)
-            {
-                auto baseType = GetTypeForDeclRef(baseDeclRef);
-                return DoMemberLookupImpl(name, baseType, ioResult, breadcrumbs);
-            }
-
-            void DoLookupImpl(String const& name, LookupResult& result)
-            {
-                ContainerDecl* scope = result.scope;
-                ContainerDecl* endScope = result.endScope;
-                for (;scope != endScope; scope = scope->ParentDecl)
-                {
-                    ContainerDeclRef scopeRef = DeclRef(scope, nullptr).As<ContainerDeclRef>();
-                    DoLocalLookupImpl(name, scopeRef, result, nullptr);
-
-                    if (result.isValid())
-                    {
-                        // If we've found a result in this scope, then there
-                        // is no reason to look further up (for now).
-                        return;
-                    }
-
-#if 0
-
-
-                    auto memberCount = scope->Members.Count();
-
-                    for (;index < memberCount; index++)
-                    {
-                        auto member = scope->Members[index].Ptr();
-                        if (member->Name.Content != name)
-                            continue;
-
-                        // TODO: filter based on our mask
-                        if (!DeclPassesLookupMask(member, result.mask))
-                            continue;
-
-                        // if we had previously found a result
-                        if (result.isValid())
-                        {
-                            // we now have a potentially overloaded result,
-                            // and can return with this knowledge
-                            result.flags |= LookupResult::Flags::Overloaded;
-                            return result;
-                        }
-                        else
-                        {
-                            // this is the first result!
-                            result.decl = member;
-                            result.scope = scope;
-                            result.index = index;
-
-                            // TODO: need to establish a mask for subsequent
-                            // lookup...
-                        }
-                    }
-
-                    // we reached the end of a scope, so if we found
-                    // anything inside that scope, we should return now
-                    // rather than continue to search parent scopes
-                    if (result.isValid())
-                    {
-                        return result;
-                    }
-
-                    // Otherwise, we proceed to the next scope up.
-                    scope = scope->ParentDecl;
-                    index = 0;
-#endif
-                }
-
-                // If we run out of scopes, then we are done.
-            }
-
-            LookupResult DoLookup(String const& name, LookupResult inResult)
-            {
-                LookupResult result;
-                result.mask = inResult.mask;
-                result.endScope = inResult.endScope;
-                DoLookupImpl(name, result);
-                return result;
-            }
-
-            LookupResult LookUp(String const& name, ContainerDecl* scope)
-            {
-                LookupResult result;
-                result.scope = scope;
-                DoLookupImpl(name, result);
-                return result;
-            }
-
-            // perform lookup within the context of a particular container declaration,
-            // and do *not* look further up the chain
-            LookupResult LookUpLocal(String const& name, ContainerDecl* scope)
-            {
-                LookupResult result;
-                result.scope = scope;
-                result.endScope = scope->ParentDecl;
-                return DoLookup(name, result);
-
-            }
-
-            LookupResult LookUpLocal(String const& name, ContainerDeclRef containerDeclRef)
-            {
-                LookupResult result;
-                DoLocalLookupImpl(name, containerDeclRef, result, nullptr);
-                return result;
-            }
-
             virtual RefPtr<ExpressionSyntaxNode> VisitVarExpression(VarExpressionSyntaxNode *expr) override
             {
                 // If we've already resolved this expression, don't try again.
@@ -4469,49 +4172,11 @@ namespace Spire
             // Get the type to use when referencing a declaration
             QualType GetTypeForDeclRef(DeclRef declRef)
             {
-                // We need to insert an appropriate type for the expression, based on
-                // what we found.
-                if (auto varDeclRef = declRef.As<VarDeclBaseRef>())
-                {
-                    QualType qualType;
-                    qualType.type = varDeclRef.GetType();
-                    qualType.IsLeftValue = true; // TODO(tfoley): allow explicit `const` or `let` variables
-                    return qualType;
-                }
-                else if (auto typeAliasDeclRef = declRef.As<TypeDefDeclRef>())
-                {
-                    EnsureDecl(typeAliasDeclRef.GetDecl());
-                    auto type = new NamedExpressionType(typeAliasDeclRef);
-                    typeResult = type;
-                    return new TypeType(type);
-                }
-                else if (auto aggTypeDeclRef = declRef.As<AggTypeDeclRef>())
-                {
-                    auto type = DeclRefType::Create(aggTypeDeclRef);
-                    typeResult = type;
-                    return new TypeType(type);
-                }
-                else if (auto simpleTypeDeclRef = declRef.As<SimpleTypeDeclRef>())
-                {
-                    auto type = DeclRefType::Create(simpleTypeDeclRef);
-                    typeResult = type;
-                    return new TypeType(type);
-                }
-                else if (auto genericDeclRef = declRef.As<GenericDeclRef>())
-                {
-                    auto type = new GenericDeclRefType(genericDeclRef);
-                    typeResult = type;
-                    return new TypeType(type);
-                }
-                else if (auto funcDeclRef = declRef.As<FuncDeclBaseRef>())
-                {
-                    auto type = new FuncType();
-                    type->declRef = funcDeclRef;
-                    return type;
-                }
-
-                getSink()->diagnose(declRef, Diagnostics::unimplemented, "cannot form reference to this kind of declaration");
-                return ExpressionType::Error;
+                return getTypeForDeclRef(
+                    this,
+                    getSink(),
+                    declRef,
+                    &typeResult);
             }
 
             RefPtr<ExpressionSyntaxNode> MaybeDereference(RefPtr<ExpressionSyntaxNode> inExpr)
@@ -4809,6 +4474,74 @@ namespace Spire
             CompileOptions const& options)
         {
             return new SemanticsVisitor(err, options);
+        }
+
+        //
+
+        // Get the type to use when referencing a declaration
+        QualType getTypeForDeclRef(
+            SemanticsVisitor*       sema,
+            DiagnosticSink*         sink,
+            DeclRef                 declRef,
+            RefPtr<ExpressionType>* outTypeResult)
+        {
+            if( sema )
+            {
+                sema->EnsureDecl(declRef.GetDecl());
+            }
+
+            // We need to insert an appropriate type for the expression, based on
+            // what we found.
+            if (auto varDeclRef = declRef.As<VarDeclBaseRef>())
+            {
+                QualType qualType;
+                qualType.type = varDeclRef.GetType();
+                qualType.IsLeftValue = true; // TODO(tfoley): allow explicit `const` or `let` variables
+                return qualType;
+            }
+            else if (auto typeAliasDeclRef = declRef.As<TypeDefDeclRef>())
+            {
+                auto type = new NamedExpressionType(typeAliasDeclRef);
+                *outTypeResult = type;
+                return new TypeType(type);
+            }
+            else if (auto aggTypeDeclRef = declRef.As<AggTypeDeclRef>())
+            {
+                auto type = DeclRefType::Create(aggTypeDeclRef);
+                *outTypeResult = type;
+                return new TypeType(type);
+            }
+            else if (auto simpleTypeDeclRef = declRef.As<SimpleTypeDeclRef>())
+            {
+                auto type = DeclRefType::Create(simpleTypeDeclRef);
+                *outTypeResult = type;
+                return new TypeType(type);
+            }
+            else if (auto genericDeclRef = declRef.As<GenericDeclRef>())
+            {
+                auto type = new GenericDeclRefType(genericDeclRef);
+                *outTypeResult = type;
+                return new TypeType(type);
+            }
+            else if (auto funcDeclRef = declRef.As<FuncDeclBaseRef>())
+            {
+                auto type = new FuncType();
+                type->declRef = funcDeclRef;
+                return type;
+            }
+
+            if( sink )
+            {
+                sink->diagnose(declRef, Diagnostics::unimplemented, "cannot form reference to this kind of declaration");
+            }
+            return ExpressionType::Error;
+        }
+
+        QualType getTypeForDeclRef(
+            DeclRef                 declRef)
+        {
+            RefPtr<ExpressionType> typeResult;
+            return getTypeForDeclRef(nullptr, nullptr, declRef, &typeResult);
         }
 
     }

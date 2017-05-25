@@ -350,10 +350,10 @@ namespace CoreLib
 				T* ptrPointer = ptr.pointer;
 				if (ptrPointer != pointer)
 				{
+					if (ptrPointer)
+						ptrPointer->_refCount++;
 					Unreference();
 					pointer = ptrPointer;
-					if (pointer)
-						pointer->_refCount++;
 				}
 				return *this;
 			}

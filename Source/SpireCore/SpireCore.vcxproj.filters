@@ -81,6 +81,9 @@
     <ClInclude Include="Profile.h">
       <Filter>Front End</Filter>
     </ClInclude>
+    <ClInclude Include="lookup.h">
+      <Filter>Front End</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Lexer.cpp">
@@ -147,6 +150,12 @@
       <Filter>Front End</Filter>
     </ClCompile>
     <ClCompile Include="ParameterBinding.cpp">
+      <Filter>Front End</Filter>
+    </ClCompile>
+    <ClCompile Include="profile.cpp">
+      <Filter>Front End</Filter>
+    </ClCompile>
+    <ClCompile Include="lookup.cpp">
       <Filter>Front End</Filter>
     </ClCompile>
   </ItemGroup>

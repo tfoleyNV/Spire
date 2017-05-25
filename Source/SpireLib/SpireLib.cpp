@@ -239,6 +239,7 @@ namespace SpireLib
         ReadSource(Sources, parser, source);
     }
 
+#if 0
     CoreLib::String ShaderLibFile::ToString()
     {
         StringBuilder writer;
@@ -294,6 +295,7 @@ namespace SpireLib
         IndentString(formatSB, writer.ProduceString());
         return formatSB.ProduceString();
     }
+#endif
 
     void ShaderLibFile::Clear()
     {
@@ -302,11 +304,13 @@ namespace SpireLib
         Sources.Clear();
     }
 
+#if 0
     void ShaderLibFile::SaveToFile(CoreLib::Basic::String fileName)
     {
         StreamWriter fwriter(fileName);
         fwriter.Write(ToString());
     }
+#endif
 
     void ShaderLibFile::FromString(const String & src)
     {
@@ -429,7 +433,12 @@ namespace SpireLib
         Array<State, 128> states;
         List<RefPtr<Spire::Compiler::CompilationContext>> compileContext;
         RefPtr<ShaderCompiler> compiler;
-        CompileUnit predefUnit;
+
+        RefPtr<Scope>   spireLanguageScope;
+        RefPtr<Scope>   hlslLanguageScope;
+        RefPtr<Scope>   glslLanguageScope;
+
+        List<RefPtr<ProgramSyntaxNode>> loadedModuleCode;
 
 
         Session(bool /*pUseCache*/, CoreLib::String /*pCacheDir*/)
@@ -438,8 +447,34 @@ namespace SpireLib
             compileContext.Add(new Spire::Compiler::CompilationContext());
             states.Add(State());
 
-            predefUnit = createPredefUnit();
-            addBuiltinSource("stdlib", SpireStdLib::GetCode());
+            // Create scopes for various language builtins.
+            //
+            // TODO: load these on-demand to avoid parsing
+            // stdlib code for languages the user won't use.
+
+            spireLanguageScope = new Scope();
+
+            hlslLanguageScope = new Scope();
+            hlslLanguageScope->parent = spireLanguageScope;
+
+            glslLanguageScope = new Scope();
+            glslLanguageScope->parent = spireLanguageScope;
+
+            addBuiltinSource(spireLanguageScope, "stdlib", SpireStdLib::GetCode());
+            addBuiltinSource(glslLanguageScope, "glsl", getGLSLLibraryCode());
+        }
+
+        ~Session()
+        {
+            // We need to clean up the strings for the standard library
+            // code that we might have allocated and loaded into static
+            // variables (TODO: don't use `static` variables for this stuff)
+
+            SpireStdLib::Finalize();
+
+            // Ditto for our type represnetation stuff
+
+            ExpressionType::Finalize();
         }
 
         CompileUnit createPredefUnit()
@@ -457,277 +492,9 @@ namespace SpireLib
         }
 
         void addBuiltinSource(
-            String const& path,
-            String const& source)
-        {
-            DiagnosticSink sink;
-            sink.callback = &stdlibDiagnosticCallback;
-
-            RefPtr<SourceFile> sourceFile = new SourceFile();
-            sourceFile->path = path;
-            sourceFile->content = source;
-
-            CompileOptions options;
-            auto& preprocesorDefinitions = options.PreprocessorDefinitions;
-
-            auto tokens = PreprocessSource(
-                sourceFile->content,
-                sourceFile->path,
-                &sink,
-                nullptr,
-                preprocesorDefinitions);
-            if(sink.GetErrorCount())
-            {
-                assert(!"error in stdlib");
-            }
-
-            predefUnit.options.sourceFiles.Add(sourceFile);
-
-
-            auto translationUnitSyntax = predefUnit.SyntaxNode;
-
-            parseSourceFile(
-                translationUnitSyntax.Ptr(),
-                options,
-                tokens,
-                &sink,
-                sourceFile->path,
-                nullptr);
-            if(sink.GetErrorCount())
-            {
-                assert(!"error in stdlib");
-            }
-
-            // Now perform semantic checks, emit output, etc.
-
-            CollectionOfTranslationUnits collectionOfTranslationUnits;
-            collectionOfTranslationUnits.translationUnits.Add(predefUnit);
-
-            CompileResult compileResult;
-            compileResult.mSink = &sink;
-
-            compiler->Compile(
-                compileResult,
-                &collectionOfTranslationUnits,
-                options);
-            if(compileResult.GetErrorCount())
-            {
-                assert(!"error in stdlib");
-            }
-        }
-
-        ~Session()
-        {
-            SpireStdLib::Finalize();
-        }
-
-#if 0
-        SpireModule * FindModule(CoreLib::String moduleName)
-        {
-            auto ptr = states.Last().modules.TryGetValue(moduleName);
-            if (ptr)
-                return ptr->Ptr();
-            else
-                return nullptr;
-        }
-
-        StringBuilder moduleKeyBuilder;
-        SpireModule * SpecializeModule(SpireModule * /*module*/, int * /*params*/, int /*numParams*/, SpireDiagnosticSink * /*sink*/)
-        {
-            return nullptr;
-        }
-
-        void UpdateModuleLibrary(List<CompileUnit> & units, SpireDiagnosticSink * sink)
-        {
-            Spire::Compiler::CompileResult result;
-            compiler->Compile(result, *compileContext.Last(), units, Options);
-            
-            //TODO: update metadata
-
-            if (sink)
-            {
-                sink->diagnostics.AddRange(result.sink.diagnostics);
-                sink->errorCount += result.GetErrorCount();
-            }
-        }
-
-        int LoadModuleSource(CoreLib::String src, CoreLib::String fileName, SpireDiagnosticSink* sink)
-        {
-            List<CompileUnit> units;
-            int errCount = LoadModuleUnits(units, src, fileName, sink);
-            states.Last().moduleUnits.AddRange(units);
-            UpdateModuleLibrary(units, sink);
-            return errCount;
-        }
-
-        int LoadModuleUnits(List<CompileUnit> & units, CoreLib::String src, CoreLib::String fileName, SpireDiagnosticSink* sink)
-        {
-            auto & processedUnits = states.Last().processedModuleUnits;
-
-            Spire::Compiler::CompileResult result;
-            List<String> unitsToInclude;
-            unitsToInclude.Add(fileName);
-            processedUnits.Add(fileName);
-            auto searchDirs = Options.SearchDirectories;
-            searchDirs.Reverse();
-            searchDirs.Add(Path::GetDirectoryName(fileName));
-            searchDirs.Reverse();
-            includeHandler.searchDirs = searchDirs;
-            for (int i = 0; i < unitsToInclude.Count(); i++)
-            {
-                auto inputFileName = unitsToInclude[i];
-                try
-                {
-                    String source = src;
-                    if (i > 0)
-                        source = File::ReadAllText(inputFileName);
-                    auto unit = compiler->Parse(
-                        Options,
-                        result, source, inputFileName, &includeHandler, Options.PreprocessorDefinitions, predefUnit);
-
-                    // HACK(tfoley): Assume that the first thing we parse represents the predef unit!
-                    if (!predefUnit.SyntaxNode)
-                    {
-                        predefUnit = unit;
-                    }
-
-                    units.Add(unit);
-                    if (unit.SyntaxNode)
-                    {
-                        for (auto inc : unit.SyntaxNode->GetUsings())
-                        {
-                            bool found = false;
-                            for (auto & dir : searchDirs)
-                            {
-                                String includeFile = Path::Combine(dir, inc->fileName.Content);
-                                if (File::Exists(includeFile))
-                                {
-                                    if (processedUnits.Add(includeFile))
-                                    {
-                                        unitsToInclude.Add(includeFile);
-                                    }
-                                    found = true;
-                                    break;
-                                }
-                            }
-                            if (!found)
-                            {
-                                result.GetErrorWriter()->diagnose(inc->fileName.Position, Diagnostics::cannotFindFile, inc->fileName);
-                            }
-                        }
-                    }
-                }
-                catch (IOException)
-                {
-                    result.GetErrorWriter()->diagnose(CodePosition(0, 0, 0, ""), Diagnostics::cannotOpenFile, inputFileName);
-                }
-            }
-            if (sink)
-            {
-                sink->diagnostics.AddRange(result.sink.diagnostics);
-                sink->errorCount += result.GetErrorCount();
-            }
-            return result.GetErrorCount();
-        }
-#endif
-
-#if 0
-        Shader * NewShaderFromSource(const char * source, const char * fileName)
-        {
-            Spire::Compiler::CompileResult result;
-            auto unit = compiler->Parse(
-                Options,
-                result, source, fileName, nullptr, Dictionary<String, String>(), predefUnit);
-            auto list = unit.SyntaxNode->GetMembersOfType<TemplateShaderSyntaxNode>();
-            if (list.Count())
-                return new Shader((*list.begin())->Name.Content, String(source));
-            return nullptr;
-        }
-        Shader * NewShaderFromFile(const char * fileName)
-        {
-            try
-            {
-                return NewShaderFromSource(File::ReadAllText(fileName).Buffer(), fileName);
-            }
-            catch (Exception)
-            {
-                return nullptr;
-            }
-        }
-#endif
-
-#if 0
-        bool Compile(CompileResult & result, const Shader & shader, ArrayView<SpireModule*> modulesArgs, const char * additionalSource, SpireDiagnosticSink* sink)
-        {
-            Options.SymbolToCompile = shader.GetName();
-            Options.TemplateShaderArguments.Clear();
-            for (auto module : modulesArgs)
-                Options.TemplateShaderArguments.Add(module->Name);
-            return Compile(result, additionalSource + shader.GetSource(), shader.GetName(), sink);
-        }
-
-        bool Compile(CompileResult & result, CoreLib::String source, CoreLib::String fileName, SpireDiagnosticSink* sink)
-        {
-            if (states.Last().errorCount != 0)
-                return false;
-            PushContext();
-            List<CompileUnit> units;
-            states.Last().errorCount += LoadModuleUnits(units, source, fileName, sink);
-            if (states.Last().errorCount != 0)
-            {
-                PopContext();
-                return false;
-            }
-
-            Spire::Compiler::CompileResult cresult;
-            compiler->Compile(cresult, *compileContext.Last(), units, Options);
-            result.Sources = cresult.CompiledSource;
-            states.Last().errorCount += cresult.GetErrorCount();
-            if (sink)
-            {
-                sink->diagnostics.AddRange(cresult.sink.diagnostics);
-                sink->errorCount += cresult.GetErrorCount();
-            }
-            if (states.Last().errorCount == 0)
-            {
-                for (auto shader : result.Sources)
-                {
-                    List<SpireParameterSet> paramSets;
-                    for (auto & pset : shader.Value.MetaData.ParameterSets)
-                    {
-                        SpireParameterSet set;
-                        set.paramSet = pset.Value.Ptr();
-                        set.uniformBufferLegacyBindingPoint = pset.Value->UniformBufferLegacyBindingPoint;
-                        for (auto & item : pset.Value->Parameters)
-                        {
-                            auto resType = item.Value->Type->GetBindableResourceType();
-                            if (resType != BindableResourceType::NonBindable)
-                            {
-                                SpireResourceBindingInfo info;
-                                info.Type = (SpireBindableResourceType)resType;
-                                info.NumLegacyBindingPoints = item.Value->BindingPoints.Count();
-                                info.LegacyBindingPoints = item.Value->BindingPoints.Buffer();
-                                info.Name = item.Value->Name.Buffer();
-                                set.bindings.Add(info);
-                            }
-                        }
-                        paramSets.Add(_Move(set));
-                    }
-                    result.ParamSets[shader.Key] = _Move(paramSets);
-                }
-
-                result.reflectionBlob = cresult.reflectionBlob;
-                cresult.reflectionBlob = NULL;
-            }
-            bool succ = states.Last().errorCount == 0;
-            PopContext();
-            return succ;
-        }
-#endif
-
-
-
-
+            RefPtr<Scope> const&    scope,
+            String const&           path,
+            String const&           source);
     };
 
     struct CompileRequest
@@ -741,6 +508,8 @@ namespace SpireLib
         // Output stuff
         DiagnosticSink mSink;
         String mDiagnosticOutput;
+
+        RefPtr<CollectionOfTranslationUnits> mCollectionOfTranslationUnits;
 
         RefPtr<ProgramLayout> mReflectionData;
 
@@ -801,12 +570,28 @@ namespace SpireLib
             TranslationUnitOptions const&   translationUnitOptions)
         {
             auto& options = Options;
-            auto predefUnit = mSession->predefUnit.SyntaxNode.Ptr();
 
             IncludeHandlerImpl includeHandler;
             includeHandler.request = this;
 
             CompileUnit translationUnit;
+
+            RefPtr<Scope> languageScope;
+            switch( translationUnitOptions.sourceLanguage )
+            {
+            case SourceLanguage::HLSL:
+                languageScope = mSession->hlslLanguageScope;
+                break;
+
+            case SourceLanguage::GLSL:
+                languageScope = mSession->glslLanguageScope;
+                break;
+
+            case SourceLanguage::Spire:
+            default:
+                languageScope = mSession->spireLanguageScope;
+                break;
+            }
 
 
             auto& preprocesorDefinitions = options.PreprocessorDefinitions;
@@ -825,11 +610,21 @@ namespace SpireLib
 
                 String source = sourceFile->content;
 
-                auto tokens = PreprocessSource(source, sourceFilePath, result.GetErrorWriter(), &includeHandler, preprocesorDefinitions);
+                auto tokens = preprocessSource(
+                    source,
+                    sourceFilePath,
+                    result.GetErrorWriter(),
+                    &includeHandler,
+                    preprocesorDefinitions,
+                    translationUnitSyntax.Ptr());
 
                 parseSourceFile(
-                    translationUnitSyntax.Ptr(), options, tokens, result.GetErrorWriter(), sourceFilePath,
-                    predefUnit);
+                    translationUnitSyntax.Ptr(),
+                    options,
+                    tokens,
+                    result.GetErrorWriter(),
+                    sourceFilePath,
+                    languageScope);
             }
 
             translationUnit.options = translationUnitOptions;
@@ -874,7 +669,7 @@ namespace SpireLib
 
             // TODO: load the stdlib
 
-            CollectionOfTranslationUnits collectionOfTranslationUnits;
+            mCollectionOfTranslationUnits = new CollectionOfTranslationUnits();
 
             // Parse everything from the input files requested
             //
@@ -882,7 +677,7 @@ namespace SpireLib
             for( auto& translationUnitOptions : Options.translationUnits )
             {
                 auto translationUnit = parseTranslationUnit(result, translationUnitOptions);
-                collectionOfTranslationUnits.translationUnits.Add(translationUnit);
+                mCollectionOfTranslationUnits->translationUnits.Add(translationUnit);
             }
             if( result.GetErrorCount() != 0 )
                 return 1;
@@ -892,11 +687,11 @@ namespace SpireLib
 
             // Now perform semantic checks, emit output, etc.
             mSession->compiler->Compile(
-                result, &collectionOfTranslationUnits, Options);
+                result, mCollectionOfTranslationUnits.Ptr(), Options);
             if(result.GetErrorCount() != 0)
                 return 1;
 
-            mReflectionData = collectionOfTranslationUnits.layout;
+            mReflectionData = mCollectionOfTranslationUnits->layout;
 
             return 0;
         }
@@ -938,7 +733,133 @@ namespace SpireLib
             return err;
         }
 
+        int addTranslationUnit(SourceLanguage language, String const& name)
+        {
+            int result = Options.translationUnits.Count();
+
+            TranslationUnitOptions translationUnit;
+            translationUnit.sourceLanguage = SourceLanguage(language);
+
+            Options.translationUnits.Add(translationUnit);
+
+            return result;
+        }
+
+        void addTranslationUnitSourceString(
+            int             translationUnitIndex,
+            String const&   path,
+            String const&   source)
+        {
+            RefPtr<SourceFile> sourceFile = new SourceFile();
+            sourceFile->path = path;
+            sourceFile->content = source;
+
+            Options.translationUnits[translationUnitIndex].sourceFiles.Add(sourceFile);
+        }
+
+        void addTranslationUnitSourceFile(
+            int             translationUnitIndex,
+            String const&   path)
+        {
+            String source;
+            try
+            {
+                source = File::ReadAllText(path);
+            }
+            catch( ... )
+            {
+                // Emit a diagnostic!
+                mSink.diagnose(
+                    CodePosition(0,0,0,path),
+                    Diagnostics::cannotOpenFile,
+                    path);
+                return;
+            }
+
+            addTranslationUnitSourceString(
+                translationUnitIndex,
+                path,
+                source);
+
+            mDependencyFilePaths.Add(path);
+        }
+
+        int addTranslationUnitEntryPoint(
+            int                     translationUnitIndex,
+            String const&           name,
+            Profile                 profile)
+        {
+            EntryPointOption entryPoint;
+            entryPoint.name = name;
+            entryPoint.profile = profile;
+
+            // TODO: realistically want this to be global across all TUs...
+            int result = Options.translationUnits[translationUnitIndex].entryPoints.Count();
+
+            Options.translationUnits[translationUnitIndex].entryPoints.Add(entryPoint);
+            return result;
+        }
     };
+
+    void Session::addBuiltinSource(
+        RefPtr<Scope> const&    scope,
+        String const&           path,
+        String const&           source)
+    {
+        CompileRequest compileRequest(this);
+
+        auto translationUnitIndex = compileRequest.addTranslationUnit(SourceLanguage::Spire, path);
+
+        compileRequest.addTranslationUnitSourceString(
+            translationUnitIndex,
+            path,
+            source);
+
+        int err = compileRequest.executeAPIActions();
+        if(err)
+        {
+            fprintf(stderr, "%s", compileRequest.mDiagnosticOutput.Buffer());
+
+#ifdef _WIN32
+            OutputDebugStringA(compileRequest.mDiagnosticOutput.Buffer());
+#endif
+
+            assert(!"error in stdlib");
+        }
+
+        // Extract the AST for the code we just parsed
+        auto syntax = compileRequest.mCollectionOfTranslationUnits->translationUnits[translationUnitIndex].SyntaxNode;
+
+        // HACK(tfoley): mark all declarations in the "stdlib" so
+        // that we can detect them later (e.g., so we don't emit them)
+        for (auto m : syntax->Members)
+        {
+            auto fromStdLibModifier = new FromStdLibModifier();
+
+            fromStdLibModifier->next = m->modifiers.first;
+            m->modifiers.first = fromStdLibModifier;
+        }
+
+        // Add the resulting code to the appropriate scope
+        if( !scope->containerDecl )
+        {
+            // We are the first chunk of code to be loaded for this scope
+            scope->containerDecl = syntax.Ptr();
+        }
+        else
+        {
+            // We need to create a new scope to link into the whole thing
+            auto subScope = new Scope();
+            subScope->containerDecl = syntax.Ptr();
+            subScope->nextSibling = scope->nextSibling;
+            scope->nextSibling = subScope;
+        }
+
+        // We need to retain this AST so that we can use it in other code
+        // (Note that the `Scope` type does not retain the AST it points to)
+        loadedModuleCode.Add(syntax);
+    }
+
 
 #if 0
     int executeCompilerDriverActions(Spire::Compiler::CompileOptions const& options)
@@ -978,7 +899,13 @@ SPIRE_API void spAddBuiltins(
     char const*     sourceString)
 {
     auto s = SESSION(session);
-    s->addBuiltinSource(sourcePath, sourceString);
+    s->addBuiltinSource(
+
+        // TODO(tfoley): Add ability to directly new builtins to the approriate scope
+        s->spireLanguageScope,
+
+        sourcePath,
+        sourceString);
 }
 
 
@@ -1065,15 +992,10 @@ SPIRE_API int spAddTranslationUnit(
     char const*             name)
 {
     auto req = REQ(request);
-    int result = req->Options.translationUnits.Count();
 
-    TranslationUnitOptions translationUnit;
-
-    translationUnit.sourceLanguage = SourceLanguage(language);
-
-    req->Options.translationUnits.Add(translationUnit);
-
-    return result;
+    return req->addTranslationUnit(
+        SourceLanguage(language),
+        name ? name : "");
 }
 
 SPIRE_API void spAddTranslationUnitSourceFile(
@@ -1087,27 +1009,9 @@ SPIRE_API void spAddTranslationUnitSourceFile(
     if(translationUnitIndex < 0) return;
     if(translationUnitIndex >= req->Options.translationUnits.Count()) return;
 
-    String content;
-    try
-    {
-        content = File::ReadAllText(path);
-    }
-    catch( ... )
-    {
-        // Emit a diagnostic!
-        req->mSink.diagnose(
-            CodePosition(0,0,0,path),
-            Diagnostics::cannotOpenFile,
-            path);
-        return;
-    }
-
-    RefPtr<SourceFile> sourceFile = new SourceFile();
-    sourceFile->path = path;
-    sourceFile->content = content;
-
-    req->Options.translationUnits[translationUnitIndex].sourceFiles.Add(sourceFile);
-    req->mDependencyFilePaths.Add(path);
+    req->addTranslationUnitSourceFile(
+        translationUnitIndex,
+        path);
 }
 
 // Add a source string to the given translation unit
@@ -1125,11 +1029,11 @@ SPIRE_API void spAddTranslationUnitSourceString(
 
     if(!path) path = "";
 
-    RefPtr<SourceFile> sourceFile = new SourceFile();
-    sourceFile->path = path;
-    sourceFile->content = source;
+    req->addTranslationUnitSourceString(
+        translationUnitIndex,
+        path,
+        source);
 
-    req->Options.translationUnits[translationUnitIndex].sourceFiles.Add(sourceFile);
 }
 
 SPIRE_API SpireProfileID spFindProfile(
@@ -1151,15 +1055,11 @@ SPIRE_API int spAddTranslationUnitEntryPoint(
     if(translationUnitIndex < 0) return -1;
     if(translationUnitIndex >= req->Options.translationUnits.Count()) return -1;
 
-    EntryPointOption entryPoint;
-    entryPoint.name = name;
-    entryPoint.profile = Profile(Profile::RawVal(profile));
 
-    // TODO: realistically want this to be global across all TUs...
-    int result = req->Options.translationUnits[translationUnitIndex].entryPoints.Count();
-
-    req->Options.translationUnits[translationUnitIndex].entryPoints.Add(entryPoint);
-    return result;
+    return req->addTranslationUnitEntryPoint(
+        translationUnitIndex,
+        name,
+        Profile(Profile::RawVal(profile)));
 }
 
 

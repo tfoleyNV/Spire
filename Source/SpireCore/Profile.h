@@ -8,6 +8,19 @@ namespace Spire
 {
     namespace Compiler
     {
+        // Flavors of translation unit
+        enum class SourceLanguage : SpireSourceLanguage
+        {
+            Unknown = SPIRE_SOURCE_LANGUAGE_UNKNOWN, // should not occur
+            Spire = SPIRE_SOURCE_LANGUAGE_SPIRE,
+            HLSL = SPIRE_SOURCE_LANGUAGE_HLSL,
+            GLSL = SPIRE_SOURCE_LANGUAGE_GLSL,
+
+            // A separate PACKAGE of Spire code that has been imported
+            ImportedSpireCode,
+        };
+
+        // TODO(tfoley): This should merge with the above...
         enum class Language
         {
             Unknown,
@@ -36,6 +49,8 @@ namespace Spire
 #include "ProfileDefs.h"
         };
 
+        ProfileFamily getProfileFamily(ProfileVersion version);
+
         struct Profile
         {
             typedef uint32_t RawVal;
@@ -57,6 +72,7 @@ namespace Spire
 
             Stage GetStage() const { return Stage((uint32_t(raw) >> 16) & 0xFFFF); }
             ProfileVersion GetVersion() const { return ProfileVersion(uint32_t(raw) & 0xFFFF); }
+            ProfileFamily getFamily() const { return getProfileFamily(GetVersion()); }
 
             static Profile LookUp(char const* name);
 

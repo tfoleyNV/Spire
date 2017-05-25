@@ -9,6 +9,7 @@
 namespace Spire{ namespace Compiler {
 
 class DiagnosticSink;
+class ProgramSyntaxNode;
 
 // Callback interface for the preprocessor to use when looking
 // for files in `#include` directives.
@@ -22,18 +23,13 @@ struct IncludeHandler
 };
 
 // Take a string of source code and preprocess it into a list of tokens.
-TokenList PreprocessSource(
-    CoreLib::String const& source,
-    CoreLib::String const& fileName,
-    DiagnosticSink* sink,
-    IncludeHandler* includeHandler);
-
-TokenList PreprocessSource(
+TokenList preprocessSource(
     CoreLib::String const& source,
     CoreLib::String const& fileName,
     DiagnosticSink* sink,
     IncludeHandler* includeHandler,
-    CoreLib::Dictionary<CoreLib::String, CoreLib::String>  defines);
+    CoreLib::Dictionary<CoreLib::String, CoreLib::String>  defines,
+    ProgramSyntaxNode*  syntax);
 
 }}
 

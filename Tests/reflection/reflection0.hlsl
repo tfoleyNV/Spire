@@ -1,4 +1,4 @@
-//TEST:SIMPLE: -target reflection-json
+//TEST:SIMPLE:-profile ps_4_0  -target reflection-json
 
 // Confirm that basic reflection info can be output
 

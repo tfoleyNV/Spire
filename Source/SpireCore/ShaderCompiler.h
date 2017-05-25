@@ -65,18 +65,6 @@ namespace Spire
 //			GLSL,	// pass through GLSL to `glslang` library
         };
 
-        // Flavors of translation unit
-        enum class SourceLanguage : SpireSourceLanguage
-        {
-            Unknown = SPIRE_SOURCE_LANGUAGE_UNKNOWN, // should not occur
-            Spire = SPIRE_SOURCE_LANGUAGE_SPIRE,
-            HLSL = SPIRE_SOURCE_LANGUAGE_HLSL,
-            GLSL = SPIRE_SOURCE_LANGUAGE_GLSL,
-
-            // A separate PACKAGE of Spire code that has been imported
-            ImportedSpireCode,
-        };
-
         // Represents a single source file (either an on-disk file, or a
         // "virtual" file passed in as a string)
         class SourceFile : public RefObject
@@ -155,6 +143,7 @@ namespace Spire
         class ShaderCompiler : public CoreLib::Basic::Object
         {
         public:
+#if 0
             virtual CompileUnit Parse(
                 CompileOptions& options,
                 CompileResult & result,
@@ -163,6 +152,7 @@ namespace Spire
                 IncludeHandler* includeHandler,
                 Dictionary<String,String> const& preprocessorDefinitions,
                 CompileUnit predefUnit) = 0;
+#endif
 
             virtual void Compile(
                 CompileResult&                  result,

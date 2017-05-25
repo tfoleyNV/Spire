@@ -15,6 +15,8 @@ namespace Spire
             static CoreLib::String GetCode();
             static void Finalize();
         };
+
+        CoreLib::String getGLSLLibraryCode();
     }
 }
 

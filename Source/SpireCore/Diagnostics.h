@@ -188,31 +188,6 @@ namespace Spire
             }
 
             void diagnoseImpl(CodePosition const& pos, DiagnosticInfo const& info, int argCount, DiagnosticArg const* const* args);
-
-            // A stored state for the sink, which can be used to restore it later.
-            struct State
-            {
-                int diagnosticCount;
-                int errorCount;
-            };
-
-#if 0
-            // Save the state of the sink so that it can be restored later.
-            State saveState()
-            {
-                State state;
-                state.diagnosticCount = diagnostics.Count();
-                state.errorCount = errorCount;
-                return state;
-            }
-
-            // Restore the state of the sink to a saved state.
-            void restoreState(State state)
-            {
-                errorCount = state.errorCount;
-                diagnostics.SetSize(state.diagnosticCount);
-            }
-#endif
         };
 
         namespace Diagnostics

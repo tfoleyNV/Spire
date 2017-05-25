@@ -486,7 +486,7 @@ SPIRE_API SpireReflectionTypeLayout* spReflectionTypeLayout_GetElementTypeLayout
     {
         return (SpireReflectionTypeLayout*) arrayTypeLayout->elementTypeLayout.Ptr();
     }
-    else if( auto constantBufferTypeLayout = dynamic_cast<ConstantBufferTypeLayout*>(typeLayout))
+    else if( auto constantBufferTypeLayout = dynamic_cast<ParameterBlockTypeLayout*>(typeLayout))
     {
         return convert(constantBufferTypeLayout->elementTypeLayout.Ptr());
     }
@@ -551,7 +551,12 @@ SPIRE_API char const* spReflectionVariable_GetName(SpireReflectionVariable* inVa
     auto var = convert(inVar);
     if(!var) return nullptr;
 
-    return var->getName().begin();
+    // If the variable is one that has an "external" name that is supposed
+    // to be exposed for reflection, then report it here
+    if(auto reflectionNameMod = var->FindModifier<ParameterBlockReflectionName>())
+        return reflectionNameMod->nameToken.Content.Buffer();
+
+    return var->getName().Buffer();
 }
 
 SPIRE_API SpireReflectionType* spReflectionVariable_GetType(SpireReflectionVariable* inVar)
@@ -677,7 +682,7 @@ SPIRE_API unsigned spReflection_GetParameterCount(SpireReflection* inProgram)
     if(!program) return 0;
 
     auto globalLayout = program->globalScopeLayout;
-    if(auto globalConstantBufferLayout = globalLayout.As<ConstantBufferTypeLayout>())
+    if(auto globalConstantBufferLayout = globalLayout.As<ParameterBlockTypeLayout>())
     {
         globalLayout = globalConstantBufferLayout->elementTypeLayout;
     }
@@ -696,7 +701,7 @@ SPIRE_API SpireReflectionParameter* spReflection_GetParameterByIndex(SpireReflec
     if(!program) return nullptr;
 
     auto globalLayout = program->globalScopeLayout;
-    if(auto globalConstantBufferLayout = globalLayout.As<ConstantBufferTypeLayout>())
+    if(auto globalConstantBufferLayout = globalLayout.As<ParameterBlockTypeLayout>())
     {
         globalLayout = globalConstantBufferLayout->elementTypeLayout;
     }

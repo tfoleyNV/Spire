@@ -23,6 +23,7 @@
 #include "Source/SpireCore/Parser.cpp"
 #include "Source/SpireCore/Preprocessor.cpp"
 #include "Source/SpireCore/ILGenerator.cpp"
+#include "Source/SpireCore/lookup.cpp"
 #include "Source/SpireCore/SemanticsVisitor.cpp"
 #include "Source/SpireCore/ShaderCompiler.cpp"
 #include "Source/SpireCore/StdInclude.cpp"

@@ -7,8 +7,8 @@
 // struct declaration
 struct Foo
 {
-	vec3 a;
-	vec3 b;
+	float3 a;
+	float3 b;
 };
 
 // function on a struct
@@ -16,8 +16,8 @@ Foo makeFoo(float x, float y)
 {
 	// local of struct type
 	Foo foo;
-	foo.a = vec3(x);
-	foo.b = vec3(y);
+	foo.a = float3(x);
+	foo.b = float3(y);
 	return foo;
 }
 
@@ -29,8 +29,8 @@ template shader Test()
 	// Uniform of struct type
 	param Foo foo1;
 
-    @MeshVertex vec3 position;
-    @MeshVertex vec3 color;
+    @MeshVertex float3 position;
+    @MeshVertex float3 color;
 
     param mat4 modelViewProjection;
 
@@ -41,7 +41,7 @@ template shader Test()
     public Foo foo2 = makeFoo(color.x, color.y);
 
     //
-    vec3 result = foo1.a + foo2.b;
+    float3 result = foo1.a + foo2.b;
 
     out @Fragment vec4 colorTarget = vec4(result,1);
 }

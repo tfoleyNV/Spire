@@ -19,6 +19,9 @@ struct EmitContext
 
     // Current source position for tracking purposes...
     CodePosition loc;
+
+    // The target language we want to generate code for
+    CodeGenTarget target;
 };
 
 //
@@ -483,6 +486,7 @@ struct EDeclarator
     {
         Name,
         Array,
+        UnsizedArray,
     };
     Flavor flavor;
     EDeclarator* next = nullptr;
@@ -516,6 +520,169 @@ static void EmitDeclarator(EmitContext* context, EDeclarator* declarator)
         Emit(context, "]");
         break;
 
+    case EDeclarator::Flavor::UnsizedArray:
+        EmitDeclarator(context, declarator->next);
+        Emit(context, "[]");
+        break;
+
+    default:
+        assert(!"unreachable");
+        break;
+    }
+}
+
+static void emitGLSLTypePrefix(
+    EmitContext*            context,
+    RefPtr<ExpressionType>  type)
+{
+    if(auto basicElementType = type->As<BasicExpressionType>())
+    {
+        switch (basicElementType->BaseType)
+        {
+        case BaseType::Float:
+            // no prefix
+            break;
+
+        case BaseType::Int:		Emit(context, "i");		break;
+        case BaseType::UInt:	Emit(context, "u");		break;
+        case BaseType::Bool:	Emit(context, "b");		break;
+        default:
+            assert(!"unreachable");
+            break;
+        }
+    }
+    else if(auto vectorType = type->As<VectorExpressionType>())
+    {
+        emitGLSLTypePrefix(context, vectorType->elementType);
+    }
+    else if(auto matrixType = type->As<MatrixExpressionType>())
+    {
+        emitGLSLTypePrefix(context, matrixType->elementType);
+    }
+    else
+    {
+        assert(!"unreachable");
+    }
+}
+
+static void emitHLSLTextureType(
+    EmitContext*        context,
+    RefPtr<TextureType> texType)
+{
+    switch(texType->getAccess())
+    {
+    case SPIRE_RESOURCE_ACCESS_READ:
+        break;
+
+    case SPIRE_RESOURCE_ACCESS_READ_WRITE:
+        Emit(context, "RW");
+        break;
+
+    case SPIRE_RESOURCE_ACCESS_RASTER_ORDERED:
+        Emit(context, "RasterizerOrdered");
+        break;
+
+    case SPIRE_RESOURCE_ACCESS_APPEND:
+        Emit(context, "Append");
+        break;
+
+    case SPIRE_RESOURCE_ACCESS_CONSUME:
+        Emit(context, "Consume");
+        break;
+
+    default:
+        assert(!"unreachable");
+        break;
+    }
+
+    switch (texType->GetBaseShape())
+    {
+    case TextureType::Shape1D:		Emit(context, "Texture1D");		break;
+    case TextureType::Shape2D:		Emit(context, "Texture2D");		break;
+    case TextureType::Shape3D:		Emit(context, "Texture3D");		break;
+    case TextureType::ShapeCube:	Emit(context, "TextureCube");	break;
+    default:
+        assert(!"unreachable");
+        break;
+    }
+
+    if (texType->isMultisample())
+    {
+        Emit(context, "MS");
+    }
+    if (texType->isArray())
+    {
+        Emit(context, "Array");
+    }
+    Emit(context, "<");
+    EmitType(context, texType->elementType);
+    Emit(context, ">");
+}
+
+static void emitGLSLTextureOrTextureSamplerType(
+    EmitContext*            context,
+    RefPtr<TextureTypeBase> type,
+    char const*             baseName)
+{
+    emitGLSLTypePrefix(context, type->elementType);
+
+    Emit(context, baseName);
+    switch (type->GetBaseShape())
+    {
+    case TextureType::Shape1D:		Emit(context, "1D");		break;
+    case TextureType::Shape2D:		Emit(context, "2D");		break;
+    case TextureType::Shape3D:		Emit(context, "3D");		break;
+    case TextureType::ShapeCube:	Emit(context, "Cube");	break;
+    default:
+        assert(!"unreachable");
+        break;
+    }
+}
+
+static void emitGLSLTextureType(
+    EmitContext*        context,
+    RefPtr<TextureType> texType)
+{
+    emitGLSLTextureOrTextureSamplerType(context, texType, "texture");
+}
+
+static void emitGLSLTextureSamplerType(
+    EmitContext*                context,
+    RefPtr<TextureSamplerType>  type)
+{
+    emitGLSLTextureOrTextureSamplerType(context, type, "sampler");
+}
+
+static void emitTextureType(
+    EmitContext*        context,
+    RefPtr<TextureType> texType)
+{
+    switch(context->target)
+    {
+    case CodeGenTarget::HLSL:
+        emitHLSLTextureType(context, texType);
+        break;
+
+    case CodeGenTarget::GLSL:
+        emitGLSLTextureType(context, texType);
+        break;
+
+    default:
+        assert(!"unreachable");
+        break;
+    }
+}
+
+static void emitTextureSamplerType(
+    EmitContext*                context,
+    RefPtr<TextureSamplerType>  type)
+{
+    switch(context->target)
+    {
+    case CodeGenTarget::GLSL:
+        emitGLSLTextureSamplerType(context, type);
+        break;
+
     default:
         assert(!"unreachable");
         break;
@@ -543,81 +710,85 @@ static void EmitType(EmitContext* context, RefPtr<ExpressionType> type, EDeclara
     }
     else if (auto vecType = type->As<VectorExpressionType>())
     {
-        // TODO(tfoley): should really emit these with sugar
-        Emit(context, "vector<");
-        EmitType(context, vecType->elementType);
-        Emit(context, ",");
-        Emit(context, vecType->elementCount);
-        Emit(context, "> ");
+        switch(context->target)
+        {
+        case CodeGenTarget::GLSL:
+        case CodeGenTarget::GLSL_Vulkan:
+        case CodeGenTarget::GLSL_Vulkan_OneDesc:
+            {
+                emitGLSLTypePrefix(context, vecType->elementType);
+                Emit(context, "vec");
+                Emit(context, vecType->elementCount);
+            }
+            break;
 
+        case CodeGenTarget::HLSL:
+            // TODO(tfoley): should really emit these with sugar
+            Emit(context, "vector<");
+            EmitType(context, vecType->elementType);
+            Emit(context, ",");
+            Emit(context, vecType->elementCount);
+            Emit(context, ">");
+            break;
+
+        default:
+            assert(!"unreachable");
+            break;
+        }
+
+        Emit(context, " ");
         EmitDeclarator(context, declarator);
         return;
     }
     else if (auto matType = type->As<MatrixExpressionType>())
     {
-        // TODO(tfoley): should really emit these with sugar
-        Emit(context, "matrix<");
-        EmitType(context, matType->elementType);
-        Emit(context, ",");
-        Emit(context, matType->rowCount);
-        Emit(context, ",");
-        Emit(context, matType->colCount);
-        Emit(context, "> ");
+        switch(context->target)
+        {
+        case CodeGenTarget::GLSL:
+        case CodeGenTarget::GLSL_Vulkan:
+        case CodeGenTarget::GLSL_Vulkan_OneDesc:
+            {
+                emitGLSLTypePrefix(context, matType->elementType);
+                Emit(context, "mat");
+                Emit(context, matType->rowCount);
+                // TODO(tfoley): only emit the next bit
+                // for non-square matrix
+                Emit(context, "x");
+                Emit(context, matType->colCount);
+            }
+            break;
 
+        case CodeGenTarget::HLSL:
+            // TODO(tfoley): should really emit these with sugar
+            Emit(context, "matrix<");
+            EmitType(context, matType->elementType);
+            Emit(context, ",");
+            Emit(context, matType->rowCount);
+            Emit(context, ",");
+            Emit(context, matType->colCount);
+            Emit(context, "> ");
+            break;
+
+        default:
+            assert(!"unreachable");
+            break;
+        }
+
+        Emit(context, " ");
         EmitDeclarator(context, declarator);
         return;
     }
     else if (auto texType = type->As<TextureType>())
     {
-        switch(texType->getAccess())
-        {
-        case SPIRE_RESOURCE_ACCESS_READ:
-            break;
-
-        case SPIRE_RESOURCE_ACCESS_READ_WRITE:
-            Emit(context, "RW");
-            break;
-
-        case SPIRE_RESOURCE_ACCESS_RASTER_ORDERED:
-            Emit(context, "RasterizerOrdered");
-            break;
-
-        case SPIRE_RESOURCE_ACCESS_APPEND:
-            Emit(context, "Append");
-            break;
-
-        case SPIRE_RESOURCE_ACCESS_CONSUME:
-            Emit(context, "Consume");
-            break;
-
-        default:
-            assert(!"unreachable");
-            break;
-        }
-
-        switch (texType->GetBaseShape())
-        {
-        case TextureType::Shape1D:		Emit(context, "Texture1D");		break;
-        case TextureType::Shape2D:		Emit(context, "Texture2D");		break;
-        case TextureType::Shape3D:		Emit(context, "Texture3D");		break;
-        case TextureType::ShapeCube:	Emit(context, "TextureCube");	break;
-        default:
-            assert(!"unreachable");
-            break;
-        }
-
-        if (texType->isMultisample())
-        {
-            Emit(context, "MS");
-        }
-        if (texType->isArray())
-        {
-            Emit(context, "Array");
-        }
-        Emit(context, "<");
-        EmitType(context, texType->elementType);
-        Emit(context, "> ");
-
+        emitTextureType(context, texType);
+        Emit(context, " ");
+        EmitDeclarator(context, declarator);
+        return;
+    }
+    else if (auto textureSamplerType = type->As<TextureSamplerType>())
+    {
+        emitTextureSamplerType(context, textureSamplerType);
+        Emit(context, " ");
         EmitDeclarator(context, declarator);
         return;
     }
@@ -646,8 +817,17 @@ static void EmitType(EmitContext* context, RefPtr<ExpressionType> type, EDeclara
     {
         EDeclarator arrayDeclarator;
         arrayDeclarator.next = declarator;
-        arrayDeclarator.flavor = EDeclarator::Flavor::Array;
-        arrayDeclarator.elementCount = GetIntVal(arrayType->ArrayLength);
+
+        if(arrayType->ArrayLength)
+        {
+            arrayDeclarator.flavor = EDeclarator::Flavor::Array;
+            arrayDeclarator.elementCount = GetIntVal(arrayType->ArrayLength);
+        }
+        else
+        {
+            arrayDeclarator.flavor = EDeclarator::Flavor::UnsizedArray;
+        }
+
 
         EmitType(context, arrayType->BaseType, &arrayDeclarator);
         return;
@@ -994,6 +1174,10 @@ static void EmitModifiers(EmitContext* context, RefPtr<Decl> decl)
         CASE(HLSLUniformModifier, uniform);
         CASE(HLSLVolatileModifier, volatile);
 
+        CASE(InOutModifier, inout);
+        CASE(InModifier, in);
+        CASE(OutModifier, out);
+
         CASE(HLSLPointModifier, point);
         CASE(HLSLLineModifier, line);
         CASE(HLSLTriangleModifier, triangle);
@@ -1003,6 +1187,8 @@ static void EmitModifiers(EmitContext* context, RefPtr<Decl> decl)
         CASE(HLSLLinearModifier, linear);
         CASE(HLSLSampleModifier, sample);
         CASE(HLSLCentroidModifier, centroid);
+
+        CASE(ConstModifier, const);
 
         #undef CASE
 
@@ -1025,6 +1211,12 @@ static void EmitModifiers(EmitContext* context, RefPtr<Decl> decl)
                 Emit(context, ")");
             }
             Emit(context, "]");
+        }
+
+        else if(auto simpleModifier = mod.As<SimpleModifier>())
+        {
+            Emit(context, simpleModifier->nameToken.Content);
+            Emit(context, " ");
         }
 
         else
@@ -1141,6 +1333,11 @@ static void EmitTypeDefDecl(EmitContext* context, RefPtr<TypeDefDecl> decl)
 
 static void EmitStructDecl(EmitContext* context, RefPtr<StructSyntaxNode> decl)
 {
+    // Don't emit a declaration that was only generated implicitly, for
+    // the purposes of semantic checking.
+    if(decl->HasModifier<ImplicitParameterBlockElementTypeModifier>())
+        return;
+
     Emit(context, "struct ");
     Emit(context, decl->Name.Content);
     Emit(context, "\n{\n");
@@ -1256,20 +1453,29 @@ static void emitHLSLRegisterSemantics(
 {
     if (!layout) return;
 
+    switch( context->target )
+    {
+    default:
+        return;
+
+    case CodeGenTarget::HLSL:
+        break;
+    }
+
     for( auto rr : layout->resourceInfos )
     {
         emitHLSLRegisterSemantic(context, rr);
     }
 }
 
-static void EmitConstantBufferDecl(
-    EmitContext*				context,
-    RefPtr<VarDeclBase>			varDecl,
-    RefPtr<ConstantBufferType>	cbufferType,
-    RefPtr<VarLayout>           layout)
+static void emitHLSLParameterBlockDecl(
+    EmitContext*                    context,
+    RefPtr<VarDeclBase>             varDecl,
+    RefPtr<ParameterBlockType>      parameterBlockType,
+    RefPtr<VarLayout>               layout)
 {
     // The data type that describes where stuff in the constant buffer should go
-    RefPtr<ExpressionType> dataType = cbufferType->elementType;
+    RefPtr<ExpressionType> dataType = parameterBlockType->elementType;
 
     // We expect/require the data type to be a user-defined `struct` type
     auto declRefType = dataType->As<DeclRefType>();
@@ -1279,14 +1485,26 @@ static void EmitConstantBufferDecl(
     assert(layout);
 
     // We expect the layout to be for a structured type...
-    RefPtr<ConstantBufferTypeLayout> bufferLayout = layout->typeLayout.As<ConstantBufferTypeLayout>();
+    RefPtr<ParameterBlockTypeLayout> bufferLayout = layout->typeLayout.As<ParameterBlockTypeLayout>();
     assert(bufferLayout);
 
     RefPtr<StructTypeLayout> structTypeLayout = bufferLayout->elementTypeLayout.As<StructTypeLayout>();
     assert(structTypeLayout);
 
-    Emit(context, "cbuffer ");
-    Emit(context, varDecl->Name.Content);
+    if( auto constantBufferType = parameterBlockType->As<ConstantBufferType>() )
+    {
+        Emit(context, "cbuffer ");
+    }
+    else if( auto textureBufferType = parameterBlockType->As<TextureBufferType>() )
+    {
+        Emit(context, "tbuffer ");
+    }
+
+    if( auto reflectionNameModifier = varDecl->FindModifier<ParameterBlockReflectionName>() )
+    {
+        Emit(context, " ");
+        Emit(context, reflectionNameModifier->nameToken.Content);
+    }
 
     EmitSemantics(context, varDecl, kESemanticMask_None);
 
@@ -1337,19 +1555,180 @@ static void EmitConstantBufferDecl(
     Emit(context, "}\n");
 }
 
+static void
+emitGLSLLayoutQualifier(
+    EmitContext*                    context,
+    VarLayout::ResourceInfo const&  info)
+{
+    switch(info.kind)
+    {
+    case LayoutResourceKind::Uniform:
+        Emit(context, "layout(offset = ");
+        Emit(context, info.index);
+        Emit(context, ")\n");
+        break;
+
+    case LayoutResourceKind::VertexInput:
+    case LayoutResourceKind::FragmentOutput:
+        Emit(context, "layout(location = ");
+        Emit(context, info.index);
+        Emit(context, ")\n");
+        break;
+
+    case LayoutResourceKind::SpecializationConstant:
+        Emit(context, "layout(constant_id = ");
+        Emit(context, info.index);
+        Emit(context, ")\n");
+        break;
+
+    case LayoutResourceKind::ConstantBuffer:
+    case LayoutResourceKind::ShaderResource:
+    case LayoutResourceKind::UnorderedAccess:
+    case LayoutResourceKind::SamplerState:
+    case LayoutResourceKind::DescriptorTableSlot:
+        Emit(context, "layout(binding = ");
+        Emit(context, info.index);
+        if(info.space)
+        {
+            Emit(context, ", set = ");
+            Emit(context, info.space);
+        }
+        Emit(context, ")\n");
+        break;
+    }
+}
+
+static void
+emitGLSLLayoutQualifiers(
+    EmitContext*                    context,
+    RefPtr<VarLayout>               layout)
+{
+    if(!layout) return;
+
+    switch( context->target )
+    {
+    default:
+        return;
+
+    case CodeGenTarget::GLSL:
+        break;
+    }
+
+    for( auto info : layout->resourceInfos )
+    {
+        emitGLSLLayoutQualifier(context, info);
+    }
+}
+
+static void emitGLSLParameterBlockDecl(
+    EmitContext*                    context,
+    RefPtr<VarDeclBase>             varDecl,
+    RefPtr<ParameterBlockType>      parameterBlockType,
+    RefPtr<VarLayout>               layout)
+{
+    // The data type that describes where stuff in the constant buffer should go
+    RefPtr<ExpressionType> dataType = parameterBlockType->elementType;
+
+    // We expect/require the data type to be a user-defined `struct` type
+    auto declRefType = dataType->As<DeclRefType>();
+    assert(declRefType);
+
+    // We expect to always have layout information
+    assert(layout);
+
+    // We expect the layout to be for a structured type...
+    RefPtr<ParameterBlockTypeLayout> bufferLayout = layout->typeLayout.As<ParameterBlockTypeLayout>();
+    assert(bufferLayout);
+
+    RefPtr<StructTypeLayout> structTypeLayout = bufferLayout->elementTypeLayout.As<StructTypeLayout>();
+    assert(structTypeLayout);
+
+    // TODO(tfoley): emit GLSL layout info
+//    emitHLSLRegisterSemantic(context, *info);
+
+    emitGLSLLayoutQualifiers(context, layout);
+
+    EmitModifiers(context, varDecl);
+
+//    EmitSemantics(context, varDecl, kESemanticMask_None);
+
+    if( auto reflectionNameModifier = varDecl->FindModifier<ParameterBlockReflectionName>() )
+    {
+        Emit(context, " ");
+        Emit(context, reflectionNameModifier->nameToken.Content);
+    }
+
+    Emit(context, "\n{\n");
+    if (auto structRef = declRefType->declRef.As<StructDeclRef>())
+    {
+        for (auto field : structRef.GetMembersOfType<FieldDeclRef>())
+        {
+            RefPtr<VarLayout> fieldLayout;
+            structTypeLayout->mapVarToLayout.TryGetValue(field.GetDecl(), fieldLayout);
+            assert(fieldLayout);
+
+            // TODO(tfoley): We may want to emit *some* of these,
+            // some of the time...
+//            emitGLSLLayoutQualifiers(context, fieldLayout);
+
+            EmitVarDeclCommon(context, field);
+
+            Emit(context, ";\n");
+        }
+    }
+    Emit(context, "}");
+
+    if( varDecl->Name.Type != TokenType::Unknown )
+    {
+        Emit(context, " ");
+        Emit(context, varDecl->Name.Content);
+    }
+
+    Emit(context, ";\n");
+}
+
+static void emitParameterBlockDecl(
+    EmitContext*				context,
+    RefPtr<VarDeclBase>			varDecl,
+    RefPtr<ParameterBlockType>  parameterBlockType,
+    RefPtr<VarLayout>           layout)
+{
+    switch(context->target)
+    {
+    case CodeGenTarget::HLSL:
+        emitHLSLParameterBlockDecl(context, varDecl, parameterBlockType, layout);
+        break;
+
+    case CodeGenTarget::GLSL:
+        emitGLSLParameterBlockDecl(context, varDecl, parameterBlockType, layout);
+        break;
+
+    default:
+        assert(!"unexpected");
+        break;
+    }
+}
+
 static void EmitVarDecl(EmitContext* context, RefPtr<VarDeclBase> decl, RefPtr<VarLayout> layout)
 {
-    // As a special case, a variable using the `Constantbuffer<T>` type
-    // should be translated into a `cbuffer` declaration if the target
-    // requires it.
+    // As a special case, a variable using a parameter block type
+    // will be translated into a declaration using the more primitive
+    // language syntax.
+    //
+    // TODO(tfoley): Be sure to unwrap arrays here, in the GLSL case.
+    //
+    // TODO(tfoley): Detect cases where we need to fall back to
+    // ordinary variable declaration syntax in HLSL.
     //
     // TODO(tfoley): there might be a better way to detect this, e.g.,
     // with an attribute that gets attached to the variable declaration.
-    if (auto cbufferType = decl->Type->As<ConstantBufferType>())
+    if (auto parameterBlockType = decl->Type->As<ParameterBlockType>())
     {
-        EmitConstantBufferDecl(context, decl, cbufferType, layout);
+        emitParameterBlockDecl(context, decl, parameterBlockType, layout);
         return;
     }
+
+    emitGLSLLayoutQualifiers(context, layout);
 
     EmitVarDeclCommon(context, decl);
 
@@ -1405,11 +1784,63 @@ static void EmitFuncDecl(EmitContext* context, RefPtr<FunctionSyntaxNode> decl)
     }
 }
 
+static void emitGLSLPreprocessorDirective(
+    EmitContext*                        context,
+    RefPtr<GLSLPreprocessorDirective>   directive)
+{
+    if( auto versionDirective = directive.As<GLSLVersionDirective>() )
+    {
+        // TODO(tfoley): Emit an appropriate `#line` directive...
+
+        Emit(context, "#version ");
+        Emit(context, versionDirective->versionNumberToken.Content);
+        if(versionDirective->glslProfileToken.Type != TokenType::Unknown)
+        {
+            Emit(context, " ");
+            Emit(context, versionDirective->glslProfileToken.Content);
+        }
+        Emit(context, "\n");
+    }
+    else if( auto extensionDirective = directive.As<GLSLExtensionDirective>() )
+    {
+        // TODO(tfoley): Emit an appropriate `#line` directive...
+
+        Emit(context, "#extension ");
+        Emit(context, extensionDirective->extensionNameToken.Content);
+        Emit(context, " : ");
+        Emit(context, extensionDirective->dispositionToken.Content);
+        Emit(context, "\n");
+    }
+    // TODO: handle other cases...
+    else
+    {
+    }
+}
+
 static void EmitProgram(
     EmitContext*                context,
     RefPtr<ProgramSyntaxNode>   program,
     RefPtr<ProgramLayout>       programLayout)
 {
+    // There may be global-scope modifiers that we should emit now
+    for(auto modifier : program->GetModifiersOfType<GLSLPreprocessorDirective>())
+    {
+        emitGLSLPreprocessorDirective(context, modifier);
+    }
+
+    switch(context->target)
+    {
+    case CodeGenTarget::GLSL:
+        {
+            Emit(context, "#extension GL_GOOGLE_cpp_style_line_directive : require\n");
+        }
+        break;
+
+    default:
+        break;
+    }
+
+
     // Layout information for the global scope is either an ordinary
     // `struct` in the common case, or a constant buffer in the case
     // where there were global-scope uniforms.
@@ -1421,7 +1852,7 @@ static void EmitProgram(
         // information as a guideline.
         EmitDeclsInContainerUsingLayout(context, program, globalStructLayout);
     }
-    else if(auto globalConstantBufferLayout = globalScopeLayout.As<ConstantBufferTypeLayout>())
+    else if(auto globalConstantBufferLayout = globalScopeLayout.As<ParameterBlockTypeLayout>())
     {
         // TODO: the `cbuffer` case really needs to be emitted very
         // carefully, but that is beyond the scope of what a simple rewriter
@@ -1525,11 +1956,15 @@ static void EmitDecl(EmitContext* context, RefPtr<DeclBase> declBase)
     }
 }
 
-String emitProgram(ProgramSyntaxNode* program, ProgramLayout* programLayout)
+String emitProgram(
+    ProgramSyntaxNode*  program,
+    ProgramLayout*      programLayout,
+    CodeGenTarget       target)
 {
     // TODO(tfoley): only emit symbols on-demand, as needed by a particular entry point
 
     EmitContext context;
+    context.target = target;
 
     EmitProgram(&context, program, programLayout);
 

@@ -2,6 +2,8 @@
 
 #include <assert.h>
 
+#include "lookup.h"
+
 namespace Spire
 {
     namespace Compiler
@@ -33,7 +35,10 @@ namespace Spire
         public:
             CompileOptions& options;
             int anonymousCounter = 0;
-            RefPtr<ContainerDecl> currentScope;
+
+            RefPtr<Scope> outerScope;
+            RefPtr<Scope> currentScope;
+
             TokenReader tokenReader;
             DiagnosticSink * sink;
             String fileName;
@@ -53,15 +58,27 @@ namespace Spire
             }
             void PushScope(ContainerDecl* containerDecl)
             {
-                containerDecl->ParentDecl = currentScope.Ptr();
-                currentScope = containerDecl;
+                RefPtr<Scope> newScope = new Scope();
+                newScope->containerDecl = containerDecl;
+                newScope->parent = currentScope;
+
+                currentScope = newScope;
             }
             void PopScope()
             {
-                currentScope = currentScope->ParentDecl;
+                currentScope = currentScope->parent;
             }
-            Parser(CompileOptions& options, TokenSpan const& _tokens, DiagnosticSink * sink, String _fileName)
-                : options(options), tokenReader(_tokens), sink(sink), fileName(_fileName)
+            Parser(
+                CompileOptions& options,
+                TokenSpan const& _tokens,
+                DiagnosticSink * sink,
+                String _fileName,
+                RefPtr<Scope> const& outerScope)
+                : options(options)
+                , tokenReader(_tokens)
+                , sink(sink)
+                , fileName(_fileName)
+                , outerScope(outerScope)
             {
                 typeNames.Add("int");
                 typeNames.Add("uint");
@@ -118,7 +135,7 @@ namespace Spire
                 typeNames.Add("StorageBuffer");
                 typeNames.Add("Patch");
             }
-            RefPtr<ProgramSyntaxNode> Parse(ProgramSyntaxNode*	predefUnit);
+            RefPtr<ProgramSyntaxNode> Parse();
 
             Token ReadToken();
             Token ReadToken(CoreLib::Text::TokenType type);
@@ -127,9 +144,8 @@ namespace Spire
             bool LookAheadToken(const char * string, int offset = 0);
             Token ReadTypeKeyword();
             bool IsTypeKeyword();
-            void                                        parseSourceFile(ProgramSyntaxNode* program, ProgramSyntaxNode* predefUnit);
-            RefPtr<ProgramSyntaxNode>					ParseProgram(ProgramSyntaxNode*	predefUnit);
-            RefPtr<FunctionSyntaxNode>					ParseFunction(bool parseBody = true);
+            void                                        parseSourceFile(ProgramSyntaxNode* program);
+            RefPtr<ProgramSyntaxNode>					ParseProgram();
             RefPtr<StructSyntaxNode>					ParseStruct();
             RefPtr<ClassSyntaxNode>					    ParseClass();
             RefPtr<StatementSyntaxNode>					ParseStatement();
@@ -541,9 +557,9 @@ namespace Spire
                 && typeNames.Contains(tokenReader.PeekToken().Content);
         }
 
-        RefPtr<ProgramSyntaxNode> Parser::Parse(ProgramSyntaxNode*	predefUnit)
+        RefPtr<ProgramSyntaxNode> Parser::Parse()
         {
-            return ParseProgram(predefUnit);
+            return ParseProgram();
         }
 
         RefPtr<TypeDefDecl> ParseTypeDef(Parser* parser)
@@ -570,8 +586,19 @@ namespace Spire
         {
             RefPtr<Modifier>*& modifierLink = *ioModifierLink;
 
+            while(*modifierLink)
+                modifierLink = &(*modifierLink)->next;
+
             *modifierLink = modifier;
             modifierLink = &modifier->next;
+        }
+
+        void addModifier(
+            RefPtr<ModifiableSyntaxNode>    syntax,
+            RefPtr<Modifier>                modifier)
+        {
+            auto modifierLink = &syntax->modifiers.first;
+            AddModifier(&modifierLink, modifier);
         }
 
         // Parse HLSL-style `[name(arg, ...)]` style "attribute" modifiers
@@ -669,24 +696,25 @@ namespace Spire
 
                 else if (AdvanceIf(parser, "layout"))
                 {
+                    RefPtr<GLSLLayoutModifier> modifier = new GLSLLayoutModifier();
+
                     parser->ReadToken(TokenType::LParent);
-                    StringBuilder layoutSB;
                     while (!AdvanceIfMatch(parser, TokenType::RParent))
                     {
-                        layoutSB.Append(parser->ReadToken(TokenType::Identifier).Content);
-                        if (parser->LookAheadToken(TokenType::OpAssign))
+                        GLSLLayoutModifier::Arg arg;
+                        arg.keyToken = parser->ReadToken(TokenType::Identifier);
+
+                        if(AdvanceIf(parser, TokenType::OpAssign))
                         {
-                            layoutSB.Append(parser->ReadToken(TokenType::OpAssign).Content);
-                            layoutSB.Append(parser->ReadToken(TokenType::IntLiterial).Content);
+                            arg.valToken = parser->ReadToken(TokenType::IntLiterial);
                         }
+
+                        modifier->args.Add(arg);
+
                         if (AdvanceIf(parser, TokenType::RParent))
                             break;
                         parser->ReadToken(TokenType::Comma);
-                        layoutSB.Append(", ");
                     }
-
-                    RefPtr<LayoutModifier> modifier = new LayoutModifier();
-                    modifier->LayoutString = layoutSB.ProduceString();
 
                     AddModifier(&modifierLink, modifier);
                 }
@@ -718,6 +746,47 @@ namespace Spire
                 }
                 else
                 {
+                    // Fallback case if none of the above explicit cases matched.
+
+                    // If we are looking at an identifier, then it may map to a
+                    // modifier declaration visible in the current scope
+                    if( parser->LookAheadToken(TokenType::Identifier) )
+                    {
+                        LookupResult lookupResult = LookUp(
+                            parser->tokenReader.PeekToken().Content,
+                            parser->currentScope);
+
+                        if( lookupResult.isValid() && !lookupResult.isOverloaded() )
+                        {
+                            auto& item = lookupResult.item;
+                            auto decl = item.declRef.GetDecl();
+
+                            if( auto modifierDecl = dynamic_cast<ModifierDecl*>(decl) )
+                            {
+                                // We found a declaration for some modifier syntax,
+                                // so lets create an instance of the type it names
+                                // here.
+
+                                auto syntax = createInstanceOfSyntaxClassByName(modifierDecl->classNameToken.Content);
+                                auto modifier = dynamic_cast<Modifier*>(syntax);
+
+                                if( modifier )
+                                {
+                                    modifier->Position = parser->tokenReader.PeekLoc();
+                                    modifier->nameToken = parser->ReadToken(TokenType::Identifier);
+
+                                    AddModifier(&modifierLink, modifier);
+                                    continue;
+                                }
+                                else
+                                {
+                                    parser->ReadToken(TokenType::Identifier);
+                                    assert(!"unexpected");
+                                }
+                            }
+                        }
+                    }
+
                     // Done with modifier list
                     return modifiers;
                 }
@@ -842,6 +911,14 @@ namespace Spire
             }
         }
 
+        static void AddMember(RefPtr<Scope> scope, RefPtr<Decl> member)
+        {
+            if (scope)
+            {
+                AddMember(scope->containerDecl, member);
+            }
+        }
+
         static void parseParameterList(
             Parser*                     parser,
             RefPtr<FunctionDeclBase>    decl)
@@ -938,10 +1015,18 @@ namespace Spire
             *link = modifiers;
         }
 
+
+        static String GenerateName(Parser* parser, String const& base)
+        {
+            // TODO: somehow mangle the name to avoid clashes
+            return base;
+        }
+
         static String GenerateName(Parser* parser)
         {
-            return "_anonymous_" + String(parser->anonymousCounter++);
+            return GenerateName(parser, "_anonymous_" + String(parser->anonymousCounter++));
         }
+
 
         // Set up a variable declaration based on what we saw in its declarator...
         static void CompleteVarDecl(
@@ -1398,13 +1483,19 @@ namespace Spire
             parser->FillPosition(bufferDataTypeDecl.Ptr());
             parser->FillPosition(bufferVarDecl.Ptr());
 
-            // Only the variable declaration will actually be named, and it will
-            // use the given name to identify itself.
-            //
-            // TODO(tfoley): This isn't actually correct, and we should really
-            // be attaching the name as metadata on the node...
-            bufferVarDecl->Name = parser->ReadToken(TokenType::Identifier);
-            bufferDataTypeDecl->Name.Content = GenerateName(parser);
+            auto reflectionNameToken = parser->ReadToken(TokenType::Identifier);
+
+            // Attach the reflection name to the block so we can use it
+            auto reflectionNameModifier = new ParameterBlockReflectionName();
+            reflectionNameModifier->nameToken = reflectionNameToken;
+            addModifier(bufferVarDecl, reflectionNameModifier);
+
+            // Both the buffer variable and its type need to have names generated
+            bufferVarDecl->Name.Content = GenerateName(parser, "SPIRE_constantBuffer_" + reflectionNameToken.Content);
+            bufferDataTypeDecl->Name.Content = GenerateName(parser, "SPIRE_ConstantBuffer_" + reflectionNameToken.Content);
+
+            addModifier(bufferDataTypeDecl, new ImplicitParameterBlockElementTypeModifier());
+            addModifier(bufferVarDecl, new ImplicitParameterBlockVariableModifier());
 
             // TODO(tfoley): We end up constructing unchecked syntax here that
             // is expected to type check into the right form, but it might be
@@ -1421,7 +1512,10 @@ namespace Spire
             auto bufferWrapperTypeExpr = new VarExpressionSyntaxNode();
             bufferWrapperTypeExpr->Position = bufferWrapperTypeNamePos;
             bufferWrapperTypeExpr->Variable = bufferWrapperTypeName;
-            bufferWrapperTypeExpr->scope = parser->currentScope.Ptr();
+
+            // Always need to look this up in the outer scope,
+            // so that it won't collide with, e.g., a local variable called `ConstantBuffer`
+            bufferWrapperTypeExpr->scope = parser->outerScope;
 
             // Construct a type expression that represents the type for the variable,
             // which is the wrapper type applied to the data type
@@ -1461,6 +1555,151 @@ namespace Spire
 
             return bufferVarDecl;
         }
+
+        static RefPtr<Decl> parseGLSLBlockDecl(
+            Parser*	    parser,
+            Modifiers   modifiers)
+        {
+            // An GLSL block like this:
+            //
+            //     uniform Foo { int a; float b; } foo;
+            //
+            // is treated as syntax sugar for a type declaration
+            // and then a global variable declaration using that type:
+            //
+            //     struct $anonymous { int a; float b; };
+            //     Block<$anonymous> foo;
+            //
+            // where `$anonymous` is a fresh name.
+            //
+            // If a "local name" like `foo` is not given, then
+            // we make the declaration "transparent" so that lookup
+            // will see through it to the members inside.
+
+
+            CodePosition pos = parser->tokenReader.PeekLoc();
+
+            // The initial name before the `{` is only supposed
+            // to be made visible to reflection
+            auto reflectionNameToken = parser->ReadToken(TokenType::Identifier);
+
+            // TODO(tfoley): Do we need to pick an appropriate block
+            // type here, just to capture things?
+
+            String blockWrapperTypeName;
+            if( modifiers.findModifier<HLSLUniformModifier>() )
+            {
+                blockWrapperTypeName = "ConstantBuffer";
+            }
+            else if( modifiers.findModifier<InModifier>() )
+            {
+                blockWrapperTypeName = "__GLSLInputParameterBlock";
+            }
+            else if( modifiers.findModifier<OutModifier>() )
+            {
+                blockWrapperTypeName = "__GLSLOutputParameterBlock";
+            }
+            else if( modifiers.findModifier<GLSLBufferModifier>() )
+            {
+                blockWrapperTypeName = "__GLSLShaderStorageBuffer";
+            }
+            else
+            {
+                // Unknown case: just map to a constant buffer and hope for the best
+                blockWrapperTypeName = "ConstantBuffer";
+            }
+
+            // We are going to represent each buffer as a pair of declarations.
+            // The first is a type declaration that holds all the members, while
+            // the second is a variable declaration that uses the buffer type.
+            RefPtr<StructSyntaxNode> blockDataTypeDecl = new StructSyntaxNode();
+            RefPtr<Variable> blockVarDecl = new Variable();
+
+            addModifier(blockDataTypeDecl, new ImplicitParameterBlockElementTypeModifier());
+            addModifier(blockVarDecl, new ImplicitParameterBlockVariableModifier());
+
+            // Attach the reflection name to the block so we can use it
+            auto reflectionNameModifier = new ParameterBlockReflectionName();
+            reflectionNameModifier->nameToken = reflectionNameToken;
+            addModifier(blockVarDecl, reflectionNameModifier);
+
+            // Both declarations will have a location that points to the name
+            parser->FillPosition(blockDataTypeDecl.Ptr());
+            parser->FillPosition(blockVarDecl.Ptr());
+
+            // Generate a unique name for the data type
+            blockDataTypeDecl->Name.Content = GenerateName(parser, "SPIRE_ParameterBlock_" + reflectionNameToken.Content);
+
+            // TODO(tfoley): We end up constructing unchecked syntax here that
+            // is expected to type check into the right form, but it might be
+            // cleaner to have a more explicit desugaring pass where we parse
+            // these constructs directly into the AST and *then* desugar them.
+
+            // Construct a type expression to reference the buffer data type
+            auto blockDataTypeExpr = new VarExpressionSyntaxNode();
+            blockDataTypeExpr->Position = blockDataTypeDecl->Position;
+            blockDataTypeExpr->Variable = blockDataTypeDecl->Name.Content;
+            blockDataTypeExpr->scope = parser->currentScope.Ptr();
+
+            // Construct a type exrpession to reference the type constructor
+            auto blockWrapperTypeExpr = new VarExpressionSyntaxNode();
+            blockWrapperTypeExpr->Position = pos;
+            blockWrapperTypeExpr->Variable = blockWrapperTypeName;
+            // Always need to look this up in the outer scope,
+            // so that it won't collide with, e.g., a local variable called `ConstantBuffer`
+            blockWrapperTypeExpr->scope = parser->outerScope;
+
+            // Construct a type expression that represents the type for the variable,
+            // which is the wrapper type applied to the data type
+            auto blockVarTypeExpr = new GenericAppExpr();
+            blockVarTypeExpr->Position = blockVarDecl->Position;
+            blockVarTypeExpr->FunctionExpr = blockWrapperTypeExpr;
+            blockVarTypeExpr->Arguments.Add(blockDataTypeExpr);
+
+            blockVarDecl->Type.exp = blockVarTypeExpr;
+
+            // The declarations in the body belong to the data type.
+            parser->ReadToken(TokenType::LBrace);
+            ParseDeclBody(parser, blockDataTypeDecl.Ptr(), TokenType::RBrace);
+
+            if( parser->LookAheadToken(TokenType::Identifier) )
+            {
+                // The user gave an explicit name to the block,
+                // so we need to use that as our variable name
+                blockVarDecl->Name = parser->ReadToken(TokenType::Identifier);
+
+                // TODO: in this case we make actually have a more complex
+                // declarator, including `[]` brackets.
+            }
+            else
+            {
+                // synthesize a dummy name
+                blockVarDecl->Name.Content = GenerateName(parser, "SPIRE_parameterBlock_" + reflectionNameToken.Content);
+
+                // Otherwise we have a transparent declaration, similar
+                // to an HLSL `cbuffer`
+                auto transparentModifier = new TransparentModifier();
+                transparentModifier->Position = pos;
+                addModifier(blockVarDecl, transparentModifier);
+            }
+
+            // Because we are constructing two declarations, we have a thorny
+            // issue that were are only supposed to return one.
+            // For now we handle this by adding the type declaration to
+            // the current scope manually, and then returning the variable
+            // declaration.
+            //
+            // Note: this means that any modifiers that have already been parsed
+            // will get attached to the variable declaration, not the type.
+            // There might be cases where we need to shuffle things around.
+
+            AddMember(parser->currentScope, blockDataTypeDecl);
+
+            return blockVarDecl;
+        }
+
+
+
 
         static RefPtr<Decl> ParseGenericParamDecl(
             Parser*             parser,
@@ -1612,6 +1851,25 @@ namespace Spire
             return decl;
         }
 
+        // Parse a declaration of a new modifier keyword
+        static RefPtr<ModifierDecl> parseModifierDecl(Parser* parser)
+        {
+            RefPtr<ModifierDecl> decl = new ModifierDecl();
+
+            // read the `__modifier` keyword
+            parser->ReadToken(TokenType::Identifier);
+
+            parser->ReadToken(TokenType::LParent);
+            decl->classNameToken = parser->ReadToken(TokenType::Identifier);
+            parser->ReadToken(TokenType::RParent);
+
+            parser->FillPosition(decl.Ptr());
+            decl->Name = parser->ReadToken(TokenType::Identifier);
+
+            parser->ReadToken(TokenType::Semicolon);
+            return decl;
+        }
+
         // Finish up work on a declaration that was parsed
         static void CompleteDecl(
             Parser*				/*parser*/,
@@ -1658,12 +1916,24 @@ namespace Spire
                 decl = ParseConstructorDecl(parser);
             else if (parser->LookAheadToken("__trait"))
                 decl = ParseTraitDecl(parser);
+            else if(parser->LookAheadToken("__modifier"))
+                decl = parseModifierDecl(parser);
             else if (AdvanceIf(parser, TokenType::Semicolon))
             {
                 // empty declaration
             }
+            // GLSL requires that we be able to parse "block" declarations,
+            // which look superficially similar to declarator declarations
+            else if( parser->LookAheadToken(TokenType::Identifier)
+                && parser->LookAheadToken(TokenType::LBrace, 1) )
+            {
+                decl = parseGLSLBlockDecl(parser, modifiers);
+            }
             else
+            {
+                // Default case: just parse a declarator-based declaration
                 decl = ParseDeclaratorDecl(parser, containerDecl);
+            }
 
             if (decl)
             {
@@ -1735,11 +2005,11 @@ namespace Spire
             }
         }
 
-        void Parser::parseSourceFile(ProgramSyntaxNode* program, ProgramSyntaxNode* predefUnit)
+        void Parser::parseSourceFile(ProgramSyntaxNode* program)
         {
-            if (predefUnit)
+            if (outerScope)
             {
-                PushScope(predefUnit);
+                currentScope = outerScope;
             }
 
             PushScope(program);
@@ -1747,39 +2017,15 @@ namespace Spire
             ParseDeclBody(this, program, TokenType::EndOfFile);
             PopScope();
 
-            if (predefUnit)
-            {
-                PopScope();
-            }
-
-            assert(!currentScope.Ptr());
+            assert(currentScope == outerScope);
             currentScope = nullptr;
-
-            // HACK(tfoley): mark all declarations in the "stdlib" so
-            // that we can detect them later (e.g., so we don't emit them)
-            if (!predefUnit)
-            {
-                for (auto m : program->Members)
-                {
-                    auto fromStdLibModifier = new FromStdLibModifier();
-
-                    fromStdLibModifier->next = m->modifiers.first;
-                    m->modifiers.first = fromStdLibModifier;
-                }
-            }
-
-
         }
 
-        RefPtr<ProgramSyntaxNode> Parser::ParseProgram(ProgramSyntaxNode*	predefUnit)
+        RefPtr<ProgramSyntaxNode> Parser::ParseProgram()
         {
             RefPtr<ProgramSyntaxNode> program = new ProgramSyntaxNode();
-            if (predefUnit)
-            {
-                program->ParentDecl = predefUnit;
-            }
 
-            parseSourceFile(program.Ptr(), predefUnit);
+            parseSourceFile(program.Ptr());
 
             return program;
         }
@@ -2017,7 +2263,7 @@ namespace Spire
             RefPtr<VarDeclrStatementSyntaxNode>varDeclrStatement = new VarDeclrStatementSyntaxNode();
         
             FillPosition(varDeclrStatement.Ptr());
-            auto decl = ParseDeclWithModifiers(this, currentScope.Ptr(), modifiers);
+            auto decl = ParseDeclWithModifiers(this, currentScope->containerDecl, modifiers);
             varDeclrStatement->decl = decl;
             return varDeclrStatement;
         }
@@ -2612,17 +2858,6 @@ namespace Spire
             return rs;
         }
 
-        RefPtr<ProgramSyntaxNode> ParseProgram(
-            CompileOptions&     options,
-            TokenSpan const&    tokens,
-            DiagnosticSink*     sink,
-            String const&       fileName,
-            ProgramSyntaxNode*	predefUnit)
-        {
-            Parser parser(options, tokens, sink, fileName);
-            return parser.Parse(predefUnit);
-        }
-
                 // Parse a source file into an existing translation unit
         void parseSourceFile(
             ProgramSyntaxNode*  translationUnitSyntax,
@@ -2630,10 +2865,10 @@ namespace Spire
             TokenSpan const&    tokens,
             DiagnosticSink*     sink,
             String const&       fileName,
-            ProgramSyntaxNode*  predefUnit)
+            RefPtr<Scope> const&outerScope)
         {
-            Parser parser(options, tokens, sink, fileName);
-            return parser.parseSourceFile(translationUnitSyntax, predefUnit);
+            Parser parser(options, tokens, sink, fileName, outerScope);
+            return parser.parseSourceFile(translationUnitSyntax);
         }
     }
 }

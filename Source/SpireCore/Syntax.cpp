@@ -538,6 +538,15 @@ namespace Spire
                     textureType->declRef = declRef;
                     return textureType;
                 }
+                else if (magicMod->name == "TextureSampler")
+                {
+                    assert(subst && subst->args.Count() >= 1);
+                    auto textureType = new TextureSamplerType(
+                        TextureType::Flavor(magicMod->tag),
+                        ExtractGenericArgType(subst->args[0]));
+                    textureType->declRef = declRef;
+                    return textureType;
+                }
 
                 #define CASE(n,T)													\
                     else if(magicMod->name == #n) {									\
@@ -550,6 +559,9 @@ namespace Spire
 
                 CASE(ConstantBuffer, ConstantBufferType)
                 CASE(TextureBuffer, TextureBufferType)
+                CASE(GLSLInputParameterBlockType, GLSLInputParameterBlockType)
+                CASE(GLSLOutputParameterBlockType, GLSLOutputParameterBlockType)
+                CASE(GLSLShaderStorageBufferType, GLSLShaderStorageBufferType)
 
                 CASE(PackedBuffer, PackedBufferType)
                 CASE(Uniform, UniformBufferType)
@@ -902,6 +914,23 @@ namespace Spire
 
             (*ioDiff)++;
             auto substType = new TextureType(flavor, substElementType);
+            substType->declRef = substDeclRef;
+            return substType;
+        }
+
+        // TextureSamplerType
+
+        RefPtr<Val> TextureSamplerType::SubstituteImpl(Substitutions* subst, int* ioDiff)
+        {
+            int diff = 0;
+            auto substDeclRef = declRef.SubstituteImpl(subst, &diff);
+            auto substElementType = elementType->SubstituteImpl(subst, &diff).As<ExpressionType>();
+
+            if (!diff)
+                return this;
+
+            (*ioDiff)++;
+            auto substType = new TextureSamplerType(flavor, substElementType);
             substType->declRef = substDeclRef;
             return substType;
         }
@@ -1397,7 +1426,7 @@ namespace Spire
 
         // OperatorExpressionSyntaxNode
 
-        void OperatorExpressionSyntaxNode::SetOperator(ContainerDecl * scope, Spire::Compiler::Operator op)
+        void OperatorExpressionSyntaxNode::SetOperator(RefPtr<Scope> scope, Spire::Compiler::Operator op)
         {
             this->Operator = op;
             auto opExpr = new VarExpressionSyntaxNode();
@@ -1482,6 +1511,32 @@ namespace Spire
             return this;
         }
 
+        //
 
+        RefPtr<SyntaxNode> ModifierDecl::Accept(SyntaxVisitor * visitor)
+        {
+            return this;
+        }
+
+        //
+
+        SyntaxNodeBase* createInstanceOfSyntaxClassByName(
+            String const&   name)
+        {
+            if(0) {}
+        #define CASE(NAME) \
+            else if(name == #NAME) return new NAME()
+
+        CASE(GLSLBufferModifier);
+        CASE(GLSLWriteOnlyModifier);
+        CASE(GLSLReadOnlyModifier);
+
+        #undef CASE
+            else
+            {
+                assert(!"unexpected");
+                return nullptr;
+            }
+        }
     }
 }

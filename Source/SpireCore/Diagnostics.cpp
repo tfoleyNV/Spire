@@ -6,6 +6,15 @@
 
 #include <assert.h>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+#undef WIN32_LEAN_AND_MEAN
+#undef NOMINMAX
+#include <d3dcompiler.h>
+#endif
+
 namespace Spire {
 namespace Compiler {
 

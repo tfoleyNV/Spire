@@ -1,6 +1,7 @@
 // ParameterBinding.cpp
 #include "ParameterBinding.h"
 
+#include "lookup.h"
 #include "ShaderCompiler.h"
 #include "TypeLayout.h"
 
@@ -127,7 +128,7 @@ struct ParameterInfo : RefObject
 
 struct SharedParameterBindingContext
 {
-    LayoutRulesImpl* defaultLayoutRules;
+    LayoutRulesFamilyImpl* defaultLayoutRules;
 
     // All shader parameters we've discovered so far, and started to lay out...
     List<RefPtr<ParameterInfo>> parameters;
@@ -137,6 +138,9 @@ struct SharedParameterBindingContext
 
     // The program layout we are trying to construct
     RefPtr<ProgramLayout> programLayout;
+
+    // The source language we are trying to use
+    SourceLanguage sourceLanguage;
 };
 
 struct ParameterBindingContext
@@ -146,45 +150,10 @@ struct ParameterBindingContext
     // TODO: information for implicit constant buffer!
 
     // The layout rules to use while computing usage...
-    LayoutRulesImpl* layoutRules;
+    LayoutRulesFamilyImpl* layoutRules;
 
     UsedRanges usedResourceRanges[kLayoutResourceKindCount];
 };
-
-// Check whether a global variable declaration represents
-// a shader parameter, or is there for some other purpose.
-//
-// TODO: this *probably* needs to be parameterized on language rules.
-bool isGlobalVariableAShaderParameter(
-    VarDeclBase*    varDecl)
-{
-    // We need to determine if this variable represents a shader
-    // parameter, or just an ordinary global variable...
-
-    // HLSL `static` modifier indicates "thread local"
-    if(varDecl->HasModifier<HLSLStaticModifier>())
-        return false;
-
-    // HLSL `groupshared` modifier indicates "thread-group local"
-    if(varDecl->HasModifier<HLSLGroupSharedModifier>())
-        return false;
-
-    // TODO(tfoley): there may be other cases that we need to handle here
-
-    // TODO(tfoley): GLSL rules are almost completely flipped from HLSL.
-    // A GLSL global is "just a global" unless it is specifically decorated
-    // as a shader parameter...
-
-    return true;
-}
-
-
-static bool IsGlobalVariableAShaderParameter(
-    ParameterBindingContext*    /*context*/,
-    RefPtr<VarDeclBase>         varDecl)
-{
-    return isGlobalVariableAShaderParameter(varDecl.Ptr());
-}
 
 struct LayoutSemanticInfo
 {
@@ -267,15 +236,136 @@ static bool doesParameterMatch(
     return true;
 }
 
+//
+
+// Given a GLSL `layout` modifier, we need to be able to check for
+// a particular sub-argument and extract its value if present.
+static bool findLayoutArg(
+    RefPtr<GLSLLayoutModifier>  modifier,
+    String const&               key,
+    int*                        outVal)
+{
+    for(auto& arg : modifier->args)
+    {
+        if(arg.keyToken.Content != key)
+            continue;
+
+        *outVal = (int) strtol(arg.valToken.Content.Buffer(), nullptr, 10);
+        return true;
+    }
+    return false;
+}
+
+//
+
+LayoutRulesImpl*
+getLayoutRulesForGlobalShaderParameter_GLSL(
+    LayoutRulesFamilyImpl*  rules,
+    VarDeclBase*            varDecl)
+{
+    // A GLSL shader parameter will be marked with
+    // a qualifier to match the boundary it uses
+
+    // TODO(tfoley): We have multiple variations of
+    // the `uniform` modifier right now, and that
+    // needs to get fixed...
+    if(varDecl->HasModifier<HLSLUniformModifier>())
+        return rules->getConstantBufferRules();
+
+    if(varDecl->HasModifier<GLSLBufferModifier>())
+        return rules->getShaderStorageBufferRules();
+
+    if(varDecl->HasModifier<InModifier>())
+        return rules->getVaryingInputRules();
+
+    if(varDecl->HasModifier<OutModifier>())
+        return rules->getVaryingOutputRules();
+
+    // A `const` global with a `layout(constant_id = ...)` modifier
+    // is a declaration of a specialization constant.
+    for( auto layoutMod : varDecl->GetModifiersOfType<GLSLLayoutModifier>() )
+    {
+        int val;
+        if(findLayoutArg(layoutMod, "constant_id", &val))
+            return rules->getSpecializationConstantRules();
+    }
+
+    // GLSL says that an "ordinary" global  variable
+    // is just a (thread local) global and not a
+    // parameter
+    return nullptr;
+}
+
+LayoutRulesImpl*
+getLayoutRulesForGlobalShaderParameter_HLSL(
+    LayoutRulesFamilyImpl*  rules,
+    VarDeclBase*            varDecl)
+{
+    // HLSL `static` modifier indicates "thread local"
+    if(varDecl->HasModifier<HLSLStaticModifier>())
+        return nullptr;
+
+    // HLSL `groupshared` modifier indicates "thread-group local"
+    if(varDecl->HasModifier<HLSLGroupSharedModifier>())
+        return nullptr;
+
+    // TODO(tfoley): there may be other cases that we need to handle here
+
+    // An "ordinary" global variable is implicitly a uniform
+    // shader parameter.
+    return rules->getConstantBufferRules();
+}
+
+// Determine the layout rules to use for a global variable
+// that might be a shader parameter.
+//
+// Returns `nullptr` if the declaration does not represent
+// a shader parameter.
+LayoutRulesImpl*
+getLayoutRulesForGlobalShaderParameter(
+    ParameterBindingContext*    context,
+    VarDeclBase*                varDecl)
+{
+    auto rules = context->layoutRules;
+    switch( context->shared->sourceLanguage )
+    {
+    case SourceLanguage::Spire:
+    case SourceLanguage::HLSL:
+        return getLayoutRulesForGlobalShaderParameter_HLSL(rules, varDecl);
+
+    case SourceLanguage::GLSL:
+        return getLayoutRulesForGlobalShaderParameter_GLSL(rules, varDecl);
+
+    default:
+        assert(false);
+        return nullptr;
+    }
+}
+
+
+//
+
+
+
 // Collect a single declaration into our set of parameters
-static void collectParameter(
+static void collectGlobalScopeParameter(
     ParameterBindingContext*    context,
     RefPtr<VarDeclBase>         varDecl)
 {
+    auto parameterRules = getLayoutRulesForGlobalShaderParameter(
+        context,
+        varDecl.Ptr());
+
+    // If we did not find appropriate layout rules, then it
+    // must mean that this global variable is *not* a shader
+    // parameter.
+    if(!parameterRules)
+        return;
+
     // Find out the layout for the type...
     RefPtr<TypeLayout> typeLayout = CreateTypeLayout(
         varDecl->Type.Ptr(),
-        context->layoutRules);
+        parameterRules);
 
     // Now create a variable layout that we can use
     RefPtr<VarLayout> varLayout = new VarLayout();
@@ -394,6 +484,87 @@ void generateParameterBindings(
                 }
             }
         }
+
+        // Handle GLSL `layout` modifiers
+        for (auto layoutModifier : varDecl.GetDecl()->GetModifiersOfType<GLSLLayoutModifier>())
+        {
+            // The catch in GLSL is that the expected resource type
+            // is implied by the parameter declaration itself, and
+            // the `layout` modifier is only allowed to adjust
+            // the index/offset/etc.
+            //
+
+            TypeLayout::ResourceInfo* resInfo = nullptr;
+            LayoutSemanticInfo semanticInfo;
+            semanticInfo.index = 0;
+            semanticInfo.space = 0;
+            if( resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::DescriptorTableSlot) )
+            {
+                // Try to find `binding` and `set`
+                if(!findLayoutArg(layoutModifier, "binding", &semanticInfo.index))
+                    continue;
+
+                findLayoutArg(layoutModifier, "set", &semanticInfo.space);
+            }
+            else if( resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::VertexInput) )
+            {
+                // Try to find `location` binding
+                if(!findLayoutArg(layoutModifier, "location", &semanticInfo.index))
+                    continue;
+            }
+            else if( resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::VertexInput) )
+            {
+                // Try to find `location` binding
+                if(!findLayoutArg(layoutModifier, "location", &semanticInfo.index))
+                    continue;
+            }
+            else if( resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::SpecializationConstant) )
+            {
+                // Try to find `constant_id` binding
+                if(!findLayoutArg(layoutModifier, "constant_id", &semanticInfo.index))
+                    continue;
+            }
+
+            if(!resInfo)
+                continue;
+
+            auto kind = resInfo->kind;
+            auto count = resInfo->count;
+            semanticInfo.kind = kind;
+
+            auto& bindingInfo = parameterInfo->bindingInfo[(int)kind];
+            if( bindingInfo.count != 0 )
+            {
+                // We already have a binding here, so we want to
+                // confirm that it matches the new one that is
+                // incoming...
+                if( bindingInfo.count != count
+                    || bindingInfo.index != semanticInfo.index
+                    || bindingInfo.space != semanticInfo.space )
+                {
+                    // TODO: diagnose!
+                }
+
+                // TODO(tfoley): `register` semantics can technically be
+                // profile-specific (not sure if anybody uses that)...
+            }
+            else
+            {
+                bindingInfo.count = count;
+                bindingInfo.index = semanticInfo.index;
+                bindingInfo.space = semanticInfo.space;
+
+                // If things are bound in `space0` (the default), then we need
+                // to lay claim to the register range used, so that automatic
+                // assignment doesn't go and use the same registers.
+                if (semanticInfo.space == 0)
+                {
+                    context->usedResourceRanges[(int)semanticInfo.kind].Add(
+                        semanticInfo.index,
+                        semanticInfo.index + count);
+                }
+            }
+        }
     }
 }
 
@@ -471,11 +642,7 @@ static void collectGlobalScopeParameters(
         if (!varDecl)
             continue;
 
-        // Skip globals that don't look like parameters
-        if (!IsGlobalVariableAShaderParameter(context, varDecl))
-            continue;
-
-        collectParameter(context, varDecl);
+        collectGlobalScopeParameter(context, varDecl);
     }
 
     // Next, we need to enumerate the parameters of
@@ -486,9 +653,6 @@ static void collectGlobalScopeParameters(
     // by looking for a generated modifier that is attached
     // to global-scope function declarations.
 }
-
-// TODO: move this declaration to somewhere logical:
-void BuildMemberDictionary(ContainerDecl* decl);
 
 struct SimpleSemanticInfo
 {
@@ -717,7 +881,7 @@ static void collectEntryPointParameters(
     // First, look for the entry point with the specified name
 
     // Make sure we've got a query-able member dictionary
-    BuildMemberDictionary(translationUnitSyntax);
+    buildMemberDictionary(translationUnitSyntax);
 
     Decl* entryPointDecl;
     if( !translationUnitSyntax->memberDictionary.TryGetValue(entryPoint.name, entryPointDecl) )
@@ -824,19 +988,34 @@ static void collectParameters(
     }
 }
 
-static RefPtr<FunctionSyntaxNode>
-findEntryPointFunc(
-    ProgramSyntaxNode*  code,
-    String const&       name)
-{
-    
-}
-
 void GenerateParameterBindings(
     CollectionOfTranslationUnits*   program)
 {
-    // TODO: need to get this from somewhere!
-    auto rules = GetLayoutRulesImpl(LayoutRule::HLSLConstantBuffer);
+    // TODO: infer a language or set of language rules to use based on the
+    // source files and entry points given
+    auto language = SourceLanguage::Unknown;
+    for( auto& translationUnit : program->translationUnits )
+    {
+        auto translationUnitLanguage = translationUnit.options.sourceLanguage;
+        if( language == SourceLanguage::Unknown )
+        {
+            language = translationUnitLanguage;
+        }
+        else if( language == translationUnitLanguage )
+        {
+            // same language: nothing to do...
+        }
+        else
+        {
+            // mismatch!
+            // TODO(tfoley): emit a diagnostic
+        }
+    }
+
+    // TODO(tfoley): We should really be picking layout rules
+    // based on the *target* language, and not the source...
+    auto rules = GetLayoutRulesFamilyImpl(language);
+    assert(rules);
 
     RefPtr<ProgramLayout> programLayout = new ProgramLayout;
 
@@ -845,6 +1024,7 @@ void GenerateParameterBindings(
     SharedParameterBindingContext sharedContext;
     sharedContext.defaultLayoutRules = rules;
     sharedContext.programLayout = programLayout;
+    sharedContext.sourceLanguage = language;
 
     // Create a sub-context to collect parameters that get
     // declared into the global scope
@@ -903,27 +1083,37 @@ void GenerateParameterBindings(
     // Next we need to create a type layout to reflect the information
     // we have collected.
 
-    RefPtr<StructTypeLayout> globalScopeStructLayout = new StructTypeLayout();
-    globalScopeStructLayout->rules = context.layoutRules;
+    // We will lay out any bare uniforms at the global scope into
+    // a single constant buffer. This is appropriate for HLSL global-scope
+    // uniforms, and Vulkan GLSL doesn't allow uniforms at global scope,
+    // so it should work out.
+    //
+    // For legacy GLSL targets, we'd probably need a distinct resource
+    // kind and set of rules here, since legacy uniforms are not the
+    // same as the contents of a constant buffer.
+    auto globalScopeRules = context.layoutRules->getConstantBufferRules();
 
-    LayoutInfo structLayoutInfo = rules->BeginStructLayout();
+    RefPtr<StructTypeLayout> globalScopeStructLayout = new StructTypeLayout();
+    globalScopeStructLayout->rules = globalScopeRules;
+
+    UniformLayoutInfo structLayoutInfo = globalScopeRules->BeginStructLayout();
     for( auto& parameterInfo : sharedContext.parameters )
     {
         assert(parameterInfo->varLayouts.Count() != 0);
         auto firstVarLayout = parameterInfo->varLayouts.First();
 
         // Does the field have any uniform data?
-        auto uniformInfo = firstVarLayout->typeLayout->FindResourceInfo(LayoutResourceKind::Uniform);
-        size_t uniformSize = uniformInfo ? uniformInfo->count : 0;
+        auto layoutInfo = firstVarLayout->typeLayout->FindResourceInfo(LayoutResourceKind::Uniform);
+        size_t uniformSize = layoutInfo ? layoutInfo->count : 0;
         if( uniformSize != 0 )
         {
             // Make sure uniform fields get laid out properly...
 
-            LayoutInfo fieldInfo;
-            fieldInfo.size      = uniformSize;
-            fieldInfo.alignment = firstVarLayout->typeLayout->uniformAlignment;
+            UniformLayoutInfo fieldInfo(
+                uniformSize,
+                firstVarLayout->typeLayout->uniformAlignment);
 
-            size_t uniformOffset = rules->AddStructField(
+            size_t uniformOffset = globalScopeRules->AddStructField(
                 &structLayoutInfo,
                 fieldInfo);
 
@@ -940,7 +1130,7 @@ void GenerateParameterBindings(
             globalScopeStructLayout->mapVarToLayout.Add(varLayout->varDecl.GetDecl(), varLayout);
         }
     }
-    rules->EndStructLayout(&structLayoutInfo);
+    globalScopeRules->EndStructLayout(&structLayoutInfo);
 
     RefPtr<TypeLayout> globalScopeLayout = globalScopeStructLayout;
 
@@ -948,10 +1138,10 @@ void GenerateParameterBindings(
     // up a global constant buffer type layout to hold them
     if( anyGlobalUniforms )
     {
-        auto globalConstantBufferLayout = createConstantBufferTypeLayout(
+        auto globalConstantBufferLayout = createParameterBlockTypeLayout(
             nullptr,
             globalScopeStructLayout,
-            rules);
+            globalScopeRules);
 
         globalScopeLayout = globalConstantBufferLayout;
     }

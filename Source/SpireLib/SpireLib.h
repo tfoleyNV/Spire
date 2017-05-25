@@ -15,7 +15,9 @@ namespace SpireLib
         void AddSource(CoreLib::Basic::String source, CoreLib::Text::TokenReader & parser);
         void FromString(const CoreLib::String & str);
         CoreLib::String ToString();
+#if 0
         void SaveToFile(CoreLib::Basic::String fileName);
+#endif
         ShaderLibFile() = default;
         void Clear();
         void Load(CoreLib::Basic::String fileName);

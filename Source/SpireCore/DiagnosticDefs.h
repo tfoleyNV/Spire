@@ -267,6 +267,7 @@ DIAGNOSTIC(39999, Note, genericSignatureTried, "see declaration of $0")
 
 DIAGNOSTIC(39999, Error, expectedATraitGot, "expected a trait, got '$0'")
 
+DIAGNOSTIC(39999, Error, ambiguousReference, "amiguous reference to '$0'");
 
 //
 // 4xxxx - IL code generation.

@@ -73,6 +73,7 @@ void parseOptions(int* argc, char** argv)
             }
             break;
         }
+
         if( strcmp(arg, "--bindir") == 0 )
         {
             if( argCursor == argEnd )
@@ -89,6 +90,14 @@ void parseOptions(int* argc, char** argv)
         else if( strcmp(arg, "-generate-hlsl-baselines") == 0 )
         {
             options.generateHLSLBaselines = true;
+        }
+        else if( strcmp(arg, "-release") == 0 )
+        {
+            // Assumed to be handle by .bat file that called us
+        }
+        else if( strcmp(arg, "-debug") == 0 )
+        {
+            // Assumed to be handle by .bat file that called us
         }
         else
         {

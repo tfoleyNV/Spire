@@ -4,6 +4,10 @@
 #include "Diagnostics.h"
 #include "Lexer.h"
 
+// Needed so that we can construct modifier syntax
+// to represent GLSL directives
+#include "Syntax.h"
+
 #include <assert.h>
 
 using namespace CoreLib;
@@ -167,6 +171,9 @@ struct Preprocessor
     // A pre-allocated token that can be returned to
     // represent end-of-input situations.
     Token                                   endOfFileToken;
+
+    // Syntax for the program we are trying to parse
+    ProgramSyntaxNode*                      syntax;
 };
 
 // Convenience routine to access the diagnostic sink
@@ -1617,10 +1624,79 @@ static void HandlePragmaDirective(PreprocessorDirectiveContext* context)
 }
 
 // Handle a `#version` directive
-static void HandleVersionDirective(PreprocessorDirectiveContext* context)
+static void handleGLSLVersionDirective(PreprocessorDirectiveContext* context)
 {
-    // TODO(tfoley): parse enough of this to spit it out again later?
-    SkipToEndOfLine(context);
+    Token versionNumberToken;
+    if(!ExpectRaw(
+        context,
+        TokenType::IntLiterial,
+        Diagnostics::expectedTokenInPreprocessorDirective,
+        &versionNumberToken))
+    {
+        return;
+    }
+
+    Token glslProfileToken;
+    if(PeekTokenType(context) == TokenType::Identifier)
+    {
+        glslProfileToken = AdvanceToken(context);
+    }
+
+    // Need to construct a representation taht we can hook into our compilation result
+
+    auto modifier = new GLSLVersionDirective();
+    modifier->versionNumberToken = versionNumberToken;
+    modifier->glslProfileToken = glslProfileToken;
+
+    // Attach the modifier to the program we are parsing!
+
+    addModifier(
+        context->preprocessor->syntax,
+        modifier);
+}
+
+// Handle a `#extension` directive, e.g.,
+//
+//     #extension some_extension_name : enable
+//
+static void handleGLSLExtensionDirective(PreprocessorDirectiveContext* context)
+{
+    Token extensionNameToken;
+    if(!ExpectRaw(
+        context,
+        TokenType::Identifier,
+        Diagnostics::expectedTokenInPreprocessorDirective,
+        &extensionNameToken))
+    {
+        return;
+    }
+
+    if( !ExpectRaw(context, TokenType::Colon, Diagnostics::expectedTokenInPreprocessorDirective) )
+    {
+        return;
+    }
+
+    Token dispositionToken;
+    if(!ExpectRaw(
+        context,
+        TokenType::Identifier,
+        Diagnostics::expectedTokenInPreprocessorDirective,
+        &dispositionToken))
+    {
+        return;
+    }
+
+    // Need to construct a representation taht we can hook into our compilation result
+
+    auto modifier = new GLSLExtensionDirective();
+    modifier->extensionNameToken = extensionNameToken;
+    modifier->dispositionToken = dispositionToken;
+
+    // Attach the modifier to the program we are parsing!
+
+    addModifier(
+        context->preprocessor->syntax,
+        modifier);
 }
 
 // Handle an invalid directive
@@ -1671,7 +1747,12 @@ static const PreprocessorDirective kDirectives[] =
     { "error",      &HandleErrorDirective,      0 },
     { "line",       &HandleLineDirective,       0 },
     { "pragma",     &HandlePragmaDirective,     0 },
-    { "version",    &HandleVersionDirective,    0 },
+
+    // TODO(tfoley): These are specific to GLSL, and probably
+    // shouldn't be enabled for HLSL or Spire
+    { "version",    &handleGLSLVersionDirective,    0 },
+    { "extension",  &handleGLSLExtensionDirective,  0 },
+
     { NULL, NULL },
 };
 
@@ -1868,38 +1949,17 @@ static TokenList ReadAllTokens(
     return tokens;
 }
 
-
-// Take a string of source code and preprocess it into a list of tokens.
-TokenList PreprocessSource(
-    CoreLib::String const& source,
-    CoreLib::String const& fileName,
-    DiagnosticSink* sink,
-    IncludeHandler* includeHandler)
-{
-    Preprocessor preprocessor;
-    InitializePreprocessor(&preprocessor, sink);
-
-    preprocessor.includeHandler = includeHandler;
-
-    // create an initial input stream based on the provided buffer
-    preprocessor.inputStream = CreateInputStreamForSource(&preprocessor, source, fileName);
-
-    TokenList tokens = ReadAllTokens(&preprocessor);
-
-    FinalizePreprocessor(&preprocessor);
-
-    return tokens;
-}
-
-TokenList PreprocessSource(
+TokenList preprocessSource(
     CoreLib::String const& source,
     CoreLib::String const& fileName,
     DiagnosticSink* sink,
     IncludeHandler* includeHandler,
-    CoreLib::Dictionary<CoreLib::String, CoreLib::String>  defines)
+    CoreLib::Dictionary<CoreLib::String, CoreLib::String>  defines,
+    ProgramSyntaxNode*  syntax)
 {
     Preprocessor preprocessor;
     InitializePreprocessor(&preprocessor, sink);
+    preprocessor.syntax = syntax;
 
     preprocessor.includeHandler = includeHandler;
     for (auto p : defines)

@@ -299,7 +299,7 @@ struct OptionsParser
                     String name = tryReadCommandLineArgument(arg, &argCursor, argEnd);
                     SpirePassThrough passThrough = SPIRE_PASS_THROUGH_NONE;
                     if (name == "fxc") { passThrough = SPIRE_PASS_THROUGH_FXC; }
-                    if (name == "glslang") { passThrough = SPIRE_PASS_THROUGH_GLSLANG; }
+                    else if (name == "glslang") { passThrough = SPIRE_PASS_THROUGH_GLSLANG; }
                     else
                     {
                         fprintf(stderr, "unknown pass-through target '%S'\n", name.ToWString());

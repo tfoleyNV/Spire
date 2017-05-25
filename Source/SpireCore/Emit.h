@@ -4,6 +4,8 @@
 
 #include "../CoreLib/Basic.h"
 
+#include "ShaderCompiler.h"
+
 namespace Spire
 {
     namespace Compiler
@@ -15,7 +17,8 @@ namespace Spire
 
         String emitProgram(
             ProgramSyntaxNode*  program,
-            ProgramLayout*      programLayout);
+            ProgramLayout*      programLayout,
+            CodeGenTarget       target);
     }
 }
 #endif
