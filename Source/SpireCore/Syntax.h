@@ -607,8 +607,8 @@ namespace Spire
             typedef Decl DeclType;
 
             // The underlying declaration
-            RefPtr<Decl> decl;
-            Decl* GetDecl() const { return decl.Ptr(); }
+            Decl* decl = nullptr;
+            Decl* GetDecl() const { return decl; }
 
             // Optionally, a chain of substititions to perform
             RefPtr<Substitutions> substitutions;
@@ -647,7 +647,7 @@ namespace Spire
             T As() const
             {
                 T result;
-                result.decl = dynamic_cast<T::DeclType*>(decl.Ptr());
+                result.decl = dynamic_cast<T::DeclType*>(decl);
                 result.substitutions = substitutions;
                 return result;
             }
@@ -656,8 +656,8 @@ namespace Spire
             // in a conditional context
             operator Decl*() const
             {
-                return decl.Ptr();
-          }
+                return decl;
+            }
 
             int GetHashCode() const;
         };
@@ -665,7 +665,7 @@ namespace Spire
         // Helper macro for defining `DeclRef` subtypes
         #define SPIRE_DECLARE_DECL_REF(D)				    \
             typedef D DeclType;							    \
-            D* GetDecl() const { return (D*) decl.Ptr(); }	\
+            D* GetDecl() const { return (D*) decl; }	    \
             /* */
 
 

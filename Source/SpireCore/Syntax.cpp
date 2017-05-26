@@ -1299,7 +1299,7 @@ namespace Spire
 
         int DeclRef::GetHashCode() const
         {
-            auto rs = PointerHash<1>::GetHashCode(decl.Ptr());
+            auto rs = PointerHash<1>::GetHashCode(decl);
             if (substitutions)
             {
                 rs *= 16777619;
