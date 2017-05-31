@@ -221,7 +221,7 @@ SPIRE_API SpireReflectionType* spReflectionType_GetElementType(SpireReflectionTy
     }
     else if( auto matrixType = dynamic_cast<MatrixExpressionType*>(type))
     {
-        return convert(matrixType->elementType.Ptr());
+        return convert(matrixType->getElementType());
     }
 
     return nullptr;
@@ -234,7 +234,7 @@ SPIRE_API unsigned int spReflectionType_GetRowCount(SpireReflectionType* inType)
 
     if(auto matrixType = dynamic_cast<MatrixExpressionType*>(type))
     {
-        return GetIntVal(matrixType->rowCount);
+        return GetIntVal(matrixType->getRowCount());
     }
     else if(auto vectorType = dynamic_cast<VectorExpressionType*>(type))
     {
@@ -255,7 +255,7 @@ SPIRE_API unsigned int spReflectionType_GetColumnCount(SpireReflectionType* inTy
 
     if(auto matrixType = dynamic_cast<MatrixExpressionType*>(type))
     {
-        return GetIntVal(matrixType->colCount);
+        return GetIntVal(matrixType->getColumnCount());
     }
     else if(auto vectorType = dynamic_cast<VectorExpressionType*>(type))
     {
@@ -276,7 +276,7 @@ SPIRE_API SpireScalarType spReflectionType_GetScalarType(SpireReflectionType* in
 
     if(auto matrixType = dynamic_cast<MatrixExpressionType*>(type))
     {
-        type = matrixType->elementType.Ptr();
+        type = matrixType->getElementType();
     }
     else if(auto vectorType = dynamic_cast<VectorExpressionType*>(type))
     {

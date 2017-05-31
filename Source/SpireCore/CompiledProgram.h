@@ -11,6 +11,7 @@ namespace Spire
 {
     namespace Compiler
     {
+#if 0
         class ShaderMetaData
         {
         public:
@@ -31,6 +32,7 @@ namespace Spire
             EnumerableDictionary<String, StageSource> Stages;
             ShaderMetaData MetaData;
         };
+#endif
 
         void IndentString(StringBuilder & sb, String src);
 
@@ -44,10 +46,12 @@ namespace Spire
         public:
             DiagnosticSink* mSink = nullptr;
 
+#if 0
             String ScheduleFile;
             RefPtr<ILProgram> Program;
             EnumerableDictionary<String, CompiledShaderSource> CompiledSource; // shader -> stage -> code
-            
+#endif
+
             // Per-translation-unit results
             List<TranslationUnitResult> translationUnits;
 

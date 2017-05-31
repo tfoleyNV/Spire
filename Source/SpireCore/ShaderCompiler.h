@@ -137,7 +137,9 @@ namespace Spire
         class CompilationContext
         {
         public:
+#if 0
             RefPtr<ILProgram> Program;
+#endif
         };
 
         class ShaderCompiler : public CoreLib::Basic::Object

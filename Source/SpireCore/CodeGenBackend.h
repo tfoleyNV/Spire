@@ -1,3 +1,4 @@
+#if 0
 #ifndef CODE_GEN_BACKEND_H
 #define CODE_GEN_BACKEND_H
 
@@ -23,4 +24,5 @@ namespace Spire
     }
 }
 
+#endif
 #endif

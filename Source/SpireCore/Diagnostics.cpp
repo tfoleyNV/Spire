@@ -58,11 +58,6 @@ void printDiagnosticArg(StringBuilder& sb, QualType const& type)
     sb << type.type->ToString();
 }
 
-void printDiagnosticArg(StringBuilder& sb, ILType* type)
-{
-    sb << type->ToString();
-}
-
 void printDiagnosticArg(StringBuilder& sb, CoreLib::Text::TokenType tokenType)
 {
     sb << TokenTypeToString(tokenType);

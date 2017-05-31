@@ -1,3 +1,4 @@
+#if 0
 #include "IL.h"
 #include "../CoreLib/Tokenizer.h"
 
@@ -91,3 +92,4 @@ namespace Spire
         }
     }
 }
+#endif

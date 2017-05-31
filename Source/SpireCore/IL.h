@@ -1,6 +1,8 @@
 #ifndef RASTER_RENDERER_IL_H
 #define RASTER_RENDERER_IL_H
 
+#if 0
+
 #include "../CoreLib/Basic.h"
 #include "../CoreLib/Tokenizer.h"
 
@@ -2639,5 +2641,7 @@ namespace Spire
         };
     }
 }
+
+#endif
 
 #endif

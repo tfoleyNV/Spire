@@ -1,3 +1,5 @@
+#if 0
+
 #include "IL.h"
 #include "../CoreLib/LibIO.h"
 #include "Syntax.h"
@@ -758,3 +760,5 @@ namespace Spire
 		}
 }
 }
+
+#endif

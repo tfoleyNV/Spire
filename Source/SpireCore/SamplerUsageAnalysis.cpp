@@ -1,3 +1,4 @@
+#if 0
 #include "SamplerUsageAnalysis.h"
 
 namespace Spire
@@ -92,3 +93,4 @@ namespace Spire
         }
     }
 }
+#endif

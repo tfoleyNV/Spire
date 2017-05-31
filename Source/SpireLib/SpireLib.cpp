@@ -23,6 +23,7 @@ using namespace Spire::Compiler;
 
 namespace SpireLib
 {
+#if 0
     void ReadSource(EnumerableDictionary<String, StageSource> & sources, CoreLib::Text::TokenReader & parser, String src)
     {
         auto getShaderSource = [&]()
@@ -82,6 +83,7 @@ namespace SpireLib
     {
         Load(fileName);
     }
+#endif
 #if 0
     bool ShaderLib::CompileFrom(String symbolName, String sourceFileName)
     {
@@ -234,10 +236,12 @@ namespace SpireLib
     }
 #endif
 
+#if 0
     void ShaderLibFile::AddSource(CoreLib::Basic::String source, CoreLib::Text::TokenReader & parser)
     {
         ReadSource(Sources, parser, source);
     }
+#endif
 
 #if 0
     CoreLib::String ShaderLibFile::ToString()
@@ -297,12 +301,14 @@ namespace SpireLib
     }
 #endif
 
+#if 0
     void ShaderLibFile::Clear()
     {
         Sources.Clear();
         MetaData.ParameterSets.Clear();
         Sources.Clear();
     }
+#endif
 
 #if 0
     void ShaderLibFile::SaveToFile(CoreLib::Basic::String fileName)
@@ -312,6 +318,7 @@ namespace SpireLib
     }
 #endif
 
+#if 0
     void ShaderLibFile::FromString(const String & src)
     {
         Clear();
@@ -407,6 +414,7 @@ namespace SpireLib
             return src;
         }
     };
+#endif
 
     static void stdlibDiagnosticCallback(
         char const* message,

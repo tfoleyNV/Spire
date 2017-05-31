@@ -1,3 +1,4 @@
+#if 0
 #ifndef CONSTANT_POOL_H
 #define CONSTANT_POOL_H
 
@@ -342,4 +343,5 @@ namespace Spire
     }
 }
 
+#endif
 #endif

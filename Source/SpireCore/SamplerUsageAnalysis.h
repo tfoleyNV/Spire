@@ -1,3 +1,4 @@
+#if 0
 #include "IL.h"
 #include "CompiledProgram.h"
 
@@ -9,3 +10,4 @@ namespace Spire
             ILProgram * program, CFGNode * code, DiagnosticSink * sink);
     }
 }
+#endif

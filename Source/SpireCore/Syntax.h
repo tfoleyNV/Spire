@@ -395,8 +395,8 @@ namespace Spire
             virtual RefPtr<Val> SubstituteImpl(Substitutions* subst, int* ioDiff);
 
             virtual bool EqualsVal(Val* val) = 0;
-            virtual String ToString() const = 0;
-            virtual int GetHashCode() const = 0;
+            virtual String ToString() = 0;
+            virtual int GetHashCode() = 0;
             bool operator == (const Val & v)
             {
                 return EqualsVal(const_cast<Val*>(&v));
@@ -423,8 +423,8 @@ namespace Spire
             {}
 
             virtual bool EqualsVal(Val* val) override;
-            virtual String ToString() const override;
-            virtual int GetHashCode() const override;
+            virtual String ToString() override;
+            virtual int GetHashCode() override;
         };
 
         // TODO(tfoley): classes for more general compile-time integers,
@@ -472,48 +472,45 @@ namespace Spire
             static ExpressionType* GetError();
 
         public:
-            virtual String ToString() const = 0;
+            virtual String ToString() = 0;
 
-            bool IsIntegral() const;
-            bool Equals(const ExpressionType * type) const;
-            bool Equals(RefPtr<ExpressionType> type) const;
+            bool Equals(ExpressionType * type);
+            bool Equals(RefPtr<ExpressionType> type);
 
-            bool IsVectorType() const { return As<VectorExpressionType>() != nullptr; }
-            bool IsArray() const { return As<ArrayExpressionType>() != nullptr; }
+            bool IsVectorType() { return As<VectorExpressionType>() != nullptr; }
+            bool IsArray() { return As<ArrayExpressionType>() != nullptr; }
 
             template<typename T>
-            T* As() const
+            T* As()
             {
                 return dynamic_cast<T*>(GetCanonicalType());
             }
 
             // Convenience/legacy wrappers for `As<>`
-            ArithmeticExpressionType * AsArithmeticType() const { return As<ArithmeticExpressionType>(); }
-            BasicExpressionType * AsBasicType() const { return As<BasicExpressionType>(); }
-            VectorExpressionType * AsVectorType() const { return As<VectorExpressionType>(); }
-            MatrixExpressionType * AsMatrixType() const { return As<MatrixExpressionType>(); }
-            ArrayExpressionType * AsArrayType() const { return As<ArrayExpressionType>(); }
+            ArithmeticExpressionType * AsArithmeticType() { return As<ArithmeticExpressionType>(); }
+            BasicExpressionType * AsBasicType() { return As<BasicExpressionType>(); }
+            VectorExpressionType * AsVectorType() { return As<VectorExpressionType>(); }
+            MatrixExpressionType * AsMatrixType() { return As<MatrixExpressionType>(); }
+            ArrayExpressionType * AsArrayType() { return As<ArrayExpressionType>(); }
 
-            DeclRefType* AsDeclRefType() const { return As<DeclRefType>(); }
+            DeclRefType* AsDeclRefType() { return As<DeclRefType>(); }
 
-            NamedExpressionType* AsNamedType() const;
+            NamedExpressionType* AsNamedType();
 
-            bool IsTextureOrSampler() const;
-            bool IsTexture() const { return As<TextureType>() != nullptr; }
-            bool IsSampler() const { return As<SamplerStateType>() != nullptr; }
-            bool IsStruct() const;
-            bool IsClass() const;
+            bool IsTextureOrSampler();
+            bool IsTexture() { return As<TextureType>() != nullptr; }
+            bool IsSampler() { return As<SamplerStateType>() != nullptr; }
+            bool IsStruct();
+            bool IsClass();
             static void Init();
             static void Finalize();
-            ExpressionType* GetCanonicalType() const;
-            BindableResourceType GetBindableResourceType() const;
+            ExpressionType* GetCanonicalType();
 
             virtual RefPtr<Val> SubstituteImpl(Substitutions* subst, int* ioDiff) override;
 
             virtual bool EqualsVal(Val* val) override;
         protected:
-            virtual bool IsIntegralImpl() const { return false; }
-            virtual bool EqualsImpl(const ExpressionType * type) const = 0;
+            virtual bool EqualsImpl(ExpressionType * type) = 0;
 
             virtual ExpressionType* CreateCanonicalType() = 0;
             ExpressionType* canonicalType = nullptr;
@@ -756,24 +753,24 @@ namespace Spire
         class OverloadGroupType : public ExpressionType
         {
         public:
-            virtual String ToString() const override;
+            virtual String ToString() override;
 
         protected:
-            virtual bool EqualsImpl(const ExpressionType * type) const override;
+            virtual bool EqualsImpl(ExpressionType * type) override;
             virtual ExpressionType* CreateCanonicalType() override;
-            virtual int GetHashCode() const override;
+            virtual int GetHashCode() override;
         };
 
         // The type of an expression that was erroneous
         class ErrorType : public ExpressionType
         {
         public:
-            virtual String ToString() const override;
+            virtual String ToString() override;
 
         protected:
-            virtual bool EqualsImpl(const ExpressionType * type) const override;
+            virtual bool EqualsImpl(ExpressionType * type) override;
             virtual ExpressionType* CreateCanonicalType() override;
-            virtual int GetHashCode() const override;
+            virtual int GetHashCode() override;
         };
 
         // A type that takes the form of a reference to some declaration
@@ -782,7 +779,7 @@ namespace Spire
         public:
             DeclRef declRef;
 
-            virtual String ToString() const override;
+            virtual String ToString() override;
             virtual RefPtr<Val> SubstituteImpl(Substitutions* subst, int* ioDiff) override;
 
             static DeclRefType* Create(DeclRef declRef);
@@ -793,8 +790,8 @@ namespace Spire
             DeclRefType(DeclRef declRef)
                 : declRef(declRef)
             {}
-            virtual int GetHashCode() const override;
-            virtual bool EqualsImpl(const ExpressionType * type) const override;
+            virtual int GetHashCode() override;
+            virtual bool EqualsImpl(ExpressionType * type) override;
             virtual ExpressionType* CreateCanonicalType() override;
         };
 
@@ -802,26 +799,10 @@ namespace Spire
         class ArithmeticExpressionType : public DeclRefType
         {
         public:
-            virtual BasicExpressionType* GetScalarType() const = 0;
+            virtual BasicExpressionType* GetScalarType() = 0;
         };
 
         class FunctionDeclBase;
-
-        // A reference to the generic type parameter of an import operator
-        class ImportOperatorGenericParamType : public ExpressionType
-        {
-        public:
-            String GenericTypeVar;
-
-            ImportOperatorGenericParamType(String genericTypeVar)
-                : GenericTypeVar(genericTypeVar)
-            {}
-
-            virtual String ToString() const override;
-        protected:
-            virtual bool EqualsImpl(const ExpressionType * type) const override;
-            virtual ExpressionType* CreateCanonicalType() override;
-        };
 
         class BasicExpressionType : public ArithmeticExpressionType
         {
@@ -836,11 +817,10 @@ namespace Spire
             {
                 BaseType = baseType;
             }
-            virtual CoreLib::Basic::String ToString() const override;
+            virtual CoreLib::Basic::String ToString() override;
         protected:
-            virtual BasicExpressionType* GetScalarType() const override;
-            virtual bool IsIntegralImpl() const override;
-            virtual bool EqualsImpl(const ExpressionType * type) const override;
+            virtual BasicExpressionType* GetScalarType() override;
+            virtual bool EqualsImpl(ExpressionType * type) override;
             virtual ExpressionType* CreateCanonicalType() override;
         };
 
@@ -1017,11 +997,11 @@ namespace Spire
         public:
             RefPtr<ExpressionType> BaseType;
             RefPtr<IntVal> ArrayLength;
-            virtual CoreLib::Basic::String ToString() const override;
+            virtual CoreLib::Basic::String ToString() override;
         protected:
-            virtual bool EqualsImpl(const ExpressionType * type) const override;
+            virtual bool EqualsImpl(ExpressionType * type) override;
             virtual ExpressionType* CreateCanonicalType() override;
-            virtual int GetHashCode() const override;
+            virtual int GetHashCode() override;
         };
 
         // The "type" of an expression that resolves to a type.
@@ -1038,12 +1018,12 @@ namespace Spire
             RefPtr<ExpressionType> type;
 
 
-            virtual String ToString() const override;
+            virtual String ToString() override;
 
         protected:
-            virtual bool EqualsImpl(const ExpressionType * type) const override;
+            virtual bool EqualsImpl(ExpressionType * type) override;
             virtual ExpressionType* CreateCanonicalType() override;
-            virtual int GetHashCode() const override;
+            virtual int GetHashCode() override;
         };
 
         class GenericDecl;
@@ -1066,12 +1046,12 @@ namespace Spire
             // The number of elements
             RefPtr<IntVal>			elementCount;
 
-            virtual String ToString() const override;
+            virtual String ToString() override;
             virtual RefPtr<Val> SubstituteImpl(Substitutions* subst, int* ioDiff) override;
 
         protected:
-            virtual BasicExpressionType* GetScalarType() const override;
-            virtual bool EqualsImpl(const ExpressionType * type) const override;
+            virtual BasicExpressionType* GetScalarType() override;
+            virtual bool EqualsImpl(ExpressionType * type) override;
             virtual ExpressionType* CreateCanonicalType() override;
         };
 
@@ -1079,6 +1059,7 @@ namespace Spire
         class MatrixExpressionType : public ArithmeticExpressionType
         {
         public:
+#if 0
             MatrixExpressionType(
                 RefPtr<ExpressionType>	elementType,
                 RefPtr<IntVal>			rowCount,
@@ -1098,15 +1079,16 @@ namespace Spire
             // The number of rows and columns
             RefPtr<IntVal>					rowCount;
             RefPtr<IntVal>					colCount;
+#endif
+            ExpressionType* getElementType();
+            IntVal*         getRowCount();
+            IntVal*         getColumnCount();
 
-            virtual String ToString() const override;
-            virtual RefPtr<Val> SubstituteImpl(Substitutions* subst, int* ioDiff) override;
+
+            virtual String ToString() override;
 
         protected:
-            virtual BasicExpressionType* GetScalarType() const override;
-            virtual bool EqualsImpl(const ExpressionType * type) const override;
-            virtual ExpressionType* CreateCanonicalType() override;
-
+            virtual BasicExpressionType* GetScalarType() override;
         };
 
         inline BaseType GetVectorBaseType(VectorExpressionType* vecType) {
@@ -1598,12 +1580,12 @@ namespace Spire
 
             TypeDefDeclRef declRef;
 
-            virtual String ToString() const override;
+            virtual String ToString() override;
 
         protected:
-            virtual bool EqualsImpl(const ExpressionType * type) const override;
+            virtual bool EqualsImpl(ExpressionType * type) override;
             virtual ExpressionType* CreateCanonicalType() override;
-            virtual int GetHashCode() const override;
+            virtual int GetHashCode() override;
         };
 
 
@@ -1688,11 +1670,11 @@ namespace Spire
         public:
             FuncDeclBaseRef declRef;
 
-            virtual String ToString() const override;
+            virtual String ToString() override;
         protected:
-            virtual bool EqualsImpl(const ExpressionType * type) const override;
+            virtual bool EqualsImpl(ExpressionType * type) override;
             virtual ExpressionType* CreateCanonicalType() override;
-            virtual int GetHashCode() const override;
+            virtual int GetHashCode() override;
         };
 
         // A constructor/initializer to create instances of a type
@@ -2327,11 +2309,11 @@ namespace Spire
             GenericDeclRef declRef;
             GenericDeclRef const& GetDeclRef() const { return declRef; }
 
-            virtual String ToString() const override;
+            virtual String ToString() override;
 
         protected:
-            virtual bool EqualsImpl(const ExpressionType * type) const override;
-            virtual int GetHashCode() const override;
+            virtual bool EqualsImpl(ExpressionType * type) override;
+            virtual int GetHashCode() override;
             virtual ExpressionType* CreateCanonicalType() override;
         };
 
@@ -2400,8 +2382,8 @@ namespace Spire
             {}
 
             virtual bool EqualsVal(Val* val) override;
-            virtual String ToString() const override;
-            virtual int GetHashCode() const override;
+            virtual String ToString() override;
+            virtual int GetHashCode() override;
             virtual RefPtr<Val> SubstituteImpl(Substitutions* subst, int* ioDiff) override;
         };
 

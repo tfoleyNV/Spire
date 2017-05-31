@@ -9,7 +9,7 @@ namespace Spire
     {
         // BasicExpressionType
 
-        bool BasicExpressionType::EqualsImpl(const ExpressionType * type) const
+        bool BasicExpressionType::EqualsImpl(ExpressionType * type)
         {
             auto basicType = dynamic_cast<const BasicExpressionType*>(type);
             if (basicType == nullptr)
@@ -23,7 +23,7 @@ namespace Spire
             return this;
         }
 
-        CoreLib::Basic::String BasicExpressionType::ToString() const
+        CoreLib::Basic::String BasicExpressionType::ToString()
         {
             CoreLib::Basic::StringBuilder res;
 
@@ -223,29 +223,19 @@ namespace Spire
 
         // BasicExpressionType
 
-        BasicExpressionType* BasicExpressionType::GetScalarType() const
+        BasicExpressionType* BasicExpressionType::GetScalarType()
         {
-            return const_cast<BasicExpressionType*>(this);
-        }
-
-        bool BasicExpressionType::IsIntegralImpl() const
-        {
-            return (BaseType == Compiler::BaseType::Int || BaseType == Compiler::BaseType::UInt || BaseType == Compiler::BaseType::Bool);
+            return this;
         }
 
         //
 
-        bool ExpressionType::IsIntegral() const
-        {
-            return GetCanonicalType()->IsIntegralImpl();
-        }
-
-        bool ExpressionType::Equals(const ExpressionType * type) const
+        bool ExpressionType::Equals(ExpressionType * type)
         {
             return GetCanonicalType()->EqualsImpl(type->GetCanonicalType());
         }
 
-        bool ExpressionType::Equals(RefPtr<ExpressionType> type) const
+        bool ExpressionType::Equals(RefPtr<ExpressionType> type)
         {
             return Equals(type.Ptr());
         }
@@ -257,9 +247,9 @@ namespace Spire
             return false;
         }
 
-        NamedExpressionType* ExpressionType::AsNamedType() const
+        NamedExpressionType* ExpressionType::AsNamedType()
         {
-            return dynamic_cast<NamedExpressionType*>(const_cast<ExpressionType*>(this));
+            return dynamic_cast<NamedExpressionType*>(this);
         }
 
         RefPtr<Val> ExpressionType::SubstituteImpl(Substitutions* subst, int* ioDiff)
@@ -278,7 +268,7 @@ namespace Spire
         }
 
 
-        ExpressionType* ExpressionType::GetCanonicalType() const
+        ExpressionType* ExpressionType::GetCanonicalType()
         {
             if (!this) return nullptr;
             ExpressionType* et = const_cast<ExpressionType*>(this);
@@ -291,29 +281,11 @@ namespace Spire
             return et->canonicalType;
         }
 
-        BindableResourceType ExpressionType::GetBindableResourceType() const
-        {
-            if (auto textureType = As<TextureType>())
-                return BindableResourceType::Texture;
-            else if (auto samplerType = As<SamplerStateType>())
-                return BindableResourceType::Sampler;
-            else if(auto storageBufferType = As<StorageBufferType>())
-            {
-                return BindableResourceType::StorageBuffer;
-            }
-            else if(auto uniformBufferType = As<UniformBufferType>())
-            {
-                return BindableResourceType::Buffer;
-            }
-
-            return BindableResourceType::NonBindable;
-        }
-
-        bool ExpressionType::IsTextureOrSampler() const
+        bool ExpressionType::IsTextureOrSampler()
         {
             return IsTexture() || IsSampler();
         }
-        bool ExpressionType::IsStruct() const
+        bool ExpressionType::IsStruct()
         {
             auto declRefType = AsDeclRefType();
             if (!declRefType) return false;
@@ -322,7 +294,7 @@ namespace Spire
             return true;
         }
 
-        bool ExpressionType::IsClass() const
+        bool ExpressionType::IsClass()
         {
             auto declRefType = AsDeclRefType();
             if (!declRefType) return false;
@@ -360,7 +332,7 @@ namespace Spire
 			sBuiltinTypes = Dictionary<int, RefPtr<ExpressionType>>();
 			sMagicDecls = Dictionary<String, Decl*>();
         }
-        bool ArrayExpressionType::EqualsImpl(const ExpressionType * type) const
+        bool ArrayExpressionType::EqualsImpl(ExpressionType * type)
         {
             auto arrType = type->AsArrayType();
             if (!arrType)
@@ -376,14 +348,14 @@ namespace Spire
             canonicalArrayType->ArrayLength = ArrayLength;
             return canonicalArrayType;
         }
-        int ArrayExpressionType::GetHashCode() const
+        int ArrayExpressionType::GetHashCode()
         {
             if (ArrayLength)
                 return (BaseType->GetHashCode() * 16777619) ^ ArrayLength->GetHashCode();
             else
                 return BaseType->GetHashCode();
         }
-        CoreLib::Basic::String ArrayExpressionType::ToString() const
+        CoreLib::Basic::String ArrayExpressionType::ToString()
         {
             if (ArrayLength)
                 return BaseType->ToString() + "[" + ArrayLength->ToString() + "]";
@@ -397,17 +369,17 @@ namespace Spire
 
         // DeclRefType
 
-        String DeclRefType::ToString() const
+        String DeclRefType::ToString()
         {
             return declRef.GetName();
         }
 
-        int DeclRefType::GetHashCode() const
+        int DeclRefType::GetHashCode()
         {
             return (declRef.GetHashCode() * 16777619) ^ (int)(typeid(this).hash_code());
         }
 
-        bool DeclRefType::EqualsImpl(const ExpressionType * type) const
+        bool DeclRefType::EqualsImpl(ExpressionType * type)
         {
             if (auto declRefType = type->AsDeclRefType())
             {
@@ -471,6 +443,9 @@ namespace Spire
             if (!diff)
                 return this;
 
+            // Make sure to record the difference!
+            *ioDiff += diff;
+
             // Re-construct the type in case we are using a specialized sub-class
             return DeclRefType::Create(substDeclRef);
         }
@@ -522,10 +497,7 @@ namespace Spire
                 else if (magicMod->name == "Matrix")
                 {
                     assert(subst && subst->args.Count() == 3);
-                    auto matType = new MatrixExpressionType(
-                        ExtractGenericArgType(subst->args[0]),
-                        ExtractGenericArgInteger(subst->args[1]),
-                        ExtractGenericArgInteger(subst->args[2]));
+                    auto matType = new MatrixExpressionType();
                     matType->declRef = declRef;
                     return matType;
                 }
@@ -609,12 +581,12 @@ namespace Spire
 
         // OverloadGroupType
 
-        String OverloadGroupType::ToString() const
+        String OverloadGroupType::ToString()
         {
             return "overload group";
         }
 
-        bool OverloadGroupType::EqualsImpl(const ExpressionType * /*type*/) const
+        bool OverloadGroupType::EqualsImpl(ExpressionType * /*type*/)
         {
             return false;
         }
@@ -624,19 +596,19 @@ namespace Spire
             return this;
         }
 
-        int OverloadGroupType::GetHashCode() const
+        int OverloadGroupType::GetHashCode()
         {
             return (int)(int64_t)(void*)this;
         }
 
         // ErrorType
 
-        String ErrorType::ToString() const
+        String ErrorType::ToString()
         {
             return "error";
         }
 
-        bool ErrorType::EqualsImpl(const ExpressionType* type) const
+        bool ErrorType::EqualsImpl(ExpressionType* type)
         {
             if (auto errorType = type->As<ErrorType>())
                 return true;
@@ -648,7 +620,7 @@ namespace Spire
             return  this;
         }
 
-        int ErrorType::GetHashCode() const
+        int ErrorType::GetHashCode()
         {
             return (int)(int64_t)(void*)this;
         }
@@ -656,12 +628,12 @@ namespace Spire
 
         // NamedExpressionType
 
-        String NamedExpressionType::ToString() const
+        String NamedExpressionType::ToString()
         {
             return declRef.GetName();
         }
 
-        bool NamedExpressionType::EqualsImpl(const ExpressionType * /*type*/) const
+        bool NamedExpressionType::EqualsImpl(ExpressionType * /*type*/)
         {
             assert(!"unreachable");
             return false;
@@ -672,7 +644,7 @@ namespace Spire
             return declRef.GetType()->GetCanonicalType();
         }
 
-        int NamedExpressionType::GetHashCode() const
+        int NamedExpressionType::GetHashCode()
         {
             assert(!"unreachable");
             return 0;
@@ -680,7 +652,7 @@ namespace Spire
 
         // FuncType
 
-        String FuncType::ToString() const
+        String FuncType::ToString()
         {
             // TODO: a better approach than this
             if (declRef)
@@ -689,7 +661,7 @@ namespace Spire
                 return "/* unknown FuncType */";
         }
 
-        bool FuncType::EqualsImpl(const ExpressionType * type) const
+        bool FuncType::EqualsImpl(ExpressionType * type)
         {
             if (auto funcType = type->As<FuncType>())
             {
@@ -703,45 +675,21 @@ namespace Spire
             return this;
         }
 
-        int FuncType::GetHashCode() const
+        int FuncType::GetHashCode()
         {
             return declRef.GetHashCode();
         }
 
-        // ImportOperatorGenericParamType
-
-        String ImportOperatorGenericParamType::ToString() const
-        {
-            return GenericTypeVar;
-        }
-
-        bool ImportOperatorGenericParamType::EqualsImpl(const ExpressionType * type) const
-        {
-            if (auto genericType = type->As<ImportOperatorGenericParamType>())
-            {
-                // TODO(tfoley): This does not compare the shader closure,
-                // because the original implementation in `BasicExpressionType`
-                // didn't either. It isn't clear whether that would be right or wrong.
-                return GenericTypeVar == genericType->GenericTypeVar;
-            }
-            return false;
-        }
-
-        ExpressionType* ImportOperatorGenericParamType::CreateCanonicalType()
-        {
-            return this;
-        }
-
         // TypeType
 
-        String TypeType::ToString() const
+        String TypeType::ToString()
         {
             StringBuilder sb;
             sb << "typeof(" << type->ToString() << ")";
             return sb.ProduceString();
         }
 
-        bool TypeType::EqualsImpl(const ExpressionType * t) const
+        bool TypeType::EqualsImpl(ExpressionType * t)
         {
             if (auto typeType = t->As<TypeType>())
             {
@@ -757,7 +705,7 @@ namespace Spire
             return canType;
         }
 
-        int TypeType::GetHashCode() const
+        int TypeType::GetHashCode()
         {
             assert(!"unreachable");
             return 0;
@@ -765,13 +713,13 @@ namespace Spire
 
         // GenericDeclRefType
 
-        String GenericDeclRefType::ToString() const
+        String GenericDeclRefType::ToString()
         {
             // TODO: what is appropriate here?
             return "<GenericDeclRef>";
         }
 
-        bool GenericDeclRefType::EqualsImpl(const ExpressionType * type) const
+        bool GenericDeclRefType::EqualsImpl(ExpressionType * type)
         {
             if (auto genericDeclRefType = type->As<GenericDeclRefType>())
             {
@@ -780,7 +728,7 @@ namespace Spire
             return false;
         }
 
-        int GenericDeclRefType::GetHashCode() const
+        int GenericDeclRefType::GetHashCode()
         {
             return declRef.GetHashCode();
         }
@@ -794,19 +742,19 @@ namespace Spire
 
         // VectorExpressionType
 
-        String VectorExpressionType::ToString() const
+        String VectorExpressionType::ToString()
         {
             StringBuilder sb;
             sb << "vector<" << elementType->ToString() << "," << elementCount->ToString() << ">";
             return sb.ProduceString();
         }
 
-        BasicExpressionType* VectorExpressionType::GetScalarType() const
+        BasicExpressionType* VectorExpressionType::GetScalarType()
         {
             return elementType->AsBasicType();
         }
 
-        bool VectorExpressionType::EqualsImpl(const ExpressionType * type) const
+        bool VectorExpressionType::EqualsImpl(ExpressionType * type)
         {
             if (auto vecType = type->AsVectorType())
             {
@@ -852,54 +800,33 @@ namespace Spire
 
         // MatrixExpressionType
 
-        String MatrixExpressionType::ToString() const
+        String MatrixExpressionType::ToString()
         {
             StringBuilder sb;
-            sb << "matrix<" << elementType->ToString() << "," << rowCount->ToString() << "," << colCount->ToString() << ">";
+            sb << "matrix<" << getElementType()->ToString() << "," << getRowCount()->ToString() << "," << getColumnCount()->ToString() << ">";
             return sb.ProduceString();
         }
 
-        BasicExpressionType* MatrixExpressionType::GetScalarType() const
+        BasicExpressionType* MatrixExpressionType::GetScalarType()
         {
-            return elementType->AsBasicType();
+            return getElementType()->AsBasicType();
         }
 
-        bool MatrixExpressionType::EqualsImpl(const ExpressionType * type) const
+        ExpressionType* MatrixExpressionType::getElementType()
         {
-            if (auto matType = type->AsMatrixType())
-            {
-                return elementType->Equals(matType->elementType)
-                    && rowCount->EqualsVal(matType->rowCount.Ptr())
-                    && colCount->EqualsVal(matType->colCount.Ptr());
-            }
-            
-            return false;
+            return this->declRef.substitutions->args[0].As<ExpressionType>().Ptr();
         }
 
-        ExpressionType* MatrixExpressionType::CreateCanonicalType()
+        IntVal* MatrixExpressionType::getRowCount()
         {
-            auto canElementType = elementType->GetCanonicalType();
-            auto canType = new MatrixExpressionType(canElementType, rowCount, colCount);
-            canType->declRef = declRef;
-            sCanonicalTypes.Add(canType);
-            return canType;
+            return this->declRef.substitutions->args[1].As<IntVal>().Ptr();
         }
 
-
-        RefPtr<Val> MatrixExpressionType::SubstituteImpl(Substitutions* subst, int* ioDiff)
+        IntVal* MatrixExpressionType::getColumnCount()
         {
-            int diff = 0;
-            auto substDeclRef = declRef.SubstituteImpl(subst, &diff);
-            auto substElementType = elementType->SubstituteImpl(subst, &diff).As<ExpressionType>();
-
-            if (!diff)
-                return this;
-
-            (*ioDiff)++;
-            auto substType = new MatrixExpressionType(substElementType, rowCount, colCount);
-            substType->declRef = substDeclRef;
-            return substType;
+            return this->declRef.substitutions->args[2].As<IntVal>().Ptr();
         }
+
 
         // TextureType
 
@@ -1126,12 +1053,12 @@ namespace Spire
             return false;
         }
 
-        String GenericParamIntVal::ToString() const
+        String GenericParamIntVal::ToString()
         {
             return declRef.GetName();
         }
 
-        int GenericParamIntVal::GetHashCode() const
+        int GenericParamIntVal::GetHashCode()
         {
             return declRef.GetHashCode() ^ 0xFFFF;
         }
@@ -1273,7 +1200,7 @@ namespace Spire
         }
 
 
-        DeclRef DeclRef::SubstituteImpl(Substitutions* subst, int* /*ioDiff*/)
+        DeclRef DeclRef::SubstituteImpl(Substitutions* subst, int* ioDiff)
         {
             if (!substitutions) return *this;
 
@@ -1282,6 +1209,8 @@ namespace Spire
 
             if (!diff)
                 return *this;
+
+            *ioDiff += diff;
 
             DeclRef substDeclRef;
             substDeclRef.decl = decl;
@@ -1374,12 +1303,12 @@ namespace Spire
             return false;
         }
 
-        String ConstantIntVal::ToString() const
+        String ConstantIntVal::ToString()
         {
             return String(value);
         }
 
-        int ConstantIntVal::GetHashCode() const
+        int ConstantIntVal::GetHashCode()
         {
             return value;
         }

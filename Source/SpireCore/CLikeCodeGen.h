@@ -1,3 +1,4 @@
+#if 0
 // CLikeCodeGen.h
 #ifndef SPIRE_C_LIKE_CODE_GEN_H
 #define SPIRE_C_LIKE_CODE_GEN_H
@@ -127,3 +128,4 @@ namespace Spire
 }
 
 #endif // SPIRE_C_LIKE_CODE_GEN_H
+#endif

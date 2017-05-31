@@ -61,7 +61,9 @@ namespace Spire
         class ShaderCompilerImpl : public ShaderCompiler
         {
         private:
+#if 0
             Dictionary<String, RefPtr<CodeGenBackend>> backends;
+#endif
         public:
 #if 0
             virtual CompileUnit Parse(
@@ -613,10 +615,12 @@ namespace Spire
                     BasicExpressionType::Init();
                 }
                 compilerInstances++;
+#if 0
                 backends.Add("glsl", CreateGLSLCodeGen());
                 backends.Add("hlsl", CreateHLSLCodeGen());
                 backends.Add("glsl_vk", CreateGLSL_VulkanCodeGen());
                 backends.Add("glsl_vk_onedesc", CreateGLSL_VulkanOneDescCodeGen());
+#endif
             }
 
             ~ShaderCompilerImpl()

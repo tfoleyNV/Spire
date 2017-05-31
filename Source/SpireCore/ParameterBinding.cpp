@@ -828,7 +828,7 @@ static void processEntryPointParameter(
     // A matrix is processed as if it was an array of rows
     else if( auto matrixType = type->As<MatrixExpressionType>() )
     {
-        auto rowCount = GetIntVal(matrixType->rowCount);
+        auto rowCount = GetIntVal(matrixType->getRowCount());
         processSimpleEntryPointParameter(context, basicType, state, rowCount);
     }
     else if( auto arrayType = type->As<ArrayExpressionType>() )

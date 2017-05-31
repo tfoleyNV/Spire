@@ -1,3 +1,4 @@
+#if 0
 #include "CLikeCodeGen.h"
 #include "../CoreLib/Tokenizer.h"
 #include "Syntax.h"
@@ -299,3 +300,4 @@ namespace Spire
         }
     }
 }
+#endif

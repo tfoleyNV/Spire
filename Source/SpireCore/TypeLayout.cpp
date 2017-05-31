@@ -966,9 +966,9 @@ SimpleLayoutInfo GetLayoutImpl(
     {
         return GetSimpleLayoutImpl(
             rules->GetMatrixLayout(
-                GetLayout(matType->elementType.Ptr(), rules),
-                GetIntVal(matType->rowCount),
-                GetIntVal(matType->rowCount)),
+                GetLayout(matType->getElementType(), rules),
+                GetIntVal(matType->getRowCount()),
+                GetIntVal(matType->getColumnCount())),
             type,
             rules,
             outTypeLayout);

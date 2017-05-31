@@ -761,32 +761,6 @@ namespace Spire
                 return expr;
             }
 
-
-
-
-            bool MatchType_ValueReceiver(ExpressionType * receiverType, ExpressionType * valueType)
-            {
-                if (receiverType->Equals(valueType))
-                    return true;
-                if (receiverType->IsIntegral() && valueType->Equals(ExpressionType::GetInt()))
-                    return true;
-                if (receiverType->Equals(ExpressionType::GetFloat()) && valueType->IsIntegral())
-                    return true;
-                if (receiverType->IsVectorType() && valueType->IsVectorType())
-                {
-                    auto recieverVecType = receiverType->AsVectorType();
-                    auto valueVecType = valueType->AsVectorType();
-                    if (GetVectorBaseType(recieverVecType) == BaseType::Float &&
-                        GetVectorSize(recieverVecType) == GetVectorSize(valueVecType))
-                        return true;
-                    if (GetVectorBaseType(recieverVecType) == BaseType::UInt &&
-                        GetVectorBaseType(valueVecType) == BaseType::Int &&
-                        GetVectorSize(recieverVecType) == GetVectorSize(valueVecType))
-                        return true;
-                }
-                return false;
-            }
-
             void CheckVarDeclCommon(RefPtr<VarDeclBase> varDecl)
             {
                 // Check the type, if one was given
@@ -1482,6 +1456,7 @@ namespace Spire
             virtual RefPtr<Variable> VisitDeclrVariable(Variable* varDecl)
             {
                 TypeExp typeExp = CheckUsableType(varDecl->Type);
+#if 0
                 if (typeExp.type->GetBindableResourceType() != BindableResourceType::NonBindable)
                 {
                     // We don't want to allow bindable resource types as local variables (at least for now).
@@ -1491,6 +1466,7 @@ namespace Spire
                         getSink()->diagnose(varDecl->Type, Diagnostics::invalidTypeForLocalVariable);
                     }
                 }
+#endif
                 varDecl->Type = typeExp;
                 if (varDecl->Type.Equals(ExpressionType::GetVoid()))
                     getSink()->diagnose(varDecl, Diagnostics::invalidTypeVoid);
@@ -1544,10 +1520,13 @@ namespace Spire
                         expr->Operator == Operator::LshAssign ||
                         expr->Operator == Operator::RshAssign)
                     {
+#if 0
                         if (!(leftType->IsIntegral() && rightType->IsIntegral()))
                         {
-                            getSink()->diagnose(expr, Diagnostics::bitOperationNonIntegral);
+                            // TODO(tfoley): This diagnostic shouldn't be handled here
+//                            getSink()->diagnose(expr, Diagnostics::bitOperationNonIntegral);
                         }
+#endif
                     }
 
                     // TODO(tfoley): Need to actual insert coercion here...
@@ -1907,8 +1886,8 @@ namespace Spire
                     // TODO(tfoley): We shouldn't go and recompute
                     // row types over and over like this... :(
                     auto rowType = new VectorExpressionType(
-                        matType->elementType,
-                        matType->colCount);
+                        matType->getElementType(),
+                        matType->getColumnCount());
 
                     return CheckSimpleSubscriptExpr(
                         subscriptExpr,
@@ -1932,47 +1911,6 @@ namespace Spire
                     i++;
                 }
                 return true;
-            }
-
-            template<typename GetParamFunc, typename PFuncT>
-            PFuncT FindFunctionOverload(const List<PFuncT> & funcs, const GetParamFunc & getParam, const List<RefPtr<ExpressionType>> & arguments)
-            {
-                int bestMatchConversions = 1 << 30;
-                PFuncT func = nullptr;
-                for (auto & f : funcs)
-                {
-                    auto params = getParam(f);
-                    if (params.Count() == arguments.Count())
-                    {
-                        int conversions = 0;
-                        bool match = true;
-                        int i = 0;
-                        for (auto param : params)
-                        {
-                            auto argType = arguments[i];
-                            auto paramType = param->Type;
-                            if (argType->Equals(paramType.Ptr()))
-                            {
-                            }
-                            else if (MatchType_ValueReceiver(paramType.Ptr(), argType.Ptr()))
-                            {
-                                conversions++;
-                            }
-                            else
-                            {
-                                match = false;
-                                break;
-                            }
-                            i++;
-                        }
-                        if (match && conversions < bestMatchConversions)
-                        {
-                            func = f;
-                            bestMatchConversions = conversions;
-                        }
-                    }
-                }
-                return func;
             }
 
             // Coerce an expression to a specific  type that it is expected to have in context

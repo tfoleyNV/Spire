@@ -557,7 +557,7 @@ static void emitGLSLTypePrefix(
     }
     else if(auto matrixType = type->As<MatrixExpressionType>())
     {
-        emitGLSLTypePrefix(context, matrixType->elementType);
+        emitGLSLTypePrefix(context, matrixType->getElementType());
     }
     else
     {
@@ -748,24 +748,24 @@ static void EmitType(EmitContext* context, RefPtr<ExpressionType> type, EDeclara
         case CodeGenTarget::GLSL_Vulkan:
         case CodeGenTarget::GLSL_Vulkan_OneDesc:
             {
-                emitGLSLTypePrefix(context, matType->elementType);
+                emitGLSLTypePrefix(context, matType->getElementType());
                 Emit(context, "mat");
-                Emit(context, matType->rowCount);
+                Emit(context, matType->getRowCount());
                 // TODO(tfoley): only emit the next bit
                 // for non-square matrix
                 Emit(context, "x");
-                Emit(context, matType->colCount);
+                Emit(context, matType->getColumnCount());
             }
             break;
 
         case CodeGenTarget::HLSL:
             // TODO(tfoley): should really emit these with sugar
             Emit(context, "matrix<");
-            EmitType(context, matType->elementType);
+            EmitType(context, matType->getElementType());
             Emit(context, ",");
-            Emit(context, matType->rowCount);
+            Emit(context, matType->getRowCount());
             Emit(context, ",");
-            Emit(context, matType->colCount);
+            Emit(context, matType->getColumnCount());
             Emit(context, "> ");
             break;
 

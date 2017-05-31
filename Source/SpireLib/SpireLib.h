@@ -7,6 +7,7 @@
 
 namespace SpireLib
 {
+#if 0
     class ShaderLibFile : public CoreLib::Basic::Object
     {
     public:
@@ -22,6 +23,7 @@ namespace SpireLib
         void Clear();
         void Load(CoreLib::Basic::String fileName);
     };
+#endif
     
 #if 0
     CoreLib::Basic::List<ShaderLibFile> CompileShaderSourceFromFile(Spire::Compiler::CompileResult & result,
@@ -32,6 +34,7 @@ namespace SpireLib
         const CoreLib::Basic::String &source, const CoreLib::Basic::String & sourceFileName, Spire::Compiler::CompileOptions &options);
 #endif
 
+#if 0
     class ShaderLib : public ShaderLibFile
     {
     public:
@@ -41,7 +44,7 @@ namespace SpireLib
         void Reload(CoreLib::Basic::String fileName);
         bool CompileFrom(CoreLib::Basic::String symbolName, CoreLib::Basic::String sourceFileName);
     };
-
+#endif
 
     int executeCompilerDriverActions(Spire::Compiler::CompileOptions const& options);
 }

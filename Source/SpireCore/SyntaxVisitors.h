@@ -15,6 +15,7 @@ namespace Spire
         class ShaderLinkInfo;
         class ShaderSymbol;
 
+#if 0
         class ICodeGenerator : public SyntaxVisitor
         {
         public:
@@ -25,10 +26,14 @@ namespace Spire
             virtual void ProcessStruct(StructSyntaxNode * st) = 0;
             virtual void ProcessGlobalVar(VarDeclBase * var) = 0;
         };
+#endif
 
         SyntaxVisitor * CreateSemanticsVisitor(DiagnosticSink * err, CompileOptions const& options);
+
+#if 0
         ICodeGenerator * CreateCodeGenerator(CompileResult & result);
         SyntaxVisitor * CreateILCodeGenerator(DiagnosticSink * err, ILProgram * program, CompileOptions * options);
+#endif
     }
 }
 
