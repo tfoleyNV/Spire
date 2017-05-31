@@ -120,25 +120,44 @@ namespace Spire
         class SharedModifiers : public Modifier {};
 
         // A GLSL `layout` modifier
+        //
+        // We use a distinct modifier for each key that
+        // appears within the `layout(...)` construct,
+        // and each key might have an optional value token.
+        //
+        // TODO: We probably want a notion of  "modifier groups"
+        // so that we can recover good source location info
+        // for modifiers that were part of the same vs.
+        // different constructs.
         class GLSLLayoutModifier : public Modifier
         {
         public:
-            struct Arg
-            {
-                Token keyToken;
+            // THe token used to introduce the modifier is stored
+            // as the `nameToken` field.
 
-                // TODO: may want to accept a full expression here
-                Token valToken;
-            };
-
-            List<Arg> args;
+            // TODO: may want to accept a full expression here
+            Token valToken;
         };
 
+        // We divide GLSL `layout` modifiers into those we have parsed
+        // (in the sense of having some notion of their semantics), and
+        // those we have not.
+        class GLSLParsedLayoutModifier      : public GLSLLayoutModifier {};
+        class GLSLUnparsedLayoutModifier    : public GLSLLayoutModifier {};
+
+        // Specific cases for known GLSL `layout` modifiers that we need to work with
+        class GLSLConstantIDLayoutModifier  : public GLSLParsedLayoutModifier {};
+        class GLSLBindingLayoutModifier     : public GLSLParsedLayoutModifier {};
+        class GLSLSetLayoutModifier         : public GLSLParsedLayoutModifier {};
+        class GLSLLocationLayoutModifier    : public GLSLParsedLayoutModifier {};
+
+        // A catch-all for single-keyword modifiers
         class SimpleModifier : public Modifier {};
 
+        // Some GLSL-specific modifiers
         class GLSLBufferModifier    : public SimpleModifier {};
         class GLSLWriteOnlyModifier : public SimpleModifier {};
-        class GLSLReadOnlyModifier : public SimpleModifier {};
+        class GLSLReadOnlyModifier  : public SimpleModifier {};
 
         // Indicates that this is a variable declaration that corresponds to
         // a parameter block declaration in the source program.
@@ -336,6 +355,9 @@ namespace Spire
 
             template<typename T>
             bool hasModifier() { return findModifier<T>() != nullptr; }
+
+            FilteredModifierList<Modifier>::Iterator begin() { return FilteredModifierList<Modifier>::Iterator(first.Ptr()); }
+            FilteredModifierList<Modifier>::Iterator end() { return FilteredModifierList<Modifier>::Iterator(nullptr); }
         };
 
 
@@ -2396,6 +2418,21 @@ namespace Spire
             // and not the user's source code)
             Token classNameToken;
 
+            virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
+        };
+
+        // An empty declaration (which might still have modifiers attached).
+        //
+        // An empty declaration is uncommon in HLSL, but
+        // in GLSL it is often used at the global scope
+        // to declare metadata that logically belongs
+        // to the entry point, e.g.:
+        //
+        //     layout(local_size_x = 16) in;
+        //
+        class EmptyDecl : public Decl
+        {
+        public:
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
         };
 

@@ -240,20 +240,25 @@ static bool doesParameterMatch(
 
 // Given a GLSL `layout` modifier, we need to be able to check for
 // a particular sub-argument and extract its value if present.
+template<typename T>
 static bool findLayoutArg(
-    RefPtr<GLSLLayoutModifier>  modifier,
-    String const&               key,
-    int*                        outVal)
+    RefPtr<ModifiableSyntaxNode>    syntax,
+    int*                            outVal)
 {
-    for(auto& arg : modifier->args)
+    for( auto modifier : syntax->GetModifiersOfType<T>() )
     {
-        if(arg.keyToken.Content != key)
-            continue;
-
-        *outVal = (int) strtol(arg.valToken.Content.Buffer(), nullptr, 10);
+        *outVal = (int) strtol(modifier->valToken.Content.Buffer(), nullptr, 10);
         return true;
     }
     return false;
+}
+
+template<typename T>
+static bool findLayoutArg(
+    DeclRef declRef,
+    int*    outVal)
+{
+    return findLayoutArg<T>(declRef.GetDecl(), outVal);
 }
 
 //
@@ -283,12 +288,8 @@ getLayoutRulesForGlobalShaderParameter_GLSL(
 
     // A `const` global with a `layout(constant_id = ...)` modifier
     // is a declaration of a specialization constant.
-    for( auto layoutMod : varDecl->GetModifiersOfType<GLSLLayoutModifier>() )
-    {
-        int val;
-        if(findLayoutArg(layoutMod, "constant_id", &val))
-            return rules->getSpecializationConstantRules();
-    }
+    if(varDecl->HasModifier<GLSLConstantIDLayoutModifier>())
+        return rules->getSpecializationConstantRules();
 
     // GLSL says that an "ordinary" global  variable
     // is just a (thread local) global and not a
@@ -407,6 +408,145 @@ static void collectGlobalScopeParameter(
     parameterInfo->varLayouts.Add(varLayout);
 }
 
+static void addExplicitParameterBinding(
+    ParameterBindingContext*    context,
+    RefPtr<ParameterInfo>       parameterInfo,
+    LayoutSemanticInfo const&   semanticInfo,
+    int                         count)
+{
+    auto kind = semanticInfo.kind;
+
+    auto& bindingInfo = parameterInfo->bindingInfo[(int)kind];
+    if( bindingInfo.count != 0 )
+    {
+        // We already have a binding here, so we want to
+        // confirm that it matches the new one that is
+        // incoming...
+        if( bindingInfo.count != count
+            || bindingInfo.index != semanticInfo.index
+            || bindingInfo.space != semanticInfo.space )
+        {
+            // TODO: diagnose!
+        }
+
+        // TODO(tfoley): `register` semantics can technically be
+        // profile-specific (not sure if anybody uses that)...
+    }
+    else
+    {
+        bindingInfo.count = count;
+        bindingInfo.index = semanticInfo.index;
+        bindingInfo.space = semanticInfo.space;
+
+        // If things are bound in `space0` (the default), then we need
+        // to lay claim to the register range used, so that automatic
+        // assignment doesn't go and use the same registers.
+        if (semanticInfo.space == 0)
+        {
+            context->usedResourceRanges[(int)semanticInfo.kind].Add(
+                semanticInfo.index,
+                semanticInfo.index + count);
+        }
+    }
+}
+
+static void addExplicitParameterBindings_HLSL(
+    ParameterBindingContext*    context,
+    RefPtr<ParameterInfo>       parameterInfo,
+    RefPtr<VarLayout>           varLayout)
+{
+    auto typeLayout = varLayout->typeLayout;
+    auto varDecl = varLayout->varDecl;
+
+    // If the declaration has explicit binding modifiers, then
+    // here is where we want to extract and apply them...
+
+    // Look for HLSL `register` or `packoffset` semantics.
+    for (auto semantic : varDecl.GetDecl()->GetModifiersOfType<HLSLLayoutSemantic>())
+    {
+        // Need to extract the information encoded in the semantic
+        LayoutSemanticInfo semanticInfo = ExtractLayoutSemanticInfo(context, semantic);
+        auto kind = semanticInfo.kind;
+        if (kind == LayoutResourceKind::None)
+            continue;
+
+        // TODO: need to special-case when this is a `c` register binding...
+
+        // Find the appropriate resource-binding information
+        // inside the type, to see if we even use any resources
+        // of the given kind.
+
+        auto typeRes = typeLayout->FindResourceInfo(kind);
+        int count = 0;
+        if (typeRes)
+        {
+            count = (int) typeRes->count;
+        }
+        else
+        {
+            // TODO: warning here!
+        }
+
+        addExplicitParameterBinding(context, parameterInfo, semanticInfo, count);
+    }
+}
+
+static void addExplicitParameterBindings_GLSL(
+    ParameterBindingContext*    context,
+    RefPtr<ParameterInfo>       parameterInfo,
+    RefPtr<VarLayout>           varLayout)
+{
+    auto typeLayout = varLayout->typeLayout;
+    auto varDecl = varLayout->varDecl;
+
+    // The catch in GLSL is that the expected resource type
+    // is implied by the parameter declaration itself, and
+    // the `layout` modifier is only allowed to adjust
+    // the index/offset/etc.
+    //
+
+    TypeLayout::ResourceInfo* resInfo = nullptr;
+    LayoutSemanticInfo semanticInfo;
+    semanticInfo.index = 0;
+    semanticInfo.space = 0;
+    if( resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::DescriptorTableSlot) )
+    {
+        // Try to find `binding` and `set`
+        if(!findLayoutArg<GLSLBindingLayoutModifier>(varDecl, &semanticInfo.index))
+            return;
+
+        findLayoutArg<GLSLSetLayoutModifier>(varDecl, &semanticInfo.space);
+    }
+    else if( resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::VertexInput) )
+    {
+        // Try to find `location` binding
+        if(!findLayoutArg<GLSLLocationLayoutModifier>(varDecl, &semanticInfo.index))
+            return;
+    }
+    else if( resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::VertexInput) )
+    {
+        // Try to find `location` binding
+        if(!findLayoutArg<GLSLLocationLayoutModifier>(varDecl, &semanticInfo.index))
+            return;
+    }
+    else if( resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::SpecializationConstant) )
+    {
+        // Try to find `constant_id` binding
+        if(!findLayoutArg<GLSLConstantIDLayoutModifier>(varDecl, &semanticInfo.index))
+            return;
+    }
+
+    // If we didn't find any matches, then bail
+    if(!resInfo)
+        return;
+
+    auto kind = resInfo->kind;
+    auto count = resInfo->count;
+    semanticInfo.kind = kind;
+
+    addExplicitParameterBinding(context, parameterInfo, semanticInfo, count);
+}
+
 // Given a single parameter, collect whatever information we have on
 // how it has been explicitly bound, which may come from multiple declarations
 void generateParameterBindings(
@@ -419,152 +559,12 @@ void generateParameterBindings(
     // Iterate over all declarations looking for explicit binding information.
     for( auto& varLayout : parameterInfo->varLayouts )
     {
-        auto typeLayout = varLayout->typeLayout;
-        auto varDecl = varLayout->varDecl;
+        // Handle HLSL `register` and `packoffset` modifiers
+        addExplicitParameterBindings_HLSL(context, parameterInfo, varLayout);
 
-        // If the declaration has explicit binding modifiers, then
-        // here is where we want to extract and apply them...
-
-        // Look for HLSL `register` or `packoffset` semantics.
-        for (auto semantic : varDecl.GetDecl()->GetModifiersOfType<HLSLLayoutSemantic>())
-        {
-            // Need to extract the information encoded in the semantic
-            LayoutSemanticInfo semanticInfo = ExtractLayoutSemanticInfo(context, semantic);
-            auto kind = semanticInfo.kind;
-            if (kind == LayoutResourceKind::None)
-                continue;
-
-            // TODO: need to special-case when this is a `c` register binding...
-
-            // Find the appropriate resource-binding information
-            // inside the type, to see if we even use any resources
-            // of the given kind.
-
-            auto typeRes = typeLayout->FindResourceInfo(kind);
-            int count = 0;
-            if (typeRes)
-            {
-                count = (int) typeRes->count;
-            }
-            else
-            {
-                // TODO: warning here!
-            }
-
-            auto& bindingInfo = parameterInfo->bindingInfo[(int)kind];
-            if( bindingInfo.count != 0 )
-            {
-                // We already have a binding here, so we want to
-                // confirm that it matches the new one that is
-                // incoming...
-                if( bindingInfo.count != count
-                    || bindingInfo.index != semanticInfo.index
-                    || bindingInfo.space != semanticInfo.space )
-                {
-                    // TODO: diagnose!
-                }
-
-                // TODO(tfoley): `register` semantics can technically be
-                // profile-specific (not sure if anybody uses that)...
-            }
-            else
-            {
-                bindingInfo.count = count;
-                bindingInfo.index = semanticInfo.index;
-                bindingInfo.space = semanticInfo.space;
-
-                // If things are bound in `space0` (the default), then we need
-                // to lay claim to the register range used, so that automatic
-                // assignment doesn't go and use the same registers.
-                if (semanticInfo.space == 0)
-                {
-                    context->usedResourceRanges[(int)semanticInfo.kind].Add(
-                        semanticInfo.index,
-                        semanticInfo.index + count);
-                }
-            }
-        }
 
         // Handle GLSL `layout` modifiers
-        for (auto layoutModifier : varDecl.GetDecl()->GetModifiersOfType<GLSLLayoutModifier>())
-        {
-            // The catch in GLSL is that the expected resource type
-            // is implied by the parameter declaration itself, and
-            // the `layout` modifier is only allowed to adjust
-            // the index/offset/etc.
-            //
-
-            TypeLayout::ResourceInfo* resInfo = nullptr;
-            LayoutSemanticInfo semanticInfo;
-            semanticInfo.index = 0;
-            semanticInfo.space = 0;
-            if( resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::DescriptorTableSlot) )
-            {
-                // Try to find `binding` and `set`
-                if(!findLayoutArg(layoutModifier, "binding", &semanticInfo.index))
-                    continue;
-
-                findLayoutArg(layoutModifier, "set", &semanticInfo.space);
-            }
-            else if( resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::VertexInput) )
-            {
-                // Try to find `location` binding
-                if(!findLayoutArg(layoutModifier, "location", &semanticInfo.index))
-                    continue;
-            }
-            else if( resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::VertexInput) )
-            {
-                // Try to find `location` binding
-                if(!findLayoutArg(layoutModifier, "location", &semanticInfo.index))
-                    continue;
-            }
-            else if( resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::SpecializationConstant) )
-            {
-                // Try to find `constant_id` binding
-                if(!findLayoutArg(layoutModifier, "constant_id", &semanticInfo.index))
-                    continue;
-            }
-
-            if(!resInfo)
-                continue;
-
-            auto kind = resInfo->kind;
-            auto count = resInfo->count;
-            semanticInfo.kind = kind;
-
-            auto& bindingInfo = parameterInfo->bindingInfo[(int)kind];
-            if( bindingInfo.count != 0 )
-            {
-                // We already have a binding here, so we want to
-                // confirm that it matches the new one that is
-                // incoming...
-                if( bindingInfo.count != count
-                    || bindingInfo.index != semanticInfo.index
-                    || bindingInfo.space != semanticInfo.space )
-                {
-                    // TODO: diagnose!
-                }
-
-                // TODO(tfoley): `register` semantics can technically be
-                // profile-specific (not sure if anybody uses that)...
-            }
-            else
-            {
-                bindingInfo.count = count;
-                bindingInfo.index = semanticInfo.index;
-                bindingInfo.space = semanticInfo.space;
-
-                // If things are bound in `space0` (the default), then we need
-                // to lay claim to the register range used, so that automatic
-                // assignment doesn't go and use the same registers.
-                if (semanticInfo.space == 0)
-                {
-                    context->usedResourceRanges[(int)semanticInfo.kind].Add(
-                        semanticInfo.index,
-                        int(semanticInfo.index + count));
-                }
-            }
-        }
+        addExplicitParameterBindings_GLSL(context, parameterInfo, varLayout);
     }
 }
 

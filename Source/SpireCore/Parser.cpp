@@ -696,27 +696,42 @@ namespace Spire
 
                 else if (AdvanceIf(parser, "layout"))
                 {
-                    RefPtr<GLSLLayoutModifier> modifier = new GLSLLayoutModifier();
-
                     parser->ReadToken(TokenType::LParent);
                     while (!AdvanceIfMatch(parser, TokenType::RParent))
                     {
-                        GLSLLayoutModifier::Arg arg;
-                        arg.keyToken = parser->ReadToken(TokenType::Identifier);
+                        auto nameToken = parser->ReadToken(TokenType::Identifier);
+
+                        RefPtr<GLSLLayoutModifier> modifier;
+
+                        // TODO: better handling of this choise (e.g., lookup in scope)
+                        if(0) {}
+                    #define CASE(KEYWORD, CLASS) \
+                        else if(nameToken.Content == #KEYWORD) modifier = new CLASS()
+
+                        CASE(constant_id,   GLSLConstantIDLayoutModifier);
+                        CASE(binding,       GLSLBindingLayoutModifier);
+                        CASE(set,           GLSLSetLayoutModifier);
+                        CASE(location,      GLSLLocationLayoutModifier);
+
+                    #undef CASE
+                        else
+                        {
+                            modifier = new GLSLUnparsedLayoutModifier();
+                        }
+
+                        modifier->nameToken = nameToken;
 
                         if(AdvanceIf(parser, TokenType::OpAssign))
                         {
-                            arg.valToken = parser->ReadToken(TokenType::IntLiterial);
+                            modifier->valToken = parser->ReadToken(TokenType::IntLiterial);
                         }
 
-                        modifier->args.Add(arg);
+                        AddModifier(&modifierLink, modifier);
 
                         if (AdvanceIf(parser, TokenType::RParent))
                             break;
                         parser->ReadToken(TokenType::Comma);
                     }
-
-                    AddModifier(&modifierLink, modifier);
                 }
                 else if (parser->tokenReader.PeekTokenType() == TokenType::LBracket)
                 {
@@ -1683,6 +1698,9 @@ namespace Spire
                 addModifier(blockVarDecl, transparentModifier);
             }
 
+            // Expect a trailing `;`
+            parser->ReadToken(TokenType::Semicolon);
+
             // Because we are constructing two declarations, we have a thorny
             // issue that were are only supposed to return one.
             // For now we handle this by adding the type declaration to
@@ -1895,6 +1913,8 @@ namespace Spire
         {
             RefPtr<DeclBase> decl;
 
+            auto loc = parser->tokenReader.PeekLoc();
+
             // TODO: actual dispatch!
             if (parser->LookAheadToken("struct"))
                 decl = parser->ParseStruct();
@@ -1920,7 +1940,8 @@ namespace Spire
                 decl = parseModifierDecl(parser);
             else if (AdvanceIf(parser, TokenType::Semicolon))
             {
-                // empty declaration
+                decl = new EmptyDecl();
+                decl->Position = loc;
             }
             // GLSL requires that we be able to parse "block" declarations,
             // which look superficially similar to declarator declarations
@@ -2044,6 +2065,13 @@ namespace Spire
             typeNames.Add(rs->Name.Content);
             ReadToken(TokenType::LBrace);
             ParseDeclBody(this, rs.Ptr(), TokenType::RBrace);
+
+            // Consume a trailing `;`, if present.
+            //
+            // TODO(tfoley): `struct` syntax should come in as part of declarator
+            // parsing, and not just as a top-level declaration.
+            AdvanceIf(this, TokenType::Semicolon);
+
             return rs;
         }
 

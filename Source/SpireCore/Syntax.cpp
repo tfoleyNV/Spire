@@ -1449,6 +1449,13 @@ namespace Spire
 
         //
 
+        RefPtr<SyntaxNode> EmptyDecl::Accept(SyntaxVisitor * visitor)
+        {
+            return this;
+        }
+
+        //
+
         SyntaxNodeBase* createInstanceOfSyntaxClassByName(
             String const&   name)
         {

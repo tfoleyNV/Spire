@@ -1157,6 +1157,32 @@ static void EmitDeclRef(EmitContext* context, DeclRef declRef)
 // Emit any modifiers that should go in front of a declaration
 static void EmitModifiers(EmitContext* context, RefPtr<Decl> decl)
 {
+    // Emit any GLSL `layout` modifiers first
+    bool anyLayout = false;
+    for( auto mod : decl->GetModifiersOfType<GLSLUnparsedLayoutModifier>())
+    {
+        if(!anyLayout)
+        {
+            Emit(context, "layout(");
+            anyLayout = true;
+        }
+        else
+        {
+            Emit(context, ", ");
+        }
+
+        Emit(context, mod->nameToken.Content);
+        if(mod->valToken.Type != TokenType::Unknown)
+        {
+            Emit(context, " = ");
+            Emit(context, mod->valToken.Content);
+        }
+    }
+    if(anyLayout)
+    {
+        Emit(context, ")\n");
+    }
+
     for (auto mod = decl->modifiers.first; mod; mod = mod->next)
     {
         if (0) {}
@@ -1930,6 +1956,12 @@ static void EmitDeclImpl(EmitContext* context, RefPtr<Decl> decl, RefPtr<VarLayo
 	{
 		return;
 	}
+    else if( auto emptyDecl = decl.As<EmptyDecl>() )
+    {
+        EmitModifiers(context, emptyDecl);
+        Emit(context, ";\n");
+        return;
+    }
     throw "unimplemented";
 }
 
