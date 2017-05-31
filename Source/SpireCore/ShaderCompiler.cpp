@@ -9,9 +9,7 @@
 #include "Preprocessor.h"
 #include "SyntaxVisitors.h"
 #include "StdInclude.h"
-#include "CodeGenBackend.h"
 #include "../CoreLib/Tokenizer.h"
-#include "Naming.h"
 
 #include "Reflection.h"
 #include "Emit.h"
@@ -60,24 +58,7 @@ namespace Spire
 
         class ShaderCompilerImpl : public ShaderCompiler
         {
-        private:
-#if 0
-            Dictionary<String, RefPtr<CodeGenBackend>> backends;
-#endif
         public:
-#if 0
-            virtual CompileUnit Parse(
-                CompileOptions& options,
-                CompileResult & result, 
-                String source, String fileName, IncludeHandler* includeHandler, Dictionary<String,String> const& preprocesorDefinitions,
-                CompileUnit predefUnit) override
-            {
-                auto tokens = preprocessSource(source, fileName, result.GetErrorWriter(), includeHandler, preprocesorDefinitions);
-                CompileUnit rs;
-                rs.SyntaxNode = ParseProgram(options, tokens, result.GetErrorWriter(), fileName, predefUnit.SyntaxNode.Ptr());
-                return rs;
-            }
-#endif
 
             // Actual context for compilation... :(
             struct ExtraContext
@@ -406,13 +387,6 @@ namespace Spire
                         if (context.compileResult)
                         {
                             result.outputSource = hlslProgram;
-#if 0
-                            StageSource stageSource;
-                            stageSource.MainCode = hlslProgram;
-                            CompiledShaderSource compiled;
-                            compiled.Stages[""] = stageSource;
-                            context.compileResult->CompiledSource[""] = compiled;
-#endif
                         }
                         else
                         {
@@ -432,14 +406,6 @@ namespace Spire
 
                             String codeString = sb.ProduceString();
                             result.outputSource = codeString;
-
-#if 0
-                            StageSource stageSource;
-                            stageSource.MainCode = codeString;
-                            CompiledShaderSource compiled;
-                            compiled.Stages[""] = stageSource;
-                            context.compileResult->CompiledSource[""] = compiled;
-#endif
                         }
                         else
                         {
@@ -546,41 +512,6 @@ namespace Spire
                     if (result.GetErrorCount() > 0)
                         return;
 
-#if ENABLE_ILGEN
-
-                    RefPtr<ILProgram> program = new ILProgram();
-                    RefPtr<SyntaxVisitor> codeGen = CreateILCodeGenerator(result.GetErrorWriter(), program.Ptr(), const_cast<CompileOptions*>(&options));
-                    codeGen->VisitProgram(programSyntaxNode.Ptr());
-                    
-                    if (result.GetErrorCount() > 0)
-                        return;
-
-                    RefPtr<CodeGenBackend> backend = nullptr;
-                    switch (options.Target)
-                    {
-                    case CodeGenTarget::HLSL:
-                        backend = CreateHLSLCodeGen();
-                        break;
-                    case CodeGenTarget::GLSL:
-                        backend = CreateGLSLCodeGen();
-                        break;
-                    case CodeGenTarget::GLSL_Vulkan:
-                        backend = CreateGLSL_VulkanCodeGen();
-                        break;
-                    default:
-                        result.sink.diagnose(CodePosition(), Diagnostics::unimplemented, "specified backend");
-                        return;
-                    }
-
-                    CompiledShaderSource compiledSource = backend->GenerateShader(options, program.Ptr(), &result.sink);
-                    compiledSource.MetaData.ShaderName = options.outputName;
-                    StageSource stageSrc;
-                    stageSrc.MainCode = program->ToString();
-                    compiledSource.Stages["il"] = stageSrc;
-                    result.CompiledSource["code"] = compiledSource;
-
-#endif
-
                     // Do binding generation, and then reflection (globally)
                     // before we move on to any code-generation activites.
                     GenerateParameterBindings(collectionOfTranslationUnits);
@@ -615,12 +546,6 @@ namespace Spire
                     BasicExpressionType::Init();
                 }
                 compilerInstances++;
-#if 0
-                backends.Add("glsl", CreateGLSLCodeGen());
-                backends.Add("hlsl", CreateHLSLCodeGen());
-                backends.Add("glsl_vk", CreateGLSL_VulkanCodeGen());
-                backends.Add("glsl_vk_onedesc", CreateGLSL_VulkanOneDescCodeGen());
-#endif
             }
 
             ~ShaderCompilerImpl()
@@ -634,7 +559,6 @@ namespace Spire
             }
 
             virtual TranslationUnitResult PassThrough(
-                CompileResult &			/*result*/,
                 String const&			sourceText,
                 String const&			sourcePath,
                 const CompileOptions &	options,

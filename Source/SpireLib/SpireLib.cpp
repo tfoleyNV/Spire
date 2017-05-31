@@ -1,8 +1,8 @@
-#include "SpireLib.h"
+#include "../../Spire.h"
+
 #include "../CoreLib/LibIO.h"
 #include "../CoreLib/Tokenizer.h"
 #include "../SpireCore/StdInclude.h"
-#include "../../Spire.h"
 #include "../SpireCore/Parser.h"
 #include "../SpireCore/Preprocessor.h"
 #include "../SpireCore/Reflection.h"
@@ -23,399 +23,6 @@ using namespace Spire::Compiler;
 
 namespace SpireLib
 {
-#if 0
-    void ReadSource(EnumerableDictionary<String, StageSource> & sources, CoreLib::Text::TokenReader & parser, String src)
-    {
-        auto getShaderSource = [&]()
-        {
-            auto token = parser.ReadToken();
-            int endPos = token.Position.Pos + 1;
-            int brace = 0;
-            while (endPos < src.Length() && !(src[endPos] == '}' && brace == 0))
-            {
-                if (src[endPos] == '{')
-                    brace++;
-                else if (src[endPos] == '}')
-                    brace--;
-                endPos++;
-            }
-            while (!parser.IsEnd() && parser.NextToken().Position.Pos != endPos)
-                parser.ReadToken();
-            parser.ReadToken();
-            return src.SubString(token.Position.Pos + 1, endPos - token.Position.Pos - 1);
-        };
-        while (!parser.IsEnd() && !parser.LookAhead("}"))
-        {
-            auto worldName = parser.ReadWord();
-            StageSource compiledSrc;
-            if (parser.LookAhead("binary"))
-            {
-                parser.ReadToken();
-                parser.Read("{");
-                while (!parser.LookAhead("}") && !parser.IsEnd())
-                {
-                    auto val = parser.ReadUInt();
-                    compiledSrc.BinaryCode.AddRange((unsigned char*)&val, sizeof(unsigned int));
-                    if (parser.LookAhead(","))
-                        parser.ReadToken();
-                }
-                parser.Read("}");
-            }
-            if (parser.LookAhead("text"))
-            {
-                parser.ReadToken();
-                compiledSrc.MainCode = getShaderSource();
-            }
-            sources[worldName] = compiledSrc;
-        }
-    }
-    StageSource ShaderLib::GetStageSource(String stage)
-    {
-        StageSource rs;
-        Sources.TryGetValue(stage, rs);
-        return rs;
-    }
-    ShaderLib::ShaderLib(CoreLib::Basic::String fileName)
-    {
-        Reload(fileName);
-    }
-    void ShaderLib::Reload(CoreLib::Basic::String fileName)
-    {
-        Load(fileName);
-    }
-#endif
-#if 0
-    bool ShaderLib::CompileFrom(String symbolName, String sourceFileName)
-    {
-        Spire::Compiler::CompileResult result;
-        CompileOptions options;
-        options.SymbolToCompile = symbolName;
-        options.Mode = CompilerMode::ProduceShader;
-        auto shaderLibs = CompileShaderSourceFromFile(result, sourceFileName, options);
-        if (result.GetErrorCount() == 0)
-        {
-            for (auto & lib : shaderLibs)
-            {
-                if (lib.MetaData.ShaderName == symbolName)
-                {
-                    FromString(shaderLibs[0].ToString());
-                    return true;
-                }
-            }
-        }
-        result.PrintDiagnostics();
-        return false;
-    }
-#endif
-
-#if 0
-    List<ShaderLibFile> CompileUnits(Spire::Compiler::CompileResult & compileResult,
-        ShaderCompiler * compiler, List<CompileUnit> & units,
-        Spire::Compiler::CompileOptions & options)
-    {
-        List<ShaderLibFile> resultFiles;
-        compiler->Compile(compileResult, units, options);
-        if (compileResult.GetErrorCount() == 0)
-        {
-            if (options.Mode == CompilerMode::ProduceShader)
-            {
-                EnumerableDictionary<String, ShaderLibFile> shaderLibs;
-                for (auto file : compileResult.CompiledSource)
-                {
-                    ShaderLibFile libFile;
-                    libFile.MetaData = file.Value.MetaData;
-                    libFile.Sources = file.Value.Stages;
-                    resultFiles.Add(libFile);
-                }
-            }
-        }
-        return resultFiles;
-    }
-#endif
-
-#if 0
-    List<ShaderLibFile> CompileShaderSource(Spire::Compiler::CompileResult & compileResult,
-        const CoreLib::String & src, const CoreLib::String & fileName, Spire::Compiler::CompileOptions & options)
-    {
-        IncludeHandlerImpl includeHandler;
-        includeHandler.searchDirs = options.SearchDirectories;
-
-        Spire::Compiler::NamingCounter = 0;
-        RefPtr<ShaderCompiler> compiler = CreateShaderCompiler();
-        List<CompileUnit> units;
-        HashSet<String> processedUnits;
-        List<String> unitsToInclude;
-        unitsToInclude.Add(fileName);
-        processedUnits.Add(fileName);
-        auto searchDirs = options.SearchDirectories;
-        searchDirs.Add(Path::GetDirectoryName(fileName));
-        searchDirs.Reverse();
-
-
-#if 0
-        // If we are being asked to do pass-through, then we need to do that here...
-        if (options.passThrough != PassThroughMode::None)
-        {
-            compiler->PassThrough(compileResult, src, fileName, options);
-            return List<ShaderLibFile>();
-        }
-#endif
-
-
-
-        CompileUnit predefUnit;
-        predefUnit = compiler->Parse(
-            options,
-            compileResult, SpireStdLib::GetCode(), "stdlib", &includeHandler, options.PreprocessorDefinitions, predefUnit);
-
-        // Add this one first, so that it gets processed first...
-        units.Add(predefUnit);
-
-
-        for (int i = 0; i < unitsToInclude.Count(); i++)
-        {
-            auto inputFileName = unitsToInclude[i];
-            try
-            {
-                String source = src;
-                if (i > 0)
-                    source = File::ReadAllText(inputFileName);
-                auto unit = compiler->Parse(
-                    options,
-                    compileResult, source, inputFileName, &includeHandler, options.PreprocessorDefinitions, predefUnit);
-                units.Add(unit);
-                if (unit.SyntaxNode)
-                {
-                    for (auto inc : unit.SyntaxNode->GetUsings())
-                    {
-                        bool found = false;
-                        for (auto & dir : searchDirs)
-                        {
-                            String includeFile = Path::Combine(dir, inc->fileName.Content);
-                            if (File::Exists(includeFile))
-                            {
-                                if (processedUnits.Add(includeFile))
-                                {
-                                    unitsToInclude.Add(includeFile);
-                                }
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (!found)
-                        {
-                            compileResult.GetErrorWriter()->diagnose(inc->fileName.Position, Diagnostics::cannotFindFile, inc->fileName);
-                        }
-                    }
-                }
-            }
-            catch (IOException)
-            {
-                compileResult.GetErrorWriter()->diagnose(CodePosition(0, 0, 0, ""), Diagnostics::cannotOpenFile, inputFileName);
-            }
-        }
-        if (compileResult.GetErrorCount() == 0)
-            return CompileUnits(compileResult, compiler.Ptr(), units, options);
-        else
-            return List<ShaderLibFile>();
-    }
-
-    List<ShaderLibFile> CompileShaderSourceFromFile(Spire::Compiler::CompileResult & compileResult,
-        const CoreLib::Basic::String & sourceFileName,
-        Spire::Compiler::CompileOptions & options)
-    {
-        try
-        {
-            return CompileShaderSource(compileResult, File::ReadAllText(sourceFileName), sourceFileName, options);
-        }
-        catch (IOException)
-        {
-            compileResult.GetErrorWriter()->diagnose(CodePosition(0, 0, 0, ""), Diagnostics::cannotOpenFile, Path::GetFileName(sourceFileName));
-        }
-        return List<ShaderLibFile>();
-    }
-#endif
-
-#if 0
-    void ShaderLibFile::AddSource(CoreLib::Basic::String source, CoreLib::Text::TokenReader & parser)
-    {
-        ReadSource(Sources, parser, source);
-    }
-#endif
-
-#if 0
-    CoreLib::String ShaderLibFile::ToString()
-    {
-        StringBuilder writer;
-        writer << "name " << MetaData.ShaderName << EndLine;
-        for (auto & ublock : MetaData.ParameterSets)
-        {
-            writer << "paramset \"" << ublock.Key << "\" size " << ublock.Value->BufferSize
-                << " binding " << ublock.Value->DescriptorSetId << "\n{\n";
-            for (auto & entry : ublock.Value->Parameters)
-            {
-                writer << entry.Value->Name << "(\"" << entry.Key << "\") : ";
-                entry.Value->Type->Serialize(writer);
-                writer << " at ";
-                if (entry.Value->BufferOffset == -1)
-                {
-                    writer << "binding(";
-                    for (auto binding : entry.Value->BindingPoints)
-                        writer << binding << " ";
-                    writer << ")";
-                }
-                else
-                {
-                    writer << "buffer(" << entry.Value->BufferOffset << ", "
-                        << (int)GetTypeSize(entry.Value->Type.Ptr(), LayoutRule::Std140) << ")";
-                }
-                writer << ";\n";
-            }
-            writer << "}\n";
-        }
-        writer << "source" << EndLine << "{" << EndLine;
-        for (auto & src : Sources)
-        {
-            writer << src.Key << EndLine;
-            if (src.Value.BinaryCode.Count())
-            {
-                writer << "binary" << EndLine << "{" << EndLine;
-                auto binaryBuffer = (unsigned int*)src.Value.BinaryCode.Buffer();
-                for (int i = 0; i < src.Value.BinaryCode.Count() / 4; i++)
-                {
-                    writer << String((long long)binaryBuffer[i]) << ",";
-                    if ((i + 1) % 10)
-                        writer << EndLine;
-                }
-                writer << EndLine << "}" << EndLine;
-            }
-            writer << "text" << EndLine << "{" << EndLine;
-            writer << src.Value.MainCode << EndLine;
-
-            writer << "}" << EndLine;
-        }
-        writer << "}" << EndLine;
-        StringBuilder formatSB;
-        IndentString(formatSB, writer.ProduceString());
-        return formatSB.ProduceString();
-    }
-#endif
-
-#if 0
-    void ShaderLibFile::Clear()
-    {
-        Sources.Clear();
-        MetaData.ParameterSets.Clear();
-        Sources.Clear();
-    }
-#endif
-
-#if 0
-    void ShaderLibFile::SaveToFile(CoreLib::Basic::String fileName)
-    {
-        StreamWriter fwriter(fileName);
-        fwriter.Write(ToString());
-    }
-#endif
-
-#if 0
-    void ShaderLibFile::FromString(const String & src)
-    {
-        Clear();
-        CoreLib::Text::TokenReader parser(src);
-        while (!parser.IsEnd())
-        {
-            auto fieldName = parser.ReadWord();
-            if (fieldName == "name")
-            {
-                MetaData.ShaderName = parser.ReadWord();
-            }
-            else if (fieldName == "source")
-            {
-                parser.Read("{");
-                ReadSource(Sources, parser, src);
-                parser.Read("}");
-            }
-            else if (fieldName == "paramset")
-            {
-                RefPtr<ILModuleParameterSet> paramSet = new ILModuleParameterSet();
-                paramSet->BindingName = parser.ReadStringLiteral();
-                if (parser.LookAhead("size"))
-                {
-                    parser.ReadToken();
-                    paramSet->BufferSize = parser.ReadInt();
-                }
-                if (parser.LookAhead("binding"))
-                {
-                    parser.ReadToken();
-                    paramSet->DescriptorSetId = parser.ReadInt();
-                }
-                parser.Read("{");
-                while (!parser.LookAhead("}"))
-                {
-                    RefPtr<ILModuleParameterInstance> inst = new ILModuleParameterInstance();
-                    inst->Name = parser.ReadWord();
-                    parser.Read("(");
-                    auto key = parser.ReadStringLiteral();
-                    parser.Read(")");
-                    inst->Type = ILType::Deserialize(parser);
-                    parser.Read("at");
-                    if (parser.LookAhead("binding"))
-                    {
-                        parser.ReadToken();
-                        parser.Read("(");
-                        while (!parser.LookAhead(")"))
-                            inst->BindingPoints.Add(parser.ReadInt());
-                        parser.Read(")");
-                    }
-                    else
-                    {
-                        parser.Read("buffer");
-                        parser.Read("(");
-                        inst->BufferOffset = parser.ReadInt();
-                        parser.Read(")");
-                    }
-                    paramSet->Parameters.Add(key, inst);
-                }
-                parser.Read("}");
-                MetaData.ParameterSets.Add(paramSet->BindingName, paramSet);
-            }
-        }
-    }
-
-    void ShaderLibFile::Load(String fileName)
-    {
-        String src = File::ReadAllText(fileName);
-        FromString(src);
-    }
-
-
-    class Shader
-    {
-        friend class CompilationContext;
-    private:
-        String shaderName;
-        String src;
-    public:
-        int Id;
-        Shader(String name, String source)
-        {
-            static int idAllocator = 0;
-            Id = idAllocator++;
-            shaderName = name;
-            src = source;
-        }
-        String GetName() const
-        {
-            return shaderName;
-        }
-        String GetSource() const
-        {
-            return src;
-        }
-    };
-#endif
-
     static void stdlibDiagnosticCallback(
         char const* message,
         void*       userData)
@@ -432,14 +39,7 @@ namespace SpireLib
     public:
         bool useCache = false;
         CoreLib::String cacheDir;
-        struct State
-        {
-            List<CompileUnit> moduleUnits;
-            HashSet<String> processedModuleUnits;
-            int errorCount = 0;
-        };
-        Array<State, 128> states;
-        List<RefPtr<Spire::Compiler::CompilationContext>> compileContext;
+
         RefPtr<ShaderCompiler> compiler;
 
         RefPtr<Scope>   spireLanguageScope;
@@ -452,8 +52,6 @@ namespace SpireLib
         Session(bool /*pUseCache*/, CoreLib::String /*pCacheDir*/)
         {
             compiler = CreateShaderCompiler();
-            compileContext.Add(new Spire::Compiler::CompilationContext());
-            states.Add(State());
 
             // Create scopes for various language builtins.
             //
@@ -666,7 +264,6 @@ namespace SpireLib
                     String source = sourceFile->content;
 
                     mSession->compiler->PassThrough(
-                        result,
                         source,
                         sourceFilePath,
                         Options,
@@ -690,9 +287,6 @@ namespace SpireLib
             if( result.GetErrorCount() != 0 )
                 return 1;
 
-            // TODO(tfoley): Probably get rid of this type for now...
-            CompilationContext compileContext;
-
             // Now perform semantic checks, emit output, etc.
             mSession->compiler->Compile(
                 result, mCollectionOfTranslationUnits.Ptr(), Options);
@@ -703,19 +297,6 @@ namespace SpireLib
 
             return 0;
         }
-
-
-#if 0
-        // Act as exepcted of the command-line compiler
-        int executeCompilerDriverActions()
-        {
-            Spire::Compiler::CompileResult result;
-
-            int err = executeCompilerDriverActions(result);
-            result.PrintDiagnostics();
-            return err;
-        }
-#endif
 
         // Act as expected of the API-based compiler
         int executeAPIActions()
@@ -867,19 +448,6 @@ namespace SpireLib
         // (Note that the `Scope` type does not retain the AST it points to)
         loadedModuleCode.Add(syntax);
     }
-
-
-#if 0
-    int executeCompilerDriverActions(Spire::Compiler::CompileOptions const& options)
-    {
-        Session session(false, "");
-        CompileRequest request(&session);
-        request.Options = options;
-
-        return request.executeCompilerDriverActions();
-    }
-#endif
-
 }
 
 using namespace SpireLib;

@@ -4,7 +4,6 @@
 #include "../CoreLib/Basic.h"
 #include "Lexer.h"
 #include "Profile.h"
-#include "IL.h"
 
 #include "../../Spire.h"
 
@@ -17,44 +16,6 @@ namespace Spire
         using namespace CoreLib::Basic;
         class SyntaxVisitor;
         class FunctionSyntaxNode;
-
-#if 0
-        // We use a unified representation for modifiers on all declarations.
-        // (Eventually this will also apply to statements that support attributes)
-        //
-        // The parser allows any set of modifiers on any declaration, and we leave
-        // it to later phases of analysis to reject inappropriate uses.
-        // TODO: implement rejection properly.
-        //
-        // Some common modifiers (thos represented by single keywords) are
-        // specified via a simple set of flags.
-        // TODO: consider using a real AST even for these, so we can give good
-        // error messages on confliction modifiers.
-        typedef unsigned int ModifierFlags;
-        enum ModifierFlag : ModifierFlags
-        {
-            None = 0,
-            Uniform = 1 << 0,
-            Out = 1 << 1,
-            In = 1 << 2,
-            Const = 1 << 4,
-            Instance = 1 << 5,
-            Builtin = 1 << 6,
-
-            Inline = 1 << 8,
-            Public = 1 << 9,
-            Require = 1 << 10,
-            Param = (1 << 11) | ModifierFlag::Public,
-            Extern = 1 << 12,
-            Input = 1 << 13,
-            Intrinsic = (1 << 14) | ModifierFlag::Extern,
-            // TODO(tfoley): This should probably be its own flag
-            InOut = ModifierFlag::In | ModifierFlag::Out,
-
-            Transparent = 1 << 15,
-            FromStdlib = 1 << 16,
-        };
-#endif
 
         class SyntaxNodeBase : public RefObject
         {
@@ -466,14 +427,6 @@ namespace Spire
         class ExpressionType : public Val
         {
         public:
-#if 0
-            static RefPtr<ExpressionType> Bool;
-            static RefPtr<ExpressionType> UInt;
-            static RefPtr<ExpressionType> Int;
-            static RefPtr<ExpressionType> Float;
-            static RefPtr<ExpressionType> Float2;
-            static RefPtr<ExpressionType> Void;
-#endif
             static RefPtr<ExpressionType> Error;
             static RefPtr<ExpressionType> Overloaded;
 
@@ -1081,16 +1034,10 @@ namespace Spire
         class MatrixExpressionType : public ArithmeticExpressionType
         {
         public:
+            // TODO: consider adding these back for convenience,
+            // with a way to initialize them on-demand from the
+            // real storage (which is in the `DeclRefType`
 #if 0
-            MatrixExpressionType(
-                RefPtr<ExpressionType>	elementType,
-                RefPtr<IntVal>			rowCount,
-                RefPtr<IntVal>			colCount)
-                : elementType(elementType)
-                , rowCount(rowCount)
-                , colCount(colCount)
-            {}
-
             // The type of vector elements.
             // As an invariant, this should be a basic type or an alias.
             RefPtr<ExpressionType>			elementType;

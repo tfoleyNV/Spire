@@ -2,7 +2,6 @@
 #define SPIRE_TYPE_LAYOUT_H
 
 #include "../CoreLib/Basic.h"
-#include "IL.h"
 #include "Profile.h"
 #include "Syntax.h"
 
@@ -103,14 +102,6 @@ struct SimpleLayoutInfo
         , size(uniformInfo.size)
         , alignment(uniformInfo.alignment)
     {}
-
-#if 0
-    ObjectLayoutInfo(size_t size, size_t alignment=1)
-        : kind(LayoutResourceKind::Uniform)
-        , size(size)
-        , alignment(alignment)
-    {}
-#endif
 
     SimpleLayoutInfo(LayoutResourceKind kind, size_t size, size_t alignment=1)
         : kind(kind)
@@ -522,29 +513,6 @@ SimpleLayoutInfo GetLayout(ExpressionType* type, LayoutRulesImpl* rules);
 SimpleLayoutInfo GetLayout(ExpressionType* type, LayoutRule rule = LayoutRule::Std430);
 
 RefPtr<TypeLayout> CreateTypeLayout(ExpressionType* type, LayoutRulesImpl* rules);
-
-
-#if 0
-inline size_t GetTypeSize(ExpressionType* type, LayoutRule rule = LayoutRule::Std430)
-{
-    return GetLayout(type, rule).size;
-}
-
-inline size_t GetTypeSize(ILType* type, LayoutRule rule = LayoutRule::Std430)
-{
-    return GetLayout(type, rule).size;
-}
-
-inline size_t GetTypeAlignment(ExpressionType* type, LayoutRule rule = LayoutRule::Std430)
-{
-    return GetLayout(type, rule).alignment;
-}
-
-inline size_t GetTypeAlignment(ILType* type, LayoutRule rule = LayoutRule::Std430)
-{
-    return GetLayout(type, rule).alignment;
-}
-#endif
 
 //
 

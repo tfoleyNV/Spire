@@ -333,7 +333,6 @@
   <ItemGroup>
     <ClInclude Include="..\..\Spire.h" />
     <ClInclude Include="..\..\SpireAllSource.h" />
-    <ClInclude Include="SpireLib.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="SpireLib.cpp" />

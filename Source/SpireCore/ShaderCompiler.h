@@ -3,7 +3,6 @@
 
 #include "../CoreLib/Basic.h"
 
-#include "CodeGenBackend.h"
 #include "CompiledProgram.h"
 #include "Diagnostics.h"
 #include "Profile.h"
@@ -134,35 +133,15 @@ namespace Spire
             RefPtr<ProgramLayout> layout;
         };
 
-        class CompilationContext
-        {
-        public:
-#if 0
-            RefPtr<ILProgram> Program;
-#endif
-        };
-
         class ShaderCompiler : public CoreLib::Basic::Object
         {
         public:
-#if 0
-            virtual CompileUnit Parse(
-                CompileOptions& options,
-                CompileResult & result,
-                String source,
-                String fileName,
-                IncludeHandler* includeHandler,
-                Dictionary<String,String> const& preprocessorDefinitions,
-                CompileUnit predefUnit) = 0;
-#endif
-
             virtual void Compile(
                 CompileResult&                  result,
                 CollectionOfTranslationUnits*   collectionOfTranslationUnits,
                 const CompileOptions&           options) = 0;
 
             virtual TranslationUnitResult PassThrough(
-                CompileResult &			result, 
                 String const&			sourceText,
                 String const&			sourcePath,
                 const CompileOptions &	options,

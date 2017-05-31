@@ -3,7 +3,6 @@
 
 #include "../CoreLib/Basic.h"
 #include "Diagnostics.h"
-#include "IL.h"
 #include "Syntax.h"
 #include "TypeLayout.h"
 

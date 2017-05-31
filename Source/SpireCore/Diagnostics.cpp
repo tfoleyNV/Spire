@@ -1,7 +1,6 @@
 // Diagnostics.cpp
 #include "Diagnostics.h"
 
-#include "CompiledProgram.h"
 #include "Syntax.h"
 
 #include <assert.h>

@@ -1,9 +1,17 @@
-﻿#include "CoreLib/LibIO.h"
-#include "SpireLib.h"
+﻿// ShaderCompilerShell.cpp
+
+#include "../Spire.h"
+
+#include "CoreLib/LibIO.h"
+
+#include <assert.h>
+
+// Currently only used for looking up `Profile::` values that aren't
+// exported by the public API
+#include "../SpireCore/Profile.h"
 
 using namespace CoreLib::Basic;
 using namespace CoreLib::IO;
-using namespace Spire::Compiler;
 
 // Try to read an argument for a command-line option.
 wchar_t const* tryReadCommandLineArgumentRaw(wchar_t const* option, wchar_t***ioCursor, wchar_t**end)
@@ -25,15 +33,6 @@ String tryReadCommandLineArgument(wchar_t const* option, wchar_t***ioCursor, wch
     return String::FromWString(tryReadCommandLineArgumentRaw(option, ioCursor, end));
 }
 
-Profile TranslateProfileName(char const* name)
-{
-#define PROFILE(TAG, NAME, STAGE, VERSION)	if(strcmp(name, #NAME) == 0) return Profile::TAG;
-#define PROFILE_ALIAS(TAG, NAME)			if(strcmp(name, #NAME) == 0) return Profile::TAG;
-#include "SpireCore/ProfileDefs.h"
-
-    return Profile::Unknown;
-}
-
 struct OptionsParser
 {
     SpireSession*           session = nullptr;
@@ -42,7 +41,7 @@ struct OptionsParser
     struct RawTranslationUnit
     {
         SpireSourceLanguage sourceLanguage;
-        Profile             implicitProfile;
+        SpireProfileID      implicitProfile;
         int                 translationUnitIndex;
     };
 
@@ -76,7 +75,7 @@ struct OptionsParser
 
     int addTranslationUnit(
         SpireSourceLanguage language,
-        Profile             implicitProfile = SPIRE_PROFILE_UNKNOWN)
+        SpireProfileID      implicitProfile = SPIRE_PROFILE_UNKNOWN)
     {
         auto translationUnitIndex = spAddTranslationUnit(compileRequest, language, nullptr);
 
@@ -115,7 +114,7 @@ struct OptionsParser
     void addInputForeignShaderPath(
         String const&           path,
         SpireSourceLanguage     language,
-        Profile                 implicitProfile = SPIRE_PROFILE_UNKNOWN)
+        SpireProfileID          implicitProfile = SPIRE_PROFILE_UNKNOWN)
     {
         translationUnitCount++;
         currentTranslationUnitIndex = addTranslationUnit(language, implicitProfile);
@@ -150,7 +149,7 @@ struct OptionsParser
 #undef CASE
 
 #define CASE(EXT, LANG, PROFILE) \
-        else if(path.EndsWith(EXT)) do { addInputForeignShaderPath(path, SPIRE_SOURCE_LANGUAGE_##LANG, SpireProfileID(Profile::PROFILE)); } while(0)
+        else if(path.EndsWith(EXT)) do { addInputForeignShaderPath(path, SPIRE_SOURCE_LANGUAGE_##LANG, SpireProfileID(Spire::Compiler::Profile::PROFILE)); } while(0)
         // TODO: need a way to pass along stage/profile and entry-point info for these cases...
         CASE(".vert", GLSL, GLSL_Vertex);
         CASE(".frag", GLSL, GLSL_Fragment);
@@ -429,7 +428,7 @@ struct OptionsParser
                 char const* entryPointName = "main";
 
                 // Try to determine a profile
-                Profile entryPointProfile = SPIRE_PROFILE_UNKNOWN;
+                SpireProfileID entryPointProfile = SPIRE_PROFILE_UNKNOWN;
 
                 // If a profile was specified on the command line, then we use it
                 if(currentProfileID != SPIRE_PROFILE_UNKNOWN)
@@ -438,7 +437,7 @@ struct OptionsParser
                 }
                 // Otherwise, check if the translation unit implied a profile
                 // (e.g., a `*.vert` file implies the `GLSL_Vertex` profile)
-                else if(rawTranslationUnit.implicitProfile != Profile::Unknown)
+                else if(rawTranslationUnit.implicitProfile != SPIRE_PROFILE_UNKNOWN)
                 {
                     entryPointProfile = rawTranslationUnit.implicitProfile;
                 }
@@ -446,7 +445,7 @@ struct OptionsParser
                 RawEntryPoint entry;
                 entry.name = entryPointName;
                 entry.translationUnitIndex = rawTranslationUnit.translationUnitIndex;
-                entry.profileID = entryPointProfile.raw;
+                entry.profileID = entryPointProfile;
                 rawEntryPoints.Add(entry);
             }
         }
