@@ -1739,16 +1739,6 @@ static void EmitVarDecl(EmitContext* context, RefPtr<VarDeclBase> decl, RefPtr<V
 
 static void EmitParamDecl(EmitContext* context, RefPtr<ParameterSyntaxNode> decl)
 {
-    if (decl->HasModifier<InOutModifier>())
-    {
-        Emit(context, "inout ");
-    }
-    else if (decl->HasModifier<OutModifier>())
-    {
-        Emit(context, "out ");
-    }
-
-
     EmitVarDeclCommon(context, decl);
 }
 
@@ -1788,6 +1778,16 @@ static void emitGLSLPreprocessorDirective(
     EmitContext*                        context,
     RefPtr<GLSLPreprocessorDirective>   directive)
 {
+    switch(context->target)
+    {
+    // Don't emit this stuff unless we are targetting GLSL
+    default:
+        return;
+
+    case CodeGenTarget::GLSL:
+        break;
+    }
+
     if( auto versionDirective = directive.As<GLSLVersionDirective>() )
     {
         // TODO(tfoley): Emit an appropriate `#line` directive...
@@ -1815,6 +1815,10 @@ static void emitGLSLPreprocessorDirective(
     else
     {
     }
+
+    // TODO(tfoley): We really need to emit a `#version` directive unconditionally,
+    // and we might need to emit `#extension` during cross-compilation, if we
+    // are making use of extended functionality...
 }
 
 static void EmitProgram(

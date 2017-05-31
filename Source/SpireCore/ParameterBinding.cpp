@@ -561,7 +561,7 @@ void generateParameterBindings(
                 {
                     context->usedResourceRanges[(int)semanticInfo.kind].Add(
                         semanticInfo.index,
-                        semanticInfo.index + count);
+                        int(semanticInfo.index + count));
                 }
             }
         }
