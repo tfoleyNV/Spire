@@ -1466,6 +1466,7 @@ namespace Spire
         CASE(GLSLBufferModifier);
         CASE(GLSLWriteOnlyModifier);
         CASE(GLSLReadOnlyModifier);
+        CASE(GLSLPatchModifier);
         CASE(SimpleModifier);
 
         #undef CASE

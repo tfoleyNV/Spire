@@ -1446,6 +1446,8 @@ namespace Spire
             sb << "__modifier(GLSLBufferModifier)       buffer;\n";
             sb << "__modifier(GLSLWriteOnlyModifier)    writeonly;\n";
             sb << "__modifier(GLSLReadOnlyModifier)     readonly;\n";
+            sb << "__modifier(GLSLPatchModifier)        patch;\n";
+
             sb << "__modifier(SimpleModifier)           flat;\n";
 
             glslLibraryCode = sb.ProduceString();

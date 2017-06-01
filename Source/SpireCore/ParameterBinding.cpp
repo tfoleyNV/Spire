@@ -292,24 +292,58 @@ getTypeLayoutForGlobalShaderParameter_GLSL(
 
     if( varDecl->HasModifier<InModifier>() )
     {
-        // Special case to handle Geometry Shader inputs, which
-        // are declared as arrays.
-        //
-        // TODO(tfoley): we may need similar logic to handle `patch`
-        // inputs/outputs in the tessellation stages.
-        if( context->stage == Stage::Geometry )
+        // Special case to handle "arrayed" shader inputs, as used
+        // for Geometry and Hull input
+        switch( context->stage )
         {
-            if( auto arrayType = type->As<ArrayExpressionType>() )
+        case Stage::Geometry:
+        case Stage::Hull:
+        case Stage::Domain:
+            // Tessellation `patch` variables should stay as written
+            if( !varDecl->HasModifier<GLSLPatchModifier>() )
             {
-                type = arrayType->BaseType.Ptr();
+                // Unwrap array type, if prsent
+                if( auto arrayType = type->As<ArrayExpressionType>() )
+                {
+                    type = arrayType->BaseType.Ptr();
+                }
             }
+            break;
+
+        default:
+            break;
         }
 
         return CreateTypeLayout(type, rules->getVaryingInputRules());
     }
 
-    if(varDecl->HasModifier<OutModifier>())
+    if( varDecl->HasModifier<OutModifier>() )
+    {
+        // Special case to handle "arrayed" shader outputs, as used
+        // for Hull Shader output
+        //
+        // Note(tfoley): there is unfortunate code duplication
+        // with the `in` case above.
+        switch( context->stage )
+        {
+        case Stage::Hull:
+            // Tessellation `patch` variables should stay as written
+            if( !varDecl->HasModifier<GLSLPatchModifier>() )
+            {
+                // Unwrap array type, if prsent
+                if( auto arrayType = type->As<ArrayExpressionType>() )
+                {
+                    type = arrayType->BaseType.Ptr();
+                }
+            }
+            break;
+
+        default:
+            break;
+        }
+
         return CreateTypeLayout(type, rules->getVaryingOutputRules());
+    }
 
     // A `const` global with a `layout(constant_id = ...)` modifier
     // is a declaration of a specialization constant.
@@ -549,7 +583,7 @@ static void addExplicitParameterBindings_GLSL(
         if(!findLayoutArg<GLSLLocationLayoutModifier>(varDecl, &semanticInfo.index))
             return;
     }
-    else if( resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::VertexInput) )
+    else if( resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::FragmentOutput) )
     {
         // Try to find `location` binding
         if(!findLayoutArg<GLSLLocationLayoutModifier>(varDecl, &semanticInfo.index))

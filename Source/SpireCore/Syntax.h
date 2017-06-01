@@ -119,6 +119,7 @@ namespace Spire
         class GLSLBufferModifier    : public SimpleModifier {};
         class GLSLWriteOnlyModifier : public SimpleModifier {};
         class GLSLReadOnlyModifier  : public SimpleModifier {};
+        class GLSLPatchModifier     : public SimpleModifier {};
 
         // Indicates that this is a variable declaration that corresponds to
         // a parameter block declaration in the source program.
