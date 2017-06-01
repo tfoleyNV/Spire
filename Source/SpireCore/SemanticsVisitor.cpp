@@ -1441,7 +1441,12 @@ namespace Spire
                 auto elementCount = arrayType->ArrayLength;
                 if (!elementCount)
                 {
+                    // Note(tfoley): For now we allow arrays of unspecified size
+                    // everywhere, because some source languages (e.g., GLSL)
+                    // allow them in specific cases.
+#if 0
                     getSink()->diagnose(varDecl, Diagnostics::invalidArraySize);
+#endif
                     return;
                 }
 
