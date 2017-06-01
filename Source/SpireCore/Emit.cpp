@@ -637,6 +637,15 @@ static void emitGLSLTextureOrTextureSamplerType(
         assert(!"unreachable");
         break;
     }
+
+    if (type->isMultisample())
+    {
+        Emit(context, "MS");
+    }
+    if (type->isArray())
+    {
+        Emit(context, "Array");
+    }
 }
 
 static void emitGLSLTextureType(
