@@ -1440,10 +1440,13 @@ namespace Spire
             sb << "__generic<T> __magic_type(GLSLOutputParameterBlockType) struct __GLSLOutputParameterBlock {};\n";
             sb << "__generic<T> __magic_type(GLSLShaderStorageBufferType) struct __GLSLShaderStorageBuffer {};\n";
 
+            sb << "__magic_type(SamplerState," << int(SamplerStateType::Flavor::SamplerState) << ") struct sampler {};";
+
             // Define additional keywords
             sb << "__modifier(GLSLBufferModifier)       buffer;\n";
             sb << "__modifier(GLSLWriteOnlyModifier)    writeonly;\n";
             sb << "__modifier(GLSLReadOnlyModifier)     readonly;\n";
+            sb << "__modifier(SimpleModifier)           flat;\n";
 
             glslLibraryCode = sb.ProduceString();
             return glslLibraryCode;

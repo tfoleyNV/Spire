@@ -794,14 +794,25 @@ static void EmitType(EmitContext* context, RefPtr<ExpressionType> type, EDeclara
     }
     else if (auto samplerStateType = type->As<SamplerStateType>())
     {
-        switch (samplerStateType->flavor)
+        switch(context->target)
         {
-        case SamplerStateType::Flavor::SamplerState:			Emit(context, "SamplerState");				break;
-        case SamplerStateType::Flavor::SamplerComparisonState:	Emit(context, "SamplerComparisonState");	break;
+        case CodeGenTarget::HLSL:
         default:
-            assert(!"unreachable");
+            switch (samplerStateType->flavor)
+            {
+            case SamplerStateType::Flavor::SamplerState:			Emit(context, "SamplerState");				break;
+            case SamplerStateType::Flavor::SamplerComparisonState:	Emit(context, "SamplerComparisonState");	break;
+            default:
+                assert(!"unreachable");
+                break;
+            }
+            break;
+
+        case CodeGenTarget::GLSL:
+            Emit(context, "sampler");
             break;
         }
+
 
         EmitDeclarator(context, declarator);
         return;
