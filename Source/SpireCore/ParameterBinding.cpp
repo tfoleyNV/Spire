@@ -126,6 +126,8 @@ struct ParameterInfo : RefObject
     }
 };
 
+// State that is shared during parameter binding,
+// across all translation units
 struct SharedParameterBindingContext
 {
     LayoutRulesFamilyImpl* defaultLayoutRules;
@@ -141,18 +143,24 @@ struct SharedParameterBindingContext
 
     // The source language we are trying to use
     SourceLanguage sourceLanguage;
+
+    // Information on what ranges of "registers" have already
+    // been claimed, for each resource type
+    UsedRanges usedResourceRanges[kLayoutResourceKindCount];
 };
 
+// State that might be specific to a single translation unit
+// or event to an entry point.
 struct ParameterBindingContext
 {
+    // All the shared state needs to be available
     SharedParameterBindingContext* shared;
-
-    // TODO: information for implicit constant buffer!
 
     // The layout rules to use while computing usage...
     LayoutRulesFamilyImpl* layoutRules;
 
-    UsedRanges usedResourceRanges[kLayoutResourceKindCount];
+    // What stage (if any) are we compiling for?
+    Stage stage;
 };
 
 struct LayoutSemanticInfo
@@ -263,11 +271,13 @@ static bool findLayoutArg(
 
 //
 
-LayoutRulesImpl*
-getLayoutRulesForGlobalShaderParameter_GLSL(
-    LayoutRulesFamilyImpl*  rules,
-    VarDeclBase*            varDecl)
+RefPtr<TypeLayout>
+getTypeLayoutForGlobalShaderParameter_GLSL(
+    ParameterBindingContext*    context,
+    VarDeclBase*                varDecl)
 {
+    auto rules = context->layoutRules;
+    auto type = varDecl->getType();
     // A GLSL shader parameter will be marked with
     // a qualifier to match the boundary it uses
 
@@ -275,21 +285,36 @@ getLayoutRulesForGlobalShaderParameter_GLSL(
     // the `uniform` modifier right now, and that
     // needs to get fixed...
     if(varDecl->HasModifier<HLSLUniformModifier>())
-        return rules->getConstantBufferRules();
+        return CreateTypeLayout(type, rules->getConstantBufferRules());
 
     if(varDecl->HasModifier<GLSLBufferModifier>())
-        return rules->getShaderStorageBufferRules();
+        return CreateTypeLayout(type, rules->getShaderStorageBufferRules());
 
-    if(varDecl->HasModifier<InModifier>())
-        return rules->getVaryingInputRules();
+    if( varDecl->HasModifier<InModifier>() )
+    {
+        // Special case to handle Geometry Shader inputs, which
+        // are declared as arrays.
+        //
+        // TODO(tfoley): we may need similar logic to handle `patch`
+        // inputs/outputs in the tessellation stages.
+        if( context->stage == Stage::Geometry )
+        {
+            if( auto arrayType = type->As<ArrayExpressionType>() )
+            {
+                type = arrayType->BaseType.Ptr();
+            }
+        }
+
+        return CreateTypeLayout(type, rules->getVaryingInputRules());
+    }
 
     if(varDecl->HasModifier<OutModifier>())
-        return rules->getVaryingOutputRules();
+        return CreateTypeLayout(type, rules->getVaryingOutputRules());
 
     // A `const` global with a `layout(constant_id = ...)` modifier
     // is a declaration of a specialization constant.
     if(varDecl->HasModifier<GLSLConstantIDLayoutModifier>())
-        return rules->getSpecializationConstantRules();
+        return CreateTypeLayout(type, rules->getSpecializationConstantRules());
 
     // GLSL says that an "ordinary" global  variable
     // is just a (thread local) global and not a
@@ -297,11 +322,14 @@ getLayoutRulesForGlobalShaderParameter_GLSL(
     return nullptr;
 }
 
-LayoutRulesImpl*
-getLayoutRulesForGlobalShaderParameter_HLSL(
-    LayoutRulesFamilyImpl*  rules,
-    VarDeclBase*            varDecl)
+RefPtr<TypeLayout>
+getTypeLayoutForGlobalShaderParameter_HLSL(
+    ParameterBindingContext*    context,
+    VarDeclBase*                varDecl)
 {
+    auto rules = context->layoutRules;
+    auto type = varDecl->getType();
+
     // HLSL `static` modifier indicates "thread local"
     if(varDecl->HasModifier<HLSLStaticModifier>())
         return nullptr;
@@ -314,16 +342,16 @@ getLayoutRulesForGlobalShaderParameter_HLSL(
 
     // An "ordinary" global variable is implicitly a uniform
     // shader parameter.
-    return rules->getConstantBufferRules();
+    return CreateTypeLayout(type, rules->getConstantBufferRules());
 }
 
-// Determine the layout rules to use for a global variable
-// that might be a shader parameter.
-//
+// Determine how to lay out a global variable that might be
+// a shader parameter.
 // Returns `nullptr` if the declaration does not represent
 // a shader parameter.
-LayoutRulesImpl*
-getLayoutRulesForGlobalShaderParameter(
+
+RefPtr<TypeLayout>
+getTypeLayoutForGlobalShaderParameter(
     ParameterBindingContext*    context,
     VarDeclBase*                varDecl)
 {
@@ -332,10 +360,10 @@ getLayoutRulesForGlobalShaderParameter(
     {
     case SourceLanguage::Spire:
     case SourceLanguage::HLSL:
-        return getLayoutRulesForGlobalShaderParameter_HLSL(rules, varDecl);
+        return getTypeLayoutForGlobalShaderParameter_HLSL(context, varDecl);
 
     case SourceLanguage::GLSL:
-        return getLayoutRulesForGlobalShaderParameter_GLSL(rules, varDecl);
+        return getTypeLayoutForGlobalShaderParameter_GLSL(context, varDecl);
 
     default:
         assert(false);
@@ -353,20 +381,18 @@ static void collectGlobalScopeParameter(
     ParameterBindingContext*    context,
     RefPtr<VarDeclBase>         varDecl)
 {
-    auto parameterRules = getLayoutRulesForGlobalShaderParameter(
+    // We use a single operation to both check whether the
+    // variable represents a shader parameter, and to compute
+    // the layout for that parameter's type.
+    auto typeLayout = getTypeLayoutForGlobalShaderParameter(
         context,
         varDecl.Ptr());
 
     // If we did not find appropriate layout rules, then it
     // must mean that this global variable is *not* a shader
     // parameter.
-    if(!parameterRules)
+    if(!typeLayout)
         return;
-
-    // Find out the layout for the type...
-    RefPtr<TypeLayout> typeLayout = CreateTypeLayout(
-        varDecl->Type.Ptr(),
-        parameterRules);
 
     // Now create a variable layout that we can use
     RefPtr<VarLayout> varLayout = new VarLayout();
@@ -443,7 +469,7 @@ static void addExplicitParameterBinding(
         // assignment doesn't go and use the same registers.
         if (semanticInfo.space == 0)
         {
-            context->usedResourceRanges[(int)semanticInfo.kind].Add(
+            context->shared->usedResourceRanges[(int)semanticInfo.kind].Add(
                 semanticInfo.index,
                 semanticInfo.index + count);
         }
@@ -600,7 +626,7 @@ static void completeBindingsForParameter(
 
         auto count = typeRes.count;
         bindingInfo.count = count;
-        bindingInfo.index = context->usedResourceRanges[(int)kind].Allocate((int) count);
+        bindingInfo.index = context->shared->usedResourceRanges[(int)kind].Allocate((int) count);
 
         // For now we only auto-generate bindings in space zero
         bindingInfo.space = 0;
@@ -746,7 +772,7 @@ static void processSimpleEntryPointOutput(
     // once we've gone to the trouble of looking it all up...
     if( semanticName.ToLower() == "sv_target" )
     {
-        context->usedResourceRanges[int(LayoutResourceKind::UnorderedAccess)].Add(semanticIndex, semanticIndex + semanticSlotCount);
+        context->shared->usedResourceRanges[int(LayoutResourceKind::UnorderedAccess)].Add(semanticIndex, semanticIndex + semanticSlotCount);
     }
 }
 
@@ -971,18 +997,48 @@ static void collectEntryPointParameters(
     }
 }
 
+// When doing parameter binding for global-scope stuff in GLSL,
+// we may need to know what stage we are compiling for, so that
+// we can handle special cases appropriately (e.g., "arrayed"
+// inputs and outputs).
+static Stage
+inferStageForTranslationUnit(
+    CompileUnit const&  translationUnit)
+{
+    // In the specific case where we are compiling GLSL input,
+    // and have only a single entry point, use the stage
+    // of the entry point.
+    //
+    // TODO: can we generalize this at all?
+    if( translationUnit.options.sourceLanguage == SourceLanguage::GLSL )
+    {
+        if( translationUnit.options.entryPoints.Count() == 1 )
+        {
+            return translationUnit.options.entryPoints[0].profile.GetStage();
+        }
+    }
+
+    return Stage::Unknown;
+}
+
 static void collectParameters(
-    ParameterBindingContext*        context,
+    ParameterBindingContext*        inContext,
     CollectionOfTranslationUnits*   program)
 {
+    ParameterBindingContext contextData = *inContext;
+    auto context = &contextData;
+
     for( auto& translationUnit : program->translationUnits )
     {
+        context->stage = inferStageForTranslationUnit(translationUnit);
+
         // First look at global-scope parameters
         collectGlobalScopeParameters(context, translationUnit.SyntaxNode.Ptr());
 
         // Next consider parameters for entry points
         for( auto& entryPoint : translationUnit.options.entryPoints )
         {
+            context->stage = entryPoint.profile.GetStage();
             collectEntryPointParameters(context, entryPoint, translationUnit.SyntaxNode.Ptr());
         }
     }
@@ -1061,7 +1117,7 @@ void GenerateParameterBindings(
     if( anyGlobalUniforms )
     {
         globalConstantBufferBinding.index =
-            context.usedResourceRanges[
+            context.shared->usedResourceRanges[
                 (int)LayoutResourceKind::ConstantBuffer].Allocate(1);
 
         // For now we only auto-generate bindings in space zero
