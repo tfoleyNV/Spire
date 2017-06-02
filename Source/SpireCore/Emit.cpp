@@ -445,12 +445,28 @@ static void EmitExprWithPrecedence(EmitContext* context, RefPtr<ExpressionSyntax
     }
     else if (auto castExpr = expr.As<TypeCastExpressionSyntaxNode>())
     {
-        needClose = MaybeEmitParens(context, outerPrec, kPrecedence_Prefix);
+        switch(context->target)
+        {
+        case CodeGenTarget::GLSL:
+            // GLSL requires constructor syntax for all conversions
+            EmitType(context, castExpr->Type);
+            Emit(context, "(");
+            EmitExpr(context, castExpr->Expression);
+            Emit(context, ") ");
+            break;
 
-        Emit(context, "(");
-        EmitType(context, castExpr->Type);
-        Emit(context, ") ");
-        EmitExpr(context, castExpr->Expression);
+        default:
+            // HLSL (and C/C++) prefer cast syntax
+            // (In fact, HLSL doesn't allow constructor syntax for some conversions it allows as a cast)
+            needClose = MaybeEmitParens(context, outerPrec, kPrecedence_Prefix);
+
+            Emit(context, "(");
+            EmitType(context, castExpr->Type);
+            Emit(context, ") ");
+            EmitExpr(context, castExpr->Expression);
+            break;
+        }
+
     }
     else if(auto initExpr = expr.As<InitializerListExpr>())
     {
