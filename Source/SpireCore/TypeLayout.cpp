@@ -311,30 +311,9 @@ struct GLSLObjectLayoutRulesImpl : ObjectLayoutRulesImpl
 {
     virtual SimpleLayoutInfo GetObjectLayout(ShaderParameterKind kind) override
     {
-        switch( kind )
-        {
-        case ShaderParameterKind::ConstantBuffer:
-        case ShaderParameterKind::TextureUniformBuffer:
-        case ShaderParameterKind::ShaderStorageBuffer:
-        case ShaderParameterKind::StructuredBuffer:
-        case ShaderParameterKind::SampledBuffer:
-        case ShaderParameterKind::RawBuffer:
-        case ShaderParameterKind::Buffer:
-        case ShaderParameterKind::Texture:
-        case ShaderParameterKind::MutableStructuredBuffer:
-        case ShaderParameterKind::MutableSampledBuffer:
-        case ShaderParameterKind::MutableRawBuffer:
-        case ShaderParameterKind::MutableBuffer:
-        case ShaderParameterKind::MutableTexture:
-        case ShaderParameterKind::TextureSampler:
-        case ShaderParameterKind::MutableTextureSampler:
-        case ShaderParameterKind::SamplerState:
-            return SimpleLayoutInfo(LayoutResourceKind::DescriptorTableSlot, 1);
-
-        default:
-            assert(!"unimplemented");
-            return SimpleLayoutInfo();
-        }
+        // In Vulkan GLSL, pretty much every object is just a descriptor-table slot.
+        // We can refine this method once we support a case where this isn't true.
+        return SimpleLayoutInfo(LayoutResourceKind::DescriptorTableSlot, 1);
     }
 };
 GLSLObjectLayoutRulesImpl kGLSLObjectLayoutRulesImpl;
@@ -368,6 +347,7 @@ struct HLSLObjectLayoutRulesImpl : ObjectLayoutRulesImpl
 
         case ShaderParameterKind::TextureSampler:
         case ShaderParameterKind::MutableTextureSampler:
+        case ShaderParameterKind::InputRenderTarget:
             // TODO: how to handle these?
         default:
             assert(!"unimplemented");
@@ -935,6 +915,8 @@ SimpleLayoutInfo GetLayoutImpl(
     CASE(HLSLRWBufferType,                  MutableSampledBuffer);
     CASE(HLSLByteAddressBufferType,         RawBuffer);
     CASE(HLSLRWByteAddressBufferType,       MutableRawBuffer);
+
+    CASE(GLSLInputAttachmentType,           InputRenderTarget);
 
     // This case is mostly to allow users to add new resource types...
     CASE(UntypedBufferResourceType,         RawBuffer);

@@ -566,6 +566,8 @@ namespace Spire
                 CASE(HLSLRWByteAddressBufferType, HLSLRWByteAddressBufferType)
                 CASE(UntypedBufferResourceType, UntypedBufferResourceType)
 
+                CASE(GLSLInputAttachmentType, GLSLInputAttachmentType)
+
                 #undef CASE
 
                 else

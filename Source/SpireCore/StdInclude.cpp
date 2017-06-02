@@ -1442,6 +1442,8 @@ namespace Spire
 
             sb << "__magic_type(SamplerState," << int(SamplerStateType::Flavor::SamplerState) << ") struct sampler {};";
 
+            sb << "__magic_type(GLSLInputAttachmentType) struct subpassInput {};";
+
             // Define additional keywords
             sb << "__modifier(GLSLBufferModifier)       buffer;\n";
             sb << "__modifier(GLSLWriteOnlyModifier)    writeonly;\n";

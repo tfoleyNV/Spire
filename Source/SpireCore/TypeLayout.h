@@ -402,6 +402,8 @@ enum class ShaderParameterKind
     TextureSampler,
     MutableTextureSampler,
 
+    InputRenderTarget,
+
     SamplerState,
 };
 

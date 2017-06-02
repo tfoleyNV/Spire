@@ -947,6 +947,9 @@ namespace Spire
         class HLSLLineStreamType : public HLSLStreamOutputType {};
         class HLSLTriangleStreamType : public HLSLStreamOutputType {};
 
+        //
+        class GLSLInputAttachmentType : public DeclRefType {};
+
         // Base class for types used when desugaring parameter block
         // declarations, includeing HLSL `cbuffer` or GLSL `uniform` blocks.
         class ParameterBlockType : public PointerLikeType {};
