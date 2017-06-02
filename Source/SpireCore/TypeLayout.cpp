@@ -547,6 +547,11 @@ static int GetElementCount(RefPtr<IntVal> val)
     {
         return constantVal->value;
     }
+    else if( auto varRefVal = val.As<GenericParamIntVal>() )
+    {
+        // TODO(tfoley): do something sensible in this case
+        return 0;
+    }
     assert(!"unexpected");
     return 0;
 }

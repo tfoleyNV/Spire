@@ -963,6 +963,40 @@ namespace Spire
                 sb << "}\n";
             }
 
+            for( int R = 2; R <= 4; ++R )
+            for( int C = 2; C <= 4; ++C )
+            {
+                sb << "__generic<T> __extension matrix<T, " << R << "," << C << ">\n{\n";
+
+                // initialize from R*C scalars
+                sb << "__init(";
+                for( int ii = 0; ii < R; ++ii )
+                for( int jj = 0; jj < C; ++jj )
+                {
+                    if ((ii+jj) != 0) sb << ", ";
+                    sb << "T m" << ii << jj;
+                }
+                sb << ");\n";
+
+                // Initialize from R C-vectors
+                sb << "__init(";
+                for (int ii = 0; ii < R; ++ii)
+                {
+                    if(ii != 0) sb << ", ";
+                    sb << "vector<T," << C << "> row" << ii;
+                }
+                sb << ");\n";
+
+
+                // initialize from another matrix of the same size
+                //
+                // TODO(tfoley): See comment about how this overlaps
+                // with implicit conversion, in the `vector` case above
+                sb << "__generic<U> __init(matrix<U," << R << ", " << C << ">);\n";
+
+                sb << "}\n";
+            }
+
 
             // Declare built-in texture and sampler types
 
