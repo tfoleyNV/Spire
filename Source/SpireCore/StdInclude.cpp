@@ -894,8 +894,8 @@ namespace Spire
 
             sb << "__generic<T = float, let N : int = 4> __magic_type(Vector) struct vector\n{\n";
             sb << "    __init(T value);\n"; // initialize from single scalar
-            sb << "}\n";
-            sb << "__generic<T = float, let R : int = 4, let C : int = 4> __magic_type(Matrix) struct matrix {}\n";
+            sb << "};\n";
+            sb << "__generic<T = float, let R : int = 4, let C : int = 4> __magic_type(Matrix) struct matrix {};\n";
 
             static const struct {
                 char const* name;

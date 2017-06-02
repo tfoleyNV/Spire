@@ -269,6 +269,8 @@ DIAGNOSTIC(39999, Error, expectedATraitGot, "expected a trait, got '$0'")
 
 DIAGNOSTIC(39999, Error, ambiguousReference, "amiguous reference to '$0'");
 
+DIAGNOSTIC(39999, Error, declarationDidntDeclareAnything, "declaration does not declare anything");
+
 //
 // 4xxxx - IL code generation.
 //

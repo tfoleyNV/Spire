@@ -42,9 +42,6 @@ namespace Spire
             TokenReader tokenReader;
             DiagnosticSink * sink;
             String fileName;
-            HashSet<String> typeNames;
-            HashSet<String> classNames;
-            bool isInImportOperator = false;
             int genericDepth = 0;
 
             // Is the parser in a "recovering" state?
@@ -79,62 +76,7 @@ namespace Spire
                 , sink(sink)
                 , fileName(_fileName)
                 , outerScope(outerScope)
-            {
-                typeNames.Add("int");
-                typeNames.Add("uint");
-                typeNames.Add("bool");
-                typeNames.Add("float");
-                typeNames.Add("half");
-                typeNames.Add("void");
-                typeNames.Add("ivec2");
-                typeNames.Add("ivec3");
-                typeNames.Add("ivec4");
-                typeNames.Add("uvec2");
-                typeNames.Add("uvec3");
-                typeNames.Add("uvec4");
-                typeNames.Add("vec2");
-                typeNames.Add("vec3");
-                typeNames.Add("vec4");
-                typeNames.Add("mat3");
-                typeNames.Add("mat4");
-                typeNames.Add("mat4x4");
-                typeNames.Add("mat3x3");
-                typeNames.Add("int2");
-                typeNames.Add("int3");
-                typeNames.Add("int4");
-                typeNames.Add("uint2");
-                typeNames.Add("uint3");
-                typeNames.Add("uint4");
-                typeNames.Add("float2");
-                typeNames.Add("float3");
-                typeNames.Add("float4");
-                typeNames.Add("half2");
-                typeNames.Add("half3");
-                typeNames.Add("half4");
-                typeNames.Add("float3x3");
-                typeNames.Add("float4x4");
-                typeNames.Add("half3x3");
-                typeNames.Add("half4x4");
-                typeNames.Add("Texture1D");
-                typeNames.Add("Texture2D");
-                typeNames.Add("Texture2DArray");
-                typeNames.Add("Texture2DArrayShadow");
-                typeNames.Add("TextureCube");
-                typeNames.Add("TextureCubeShadow");
-                typeNames.Add("Texture3D");
-                typeNames.Add("texture");
-                typeNames.Add("Texture");
-                typeNames.Add("sampler");
-                typeNames.Add("SamplerState");
-                typeNames.Add("SamplerComparisonState");
-                typeNames.Add("sampler_state");
-                typeNames.Add("Uniform");
-                typeNames.Add("StructuredBuffer");
-                typeNames.Add("RWStructuredBuffer");
-                typeNames.Add("PackedBuffer");
-                typeNames.Add("StorageBuffer");
-                typeNames.Add("Patch");
-            }
+            {}
             RefPtr<ProgramSyntaxNode> Parse();
 
             Token ReadToken();
@@ -142,8 +84,6 @@ namespace Spire
             Token ReadToken(const char * string);
             bool LookAheadToken(CoreLib::Text::TokenType type, int offset = 0);
             bool LookAheadToken(const char * string, int offset = 0);
-            Token ReadTypeKeyword();
-            bool IsTypeKeyword();
             void                                        parseSourceFile(ProgramSyntaxNode* program);
             RefPtr<ProgramSyntaxNode>					ParseProgram();
             RefPtr<StructSyntaxNode>					ParseStruct();
@@ -538,25 +478,6 @@ namespace Spire
             return false;
         }
 
-        Token Parser::ReadTypeKeyword()
-        {
-            if(!IsTypeKeyword())
-            {
-                if (!isRecovering)
-                {
-                    sink->diagnose(tokenReader.PeekLoc(), Diagnostics::typeNameExpectedBut, tokenReader.PeekTokenType());
-                }
-                return tokenReader.PeekToken();
-            }
-            return tokenReader.AdvanceToken();
-        }
-
-        bool Parser::IsTypeKeyword()
-        {
-            return tokenReader.PeekTokenType() == TokenType::Identifier
-                && typeNames.Contains(tokenReader.PeekToken().Content);
-        }
-
         RefPtr<ProgramSyntaxNode> Parser::Parse()
         {
             return ParseProgram();
@@ -575,8 +496,6 @@ namespace Spire
             RefPtr<TypeDefDecl> typeDefDecl = new TypeDefDecl();
             typeDefDecl->Name = nameToken;
             typeDefDecl->Type = type;
-
-            parser->typeNames.Add(nameToken.Content);
 
             return typeDefDecl;
         }
@@ -1258,6 +1177,134 @@ namespace Spire
             ioInfo->initializer = initDeclarator.initializer;
         }
 
+        // Either a single declaration, or a group of them
+        struct DeclGroupBuilder
+        {
+            CodePosition        startPosition;
+            RefPtr<Decl>        decl;
+            RefPtr<DeclGroup>   group;
+
+            // Add a new declaration to the potential group
+            void addDecl(
+                RefPtr<Decl>    newDecl)
+            {
+                assert(newDecl);
+            
+                if( decl )
+                {
+                    group = new DeclGroup();
+                    group->Position = startPosition;
+                    group->decls.Add(decl);
+                    decl = nullptr;
+                }
+
+                if( group )
+                {
+                    group->decls.Add(newDecl);
+                }
+                else
+                {
+                    decl = newDecl;
+                }
+            }
+
+            RefPtr<DeclBase> getResult()
+            {
+                if(group) return group;
+                return decl;
+            }
+        };
+
+        // Pares an argument to an application of a generic
+        RefPtr<ExpressionSyntaxNode> ParseGenericArg(Parser* parser)
+        {
+            return parser->ParseArgExpr();
+        }
+
+        // Create a type expression that will refer to the given declaration
+        static RefPtr<ExpressionSyntaxNode>
+        createDeclRefType(Parser* parser, RefPtr<Decl> decl)
+        {
+            // For now we just construct an expression that
+            // will look up the given declaration by name.
+            //
+            // TODO: do this better, e.g. by filling in the `declRef` field directly
+
+            auto expr = new VarExpressionSyntaxNode();
+            expr->scope = parser->currentScope.Ptr();
+            expr->Position = decl->getNameToken().Position;
+            expr->Variable = decl->getName();
+            return expr;
+        }
+
+        // Representation for a parsed type specifier, which might
+        // include a declaration (e.g., of a `struct` type)
+        struct TypeSpec
+        {
+            // If the type-spec declared something, then put it here
+            RefPtr<Decl>                    decl;
+
+            // Put the resulting expression (which should evaluate to a type) here
+            RefPtr<ExpressionSyntaxNode>    expr;
+        };
+
+        static TypeSpec
+        parseTypeSpec(Parser* parser)
+        {
+            TypeSpec typeSpec;
+
+            // We may see a `struct` type specified here, and need to act accordingly
+            //
+            // TODO(tfoley): Handle the case where the user is just using `struct`
+            // as a way to name an existing struct "tag" (e.g., `struct Foo foo;`)
+            //
+            if( parser->LookAheadToken("struct") )
+            {
+                auto decl = parser->ParseStruct();
+                typeSpec.decl = decl;
+                typeSpec.expr = createDeclRefType(parser, decl);
+                return typeSpec;
+            }
+            else if( parser->LookAheadToken("class") )
+            {
+                auto decl = parser->ParseClass();
+                typeSpec.decl = decl;
+                typeSpec.expr = createDeclRefType(parser, decl);
+                return typeSpec;
+            }
+
+            Token typeName = parser->ReadToken(TokenType::Identifier);
+
+            auto basicType = new VarExpressionSyntaxNode();
+            basicType->scope = parser->currentScope.Ptr();
+            basicType->Position = typeName.Position;
+            basicType->Variable = typeName.Content;
+
+            RefPtr<ExpressionSyntaxNode> typeExpr = basicType;
+
+            if (parser->LookAheadToken(TokenType::OpLess))
+            {
+                RefPtr<GenericAppExpr> gtype = new GenericAppExpr();
+                parser->FillPosition(gtype.Ptr()); // set up scope for lookup
+                gtype->Position = typeName.Position;
+                gtype->FunctionExpr = typeExpr;
+                parser->ReadToken(TokenType::OpLess);
+                parser->genericDepth++;
+                // For now assume all generics have at least one argument
+                gtype->Arguments.Add(ParseGenericArg(parser));
+                while (AdvanceIf(parser, TokenType::Comma))
+                {
+                    gtype->Arguments.Add(ParseGenericArg(parser));
+                }
+                parser->genericDepth--;
+                parser->ReadToken(TokenType::OpGreater);
+                typeExpr = gtype;
+            }
+
+            typeSpec.expr = typeExpr;
+            return typeSpec;
+        }
+
 
         static RefPtr<DeclBase> ParseDeclaratorDecl(
             Parser*         parser,
@@ -1265,12 +1312,37 @@ namespace Spire
         {
             CodePosition startPosition = parser->tokenReader.PeekLoc();
 
-            auto typeSpec = parser->ParseType();
+            auto typeSpec = parseTypeSpec(parser);
+
+            // We may need to build up multiple declarations in a group,
+            // but the common case will be when we have just a single
+            // declaration
+            DeclGroupBuilder declGroupBuilder;
+            declGroupBuilder.startPosition = startPosition;
+
+            // The type specifier may include a declaration. E.g.,
+            // it might declare a `struct` type.
+            if(typeSpec.decl)
+                declGroupBuilder.addDecl(typeSpec.decl);
+
+            if( AdvanceIf(parser, TokenType::Semicolon) )
+            {
+                // No actual variable is being declared here, but
+                // that might not be an error.
+
+                auto result = declGroupBuilder.getResult();
+                if( !result )
+                {
+                    parser->sink->diagnose(startPosition, Diagnostics::declarationDidntDeclareAnything);
+                }
+                return result;
+            }
+
 
             InitDeclarator initDeclarator = ParseInitDeclarator(parser);
 
             DeclaratorInfo declaratorInfo;
-            declaratorInfo.typeSpec = typeSpec;
+            declaratorInfo.typeSpec = typeSpec.expr;
 
 
             // Rather than parse function declarators properly for now,
@@ -1298,6 +1370,10 @@ namespace Spire
                 UnwrapDeclarator(initDeclarator, &declaratorInfo);
                 RefPtr<VarDeclBase> firstDecl = CreateVarDeclForContext(containerDecl);
                 CompleteVarDecl(parser, firstDecl, declaratorInfo);
+
+                declGroupBuilder.addDecl(firstDecl);
+                return declGroupBuilder.getResult();
+
                 return firstDecl;
             }
 
@@ -1309,12 +1385,8 @@ namespace Spire
             // clone syntax.
 
             auto sharedTypeSpec = new SharedTypeExpr();
-            sharedTypeSpec->Position = typeSpec->Position;
-            sharedTypeSpec->base = TypeExp(typeSpec);
-
-            // Otherwise we are looking at a sequence of declarations.
-            RefPtr<DeclGroup> declGroup = new DeclGroup();
-            declGroup->Position = startPosition;
+            sharedTypeSpec->Position = typeSpec.expr->Position;
+            sharedTypeSpec->base = TypeExp(typeSpec.expr);
 
             for(;;)
             {
@@ -1324,17 +1396,17 @@ namespace Spire
                 RefPtr<VarDeclBase> varDecl = CreateVarDeclForContext(containerDecl);
                 CompleteVarDecl(parser, varDecl, declaratorInfo);
 
-                declGroup->decls.Add(varDecl);
+                declGroupBuilder.addDecl(varDecl);
 
                 // end of the sequence?
                 if(AdvanceIf(parser, TokenType::Semicolon))
-                    return declGroup;
+                    return declGroupBuilder.getResult();
 
                 // ad-hoc recovery, to avoid infinite loops
                 if( parser->isRecovering )
                 {
                     parser->ReadToken(TokenType::Semicolon);
-                    return declGroup;
+                    return declGroupBuilder.getResult();
                 }
 
                 // Let's default to assuming that a missing `,`
@@ -1352,7 +1424,7 @@ namespace Spire
                 if (!AdvanceIf(parser, TokenType::Comma))
                 {
                     parser->ReadToken(TokenType::Semicolon);
-                    return declGroup;
+                    return declGroupBuilder.getResult();
                 }
 
                 // expect another variable declaration...
@@ -1917,9 +1989,9 @@ namespace Spire
 
             // TODO: actual dispatch!
             if (parser->LookAheadToken("struct"))
-                decl = parser->ParseStruct();
+                decl = ParseDeclaratorDecl(parser, containerDecl);
             else if (parser->LookAheadToken("class"))
-                decl = parser->ParseClass();
+                decl = ParseDeclaratorDecl(parser, containerDecl);
             else if (parser->LookAheadToken("typedef"))
                 decl = ParseTypeDef(parser);
             else if (parser->LookAheadToken("using"))
@@ -2062,15 +2134,8 @@ namespace Spire
                 ReadToken();
                 rs->IsIntrinsic = true;
             }
-            typeNames.Add(rs->Name.Content);
             ReadToken(TokenType::LBrace);
             ParseDeclBody(this, rs.Ptr(), TokenType::RBrace);
-
-            // Consume a trailing `;`, if present.
-            //
-            // TODO(tfoley): `struct` syntax should come in as part of declarator
-            // parsing, and not just as a top-level declaration.
-            AdvanceIf(this, TokenType::Semicolon);
 
             return rs;
         }
@@ -2081,7 +2146,6 @@ namespace Spire
             FillPosition(rs.Ptr());
             ReadToken("class");
             rs->Name = ReadToken(TokenType::Identifier);
-            typeNames.Add(rs->Name.Content);
             ReadToken(TokenType::LBrace);
             ParseDeclBody(this, rs.Ptr(), TokenType::RBrace);
             return rs;
@@ -2118,6 +2182,32 @@ namespace Spire
             return stmt;
         }
 
+        static bool peekTypeName(Parser* parser)
+        {
+            if(!parser->LookAheadToken(TokenType::Identifier))
+                return false;
+
+            auto name = parser->tokenReader.PeekToken().Content;
+
+            auto lookupResult = LookUp(name, parser->currentScope);
+            if(!lookupResult.isValid() || lookupResult.isOverloaded())
+                return false;
+
+            auto decl = lookupResult.item.declRef.GetDecl();
+            if( auto typeDecl = dynamic_cast<AggTypeDecl*>(decl) )
+            {
+                return true;
+            }
+            else if( auto typeVarDecl = dynamic_cast<SimpleTypeDecl*>(decl) )
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
         RefPtr<StatementSyntaxNode> Parser::ParseStatement()
         {
             auto modifiers = ParseModifiers(this);
@@ -2125,7 +2215,7 @@ namespace Spire
             RefPtr<StatementSyntaxNode> statement;
             if (LookAheadToken(TokenType::LBrace))
                 statement = ParseBlockStatement();
-            else if (IsTypeKeyword())
+            else if (peekTypeName(this))
                 statement = ParseVarDeclrStatement(modifiers);
             else if (LookAheadToken("if"))
                 statement = ParseIfStatement();
@@ -2325,7 +2415,7 @@ namespace Spire
             FillPosition(stmt.Ptr());
             ReadToken("for");
             ReadToken(TokenType::LParent);
-            if (IsTypeKeyword())
+            if (peekTypeName(this))
             {
                 stmt->InitialStatement = ParseVarDeclrStatement(Modifiers());
             }
@@ -2433,59 +2523,33 @@ namespace Spire
             return parameter;
         }
 
-        RefPtr<ExpressionSyntaxNode> ParseGenericArg(Parser* parser)
-        {
-            return parser->ParseArgExpr();
-        }
-
         RefPtr<ExpressionSyntaxNode> Parser::ParseType()
         {
-            Token typeName;
-            if (LookAheadToken(TokenType::Identifier))
-                typeName = ReadToken(TokenType::Identifier);
-            else
-                typeName = ReadTypeKeyword();
-
-            auto basicType = new VarExpressionSyntaxNode();
-            basicType->scope = currentScope.Ptr();
-            basicType->Position = typeName.Position;
-            basicType->Variable = typeName.Content;
-
-            RefPtr<ExpressionSyntaxNode> rs = basicType;
-
-            if (LookAheadToken(TokenType::OpLess))
+            auto typeSpec = parseTypeSpec(this);
+            if( typeSpec.decl )
             {
-                RefPtr<GenericAppExpr> gtype = new GenericAppExpr();
-                FillPosition(gtype.Ptr()); // set up scope for lookup
-                gtype->Position = typeName.Position;
-                gtype->FunctionExpr = rs;
-                ReadToken(TokenType::OpLess);
-                this->genericDepth++;
-                // For now assume all generics have at least one argument
-                gtype->Arguments.Add(ParseGenericArg(this));
-                while (AdvanceIf(this, TokenType::Comma))
-                {
-                    gtype->Arguments.Add(ParseGenericArg(this));
-                }
-                this->genericDepth--;
-                ReadToken(TokenType::OpGreater);
-                rs = gtype;
+                AddMember(currentScope, typeSpec.decl);
             }
+            auto typeExpr = typeSpec.expr;
+
             while (LookAheadToken(TokenType::LBracket))
             {
                 RefPtr<IndexExpressionSyntaxNode> arrType = new IndexExpressionSyntaxNode();
-                arrType->Position = rs->Position;
-                arrType->BaseExpression = rs;
+                arrType->Position = typeExpr->Position;
+                arrType->BaseExpression = typeExpr;
                 ReadToken(TokenType::LBracket);
                 if (!LookAheadToken(TokenType::RBracket))
                 {
                     arrType->IndexExpression = ParseExpression();
                 }
                 ReadToken(TokenType::RBracket);
-                rs = arrType;
+                typeExpr = arrType;
             }
-            return rs;
+
+            return typeExpr;
         }
+
+
 
         TypeExp Parser::ParseTypeExp()
         {
@@ -2730,7 +2794,7 @@ namespace Spire
             {
                 ReadToken(TokenType::LParent);
                 RefPtr<ExpressionSyntaxNode> expr;
-                if (IsTypeKeyword() && LookAheadToken(TokenType::RParent, 1))
+                if (peekTypeName(this) && LookAheadToken(TokenType::RParent, 1))
                 {
                     RefPtr<TypeCastExpressionSyntaxNode> tcexpr = new TypeCastExpressionSyntaxNode();
                     FillPosition(tcexpr.Ptr());
