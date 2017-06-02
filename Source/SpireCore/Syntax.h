@@ -2348,9 +2348,9 @@ namespace Spire
         class GenericParamIntVal : public IntVal
         {
         public:
-            GenericValueParamDeclRef declRef;
+            VarDeclBaseRef declRef;
 
-            GenericParamIntVal(GenericValueParamDeclRef declRef)
+            GenericParamIntVal(VarDeclBaseRef declRef)
                 : declRef(declRef)
             {}
 

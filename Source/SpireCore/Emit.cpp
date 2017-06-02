@@ -476,7 +476,18 @@ static void EmitExprWithPrecedence(EmitContext* context, RefPtr<ExpressionSyntax
 
 void Emit(EmitContext* context, RefPtr<IntVal> val)
 {
-    Emit(context, GetIntVal(val));
+    if(auto constantIntVal = val.As<ConstantIntVal>())
+    {
+        Emit(context, constantIntVal->value);
+    }
+    else if(auto varRefVal = val.As<GenericParamIntVal>())
+    {
+        EmitDeclRef(context, varRefVal->declRef);
+    }
+    else
+    {
+        assert(!"unimplemented");
+    }
 }
 
 // represents a declarator for use in emitting types
@@ -495,7 +506,7 @@ struct EDeclarator
     String name;
 
     // Used for `Flavor::Array`
-    int elementCount;
+    IntVal* elementCount;
 };
 
 static void EmitDeclarator(EmitContext* context, EDeclarator* declarator)
@@ -841,7 +852,7 @@ static void EmitType(EmitContext* context, RefPtr<ExpressionType> type, EDeclara
         if(arrayType->ArrayLength)
         {
             arrayDeclarator.flavor = EDeclarator::Flavor::Array;
-            arrayDeclarator.elementCount = GetIntVal(arrayType->ArrayLength);
+            arrayDeclarator.elementCount = arrayType->ArrayLength.Ptr();
         }
         else
         {

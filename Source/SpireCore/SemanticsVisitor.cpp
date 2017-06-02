@@ -1746,9 +1746,23 @@ namespace Spire
                             // reference to the variable.
                             if(auto constAttr = varDecl->FindModifier<ConstModifier>())
                             {
-                                // HLSL `static const` can be used as a constant expression
-                                if(auto initExpr = varRef.getInitExpr())
+                                // We need to handle a "specialization constant" (with a `constant_id` layout modifier)
+                                // differently from an ordinary compile-time constant. The latter can/should be reduced
+                                // to a value, while the former should be kept as a symbolic reference
+
+                                if(auto constantIDModifier = varDecl->FindModifier<GLSLConstantIDLayoutModifier>())
                                 {
+                                    // Retain the specialization constant as a symbolic reference
+                                    //
+                                    // TODO(tfoley): handle the case of non-`int` value parameters...
+                                    //
+                                    // TODO(tfoley): this is cloned from the case above that handles generic value parameters
+                                    return new GenericParamIntVal(varRef);
+                                }
+                                else if(auto initExpr = varRef.getInitExpr())
+                                {
+                                    // This is an ordinary constant, and not a specialization constant, so we
+                                    // can try to fold its value right now.
                                     return TryConstantFoldExpr(initExpr.Ptr());
                                 }
                             }
@@ -3060,9 +3074,9 @@ namespace Spire
                         auto sndParam = sndInt.As<GenericParamIntVal>();
 
                         if (fstParam)
-                            TryUnifyIntParam(constraints, fstParam->declRef.GetDecl(), sndInt);
+                            TryUnifyIntParam(constraints, fstParam->declRef, sndInt);
                         if (sndParam)
-                            TryUnifyIntParam(constraints, sndParam->declRef.GetDecl(), fstInt);
+                            TryUnifyIntParam(constraints, sndParam->declRef, fstInt);
 
                         if (fstParam || sndParam)
                             return true;
@@ -3133,6 +3147,21 @@ namespace Spire
                 constraints.constraints.Add(constraint);
 
                 return true;
+            }
+
+            bool TryUnifyIntParam(
+                ConstraintSystem&       constraints,
+                VarDeclBaseRef const&   varRef,
+                RefPtr<IntVal>          val)
+            {
+                if(auto genericValueParamRef = varRef.As<GenericValueParamDeclRef>())
+                {
+                    return TryUnifyIntParam(constraints, genericValueParamRef.GetDecl(), val);
+                }
+                else
+                {
+                    return false;
+                }
             }
 
             bool TryUnifyTypesByStructuralMatch(
