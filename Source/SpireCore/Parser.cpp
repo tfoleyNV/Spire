@@ -2789,7 +2789,7 @@ namespace Spire
                 else if (token.Type == TokenType::DoubleLiterial)
                 {
                     constExpr->ConstType = ConstantExpressionSyntaxNode::ConstantType::Float;
-                    constExpr->FloatValue = (float)StringToDouble(token.Content);
+                    constExpr->FloatValue = (FloatingPointLiteralValue) StringToDouble(token.Content);
                 }
                 rs = constExpr;
             }

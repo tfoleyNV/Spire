@@ -119,7 +119,7 @@ static void Emit(EmitContext* context, double value)
 {
     // TODO(tfoley): need to print things in a way that can round-trip
     char buffer[128];
-    sprintf(buffer, "%f", value);
+    sprintf(buffer, "%.20ff", value);
     Emit(context, buffer);
 }
 

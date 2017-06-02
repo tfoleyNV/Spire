@@ -1828,6 +1828,8 @@ namespace Spire
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
         };
 
+        typedef double FloatingPointLiteralValue;
+
         class ConstantExpressionSyntaxNode : public ExpressionSyntaxNode
         {
         public:
@@ -1839,7 +1841,7 @@ namespace Spire
             union
             {
                 int IntValue;
-                float FloatValue;
+                FloatingPointLiteralValue FloatValue;
             };
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
         };
