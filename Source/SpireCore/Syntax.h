@@ -867,8 +867,6 @@ namespace Spire
                 RefPtr<ExpressionType> elementType)
                 : TextureTypeBase(flavor, elementType)
             {}
-
-            virtual RefPtr<Val> SubstituteImpl(Substitutions* subst, int* ioDiff) override;
         };
 
         // This is a base type for texture/sampler pairs,
@@ -881,8 +879,17 @@ namespace Spire
                 RefPtr<ExpressionType> elementType)
                 : TextureTypeBase(flavor, elementType)
             {}
+        };
 
-            virtual RefPtr<Val> SubstituteImpl(Substitutions* subst, int* ioDiff) override;
+        // This is a base type for `image*` types, as they exist in GLSL
+        class GLSLImageType : public TextureTypeBase
+        {
+        public:
+            GLSLImageType(
+                Flavor flavor,
+                RefPtr<ExpressionType> elementType)
+                : TextureTypeBase(flavor, elementType)
+            {}
         };
 
         class SamplerStateType : public DeclRefType

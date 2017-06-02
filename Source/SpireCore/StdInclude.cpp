@@ -1462,10 +1462,28 @@ namespace Spire
                         sb << "__texture" << name;
                         sb << " {};\n";
 
-                        // TODO(tfoley): flesh this out for all the available prefixes
+                        sb << "__generic<T> ";
+                        sb << "__magic_type(GLSLImageType," << int(flavor) << ") struct ";
+                        sb << "__image" << name;
+                        sb << " {};\n";
 
-                        sb << "typedef __sampler" << name << "<float4> sampler" << name << ";\n";
-                        sb << "typedef __texture" << name << "<float4> texture" << name << ";\n";
+                        // TODO(tfoley): flesh this out for all the available prefixes
+                        static const struct
+                        {
+                            char const* prefix;
+                            char const* elementType;
+                        } kTextureElementTypes[] = {
+                            { "", "vec4" },
+                            { "i", "ivec4" },
+                            { "u", "uvec4" },
+                            { nullptr, nullptr },
+                        };
+                        for( auto ee = kTextureElementTypes; ee->prefix; ++ee )
+                        {
+                            sb << "typedef __sampler" << name << "<" << ee->elementType << "> " << ee->prefix << "sampler" << name << ";\n";
+                            sb << "typedef __texture" << name << "<" << ee->elementType << "> " << ee->prefix << "texture" << name << ";\n";
+                            sb << "typedef __image" << name << "<" << ee->elementType << "> " << ee->prefix << "image" << name << ";\n";
+                        }
                     }
                 }
             }

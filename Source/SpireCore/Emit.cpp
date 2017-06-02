@@ -577,8 +577,8 @@ static void emitGLSLTypePrefix(
 }
 
 static void emitHLSLTextureType(
-    EmitContext*        context,
-    RefPtr<TextureType> texType)
+    EmitContext*            context,
+    RefPtr<TextureTypeBase> texType)
 {
     switch(texType->getAccess())
     {
@@ -673,6 +673,13 @@ static void emitGLSLTextureSamplerType(
     emitGLSLTextureOrTextureSamplerType(context, type, "sampler");
 }
 
+static void emitGLSLImageType(
+    EmitContext*            context,
+    RefPtr<GLSLImageType>   type)
+{
+    emitGLSLTextureOrTextureSamplerType(context, type, "image");
+}
+
 static void emitTextureType(
     EmitContext*        context,
     RefPtr<TextureType> texType)
@@ -701,6 +708,26 @@ static void emitTextureSamplerType(
     {
     case CodeGenTarget::GLSL:
         emitGLSLTextureSamplerType(context, type);
+        break;
+
+    default:
+        assert(!"unreachable");
+        break;
+    }
+}
+
+static void emitImageType(
+    EmitContext*            context,
+    RefPtr<GLSLImageType>   type)
+{
+    switch(context->target)
+    {
+    case CodeGenTarget::HLSL:
+        emitHLSLTextureType(context, type);
+        break;
+
+    case CodeGenTarget::GLSL:
+        emitGLSLImageType(context, type);
         break;
 
     default:
@@ -808,6 +835,13 @@ static void EmitType(EmitContext* context, RefPtr<ExpressionType> type, EDeclara
     else if (auto textureSamplerType = type->As<TextureSamplerType>())
     {
         emitTextureSamplerType(context, textureSamplerType);
+        Emit(context, " ");
+        EmitDeclarator(context, declarator);
+        return;
+    }
+    else if (auto imageType = type->As<GLSLImageType>())
+    {
+        emitImageType(context, imageType);
         Emit(context, " ");
         EmitDeclarator(context, declarator);
         return;

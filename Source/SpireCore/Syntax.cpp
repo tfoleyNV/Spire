@@ -519,6 +519,15 @@ namespace Spire
                     textureType->declRef = declRef;
                     return textureType;
                 }
+                else if (magicMod->name == "GLSLImageType")
+                {
+                    assert(subst && subst->args.Count() >= 1);
+                    auto textureType = new GLSLImageType(
+                        TextureType::Flavor(magicMod->tag),
+                        ExtractGenericArgType(subst->args[0]));
+                    textureType->declRef = declRef;
+                    return textureType;
+                }
 
                 #define CASE(n,T)													\
                     else if(magicMod->name == #n) {									\
@@ -827,41 +836,6 @@ namespace Spire
         IntVal* MatrixExpressionType::getColumnCount()
         {
             return this->declRef.substitutions->args[2].As<IntVal>().Ptr();
-        }
-
-
-        // TextureType
-
-        RefPtr<Val> TextureType::SubstituteImpl(Substitutions* subst, int* ioDiff)
-        {
-            int diff = 0;
-            auto substDeclRef = declRef.SubstituteImpl(subst, &diff);
-            auto substElementType = elementType->SubstituteImpl(subst, &diff).As<ExpressionType>();
-
-            if (!diff)
-                return this;
-
-            (*ioDiff)++;
-            auto substType = new TextureType(flavor, substElementType);
-            substType->declRef = substDeclRef;
-            return substType;
-        }
-
-        // TextureSamplerType
-
-        RefPtr<Val> TextureSamplerType::SubstituteImpl(Substitutions* subst, int* ioDiff)
-        {
-            int diff = 0;
-            auto substDeclRef = declRef.SubstituteImpl(subst, &diff);
-            auto substElementType = elementType->SubstituteImpl(subst, &diff).As<ExpressionType>();
-
-            if (!diff)
-                return this;
-
-            (*ioDiff)++;
-            auto substType = new TextureSamplerType(flavor, substElementType);
-            substType->declRef = substDeclRef;
-            return substType;
         }
 
         //
