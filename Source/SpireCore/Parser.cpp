@@ -1672,10 +1672,27 @@ namespace Spire
 
             return bufferVarDecl;
         }
+        
+        static void removeModifier(
+            Modifiers&          modifiers,
+            RefPtr<Modifier>    modifier)
+        {
+            RefPtr<Modifier>* link = &modifiers.first;
+            while (*link)
+            {
+                if (*link == modifier)
+                {
+                    *link = (*link)->next;
+                    return;
+                }
+
+                link = &(*link)->next;
+            }
+        }
 
         static RefPtr<Decl> parseGLSLBlockDecl(
             Parser*	    parser,
-            Modifiers   modifiers)
+            Modifiers&   modifiers)
         {
             // An GLSL block like this:
             //
@@ -1700,24 +1717,28 @@ namespace Spire
             // to be made visible to reflection
             auto reflectionNameToken = parser->ReadToken(TokenType::Identifier);
 
-            // TODO(tfoley): Do we need to pick an appropriate block
-            // type here, just to capture things?
-
+            // Look at the qualifiers present on the block to decide what kind
+            // of block we are looking at. Also *remove* those qualifiers so
+            // that they don't interfere with downstream work.
             String blockWrapperTypeName;
-            if( modifiers.findModifier<HLSLUniformModifier>() )
+            if( auto uniformMod = modifiers.findModifier<HLSLUniformModifier>() )
             {
+                removeModifier(modifiers, uniformMod);
                 blockWrapperTypeName = "ConstantBuffer";
             }
-            else if( modifiers.findModifier<InModifier>() )
+            else if( auto inMod = modifiers.findModifier<InModifier>() )
             {
+                removeModifier(modifiers, inMod);
                 blockWrapperTypeName = "__GLSLInputParameterBlock";
             }
-            else if( modifiers.findModifier<OutModifier>() )
+            else if( auto outMod = modifiers.findModifier<OutModifier>() )
             {
+                removeModifier(modifiers, outMod);
                 blockWrapperTypeName = "__GLSLOutputParameterBlock";
             }
-            else if( modifiers.findModifier<GLSLBufferModifier>() )
+            else if( auto bufferMod = modifiers.findModifier<GLSLBufferModifier>() )
             {
+                removeModifier(modifiers, bufferMod);
                 blockWrapperTypeName = "__GLSLShaderStorageBuffer";
             }
             else

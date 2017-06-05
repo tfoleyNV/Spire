@@ -338,9 +338,11 @@ static void emitCallExpr(
             CASE(AndAssign, &=);
             CASE(XorAssign, ^=);
 #undef CASE
-        case IntrinsicOp::Sequence: EmitBinExpr(context, outerPrec, kPrecedence_Comma, ",", callExpr); break;
-#define PREFIX(NAME, OP) case IntrinsicOp::NAME: EmitUnaryExpr(context, outerPrec, kPrecedence_Prefix, #OP, "", callExpr); break
-#define POSTFIX(NAME, OP) case IntrinsicOp::NAME: EmitUnaryExpr(context, outerPrec, kPrecedence_Postfix, "", #OP, callExpr); break
+
+        case IntrinsicOp::Sequence: EmitBinExpr(context, outerPrec, kPrecedence_Comma, ",", callExpr); return;
+
+#define PREFIX(NAME, OP) case IntrinsicOp::NAME: EmitUnaryExpr(context, outerPrec, kPrecedence_Prefix, #OP, "", callExpr); return
+#define POSTFIX(NAME, OP) case IntrinsicOp::NAME: EmitUnaryExpr(context, outerPrec, kPrecedence_Postfix, "", #OP, callExpr); return
 
             PREFIX(Neg, -);
             PREFIX(Not, !);
@@ -380,7 +382,7 @@ static void emitCallExpr(
                     EmitExpr(context, callExpr->Arguments[1]);
                     Emit(context, ") * (");
                     EmitExpr(context, callExpr->Arguments[0]);
-                    Emit(context, ")");
+                    Emit(context, "))");
                     return;
                 }
                 break;
@@ -1857,14 +1859,32 @@ static void emitGLSLParameterBlockDecl(
     RefPtr<StructTypeLayout> structTypeLayout = bufferLayout->elementTypeLayout.As<StructTypeLayout>();
     assert(structTypeLayout);
 
-    // TODO(tfoley): emit GLSL layout info
-//    emitHLSLRegisterSemantic(context, *info);
-
     emitGLSLLayoutQualifiers(context, layout);
 
     EmitModifiers(context, varDecl);
 
-//    EmitSemantics(context, varDecl, kESemanticMask_None);
+    // Emit an apprpriate declaration keyword based on the kind of block
+    if (parameterBlockType->As<ConstantBufferType>())
+    {
+        Emit(context, "uniform");
+    }
+    else if (parameterBlockType->As<GLSLInputParameterBlockType>())
+    {
+        Emit(context, "in");
+    }
+    else if (parameterBlockType->As<GLSLOutputParameterBlockType>())
+    {
+        Emit(context, "out");
+    }
+    else if (parameterBlockType->As<GLSLShaderStorageBufferType>())
+    {
+        Emit(context, "buffer");
+    }
+    else
+    {
+        assert(!"unexpected");
+        Emit(context, "uniform");
+    }
 
     if( auto reflectionNameModifier = varDecl->FindModifier<ParameterBlockReflectionName>() )
     {
