@@ -4,6 +4,9 @@
 #include "options.h"
 #include "render.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+
 // TODO(tfoley): eventually we should be able to run these
 // tests on non-Windows targets to confirm that cross-compilation
 // at least *works* on those platforms...
@@ -23,6 +26,25 @@
 #pragma comment(lib, "opengl32")
 
 #include <GL/GL.h>
+#include "external/glext.h"
+
+// We define an "X-macro" for mapping over loadable OpenGL
+// extension entry point that we will use, so that we can
+// easily write generic code to iterate over them.
+#define MAP_GL_EXTENSION_FUNCS(F)                       \
+    F(glCreateProgram,      PFNGLCREATEPROGRAMPROC)     \
+    F(glCreateShader,       PFNGLCREATESHADERPROC)      \
+    F(glShaderSource,       PFNGLSHADERSOURCEPROC)      \
+    F(glCompileShader,      PFNGLCOMPILESHADERPROC)     \
+    F(glGetShaderiv,        PFNGLGETSHADERIVPROC)       \
+    F(glDeleteShader,       PFNGLDELETESHADERPROC)      \
+    F(glAttachShader,       PFNGLATTACHSHADERPROC)      \
+    F(glLinkProgram,        PFNGLLINKPROGRAMPROC)       \
+    F(glGetProgramiv,       PFNGLGETPROGRAMIVPROC)      \
+    F(glGetProgramInfoLog,  PFNGLGETPROGRAMINFOLOGPROC) \
+    F(glDeleteProgram,      PFNGLDELETEPROGRAMPROC)     \
+    F(glGetShaderInfoLog,   PFNGLGETSHADERINFOLOGPROC)  \
+    /* emtty */
 
 namespace renderer_test {
 
@@ -31,6 +53,13 @@ class GLRenderer : public Renderer, public ShaderCompiler
 public:
     HDC     deviceContext;
     HGLRC   glContext;
+
+    // Declre a function pointer for each OpenGL
+    // extension function we need to load
+
+#define DECLARE_GL_EXTENSION_FUNC(NAME, TYPE) TYPE NAME;
+    MAP_GL_EXTENSION_FUNCS(DECLARE_GL_EXTENSION_FUNC)
+#undef DECLARE_GL_EXTENSION_FUNC
 
     // Renderer interface
 
@@ -54,11 +83,20 @@ public:
 
         glContext = wglCreateContext(deviceContext);
         wglMakeCurrent(deviceContext, glContext);
+
+        auto renderer = glGetString(GL_RENDERER);
+        auto extensions = glGetString(GL_EXTENSIONS);
+
+        // Load ech of our etension functions by name
+
+    #define LOAD_GL_EXTENSION_FUNC(NAME, TYPE) NAME = (TYPE) wglGetProcAddress(#NAME);
+        MAP_GL_EXTENSION_FUNCS(LOAD_GL_EXTENSION_FUNC)
+    #undef LOAD_GL_EXTENSION_FUNC
     }
 
     virtual void clearFrame() override
     {
-
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
     }
 
     virtual void presentFrame() override
@@ -125,7 +163,72 @@ public:
 
     virtual ShaderProgram* compileProgram(ShaderCompileRequest const& request) override
     {
-        return nullptr;
+        auto programID = glCreateProgram();
+
+        auto vertexShaderID   = loadShader(GL_VERTEX_SHADER,   request.vertexShader  .sourceText);
+        auto fragmentShaderID = loadShader(GL_FRAGMENT_SHADER, request.fragmentShader.sourceText);
+
+        glAttachShader(programID, vertexShaderID);
+        glAttachShader(programID, fragmentShaderID);
+
+        glLinkProgram(programID);
+
+        glDeleteShader(vertexShaderID);
+        glDeleteShader(fragmentShaderID);
+
+        GLint success = GL_FALSE;
+        glGetProgramiv(programID, GL_LINK_STATUS, &success);
+        if( !success )
+        {
+            int maxSize = 0;
+            glGetProgramiv(programID, GL_INFO_LOG_LENGTH, &maxSize);
+
+            auto infoBuffer = (char*) malloc(maxSize);
+
+            int infoSize = 0;
+            glGetProgramInfoLog(programID, maxSize, &infoSize, infoBuffer);
+            if( infoSize > 0 )
+            {
+                fprintf(stderr, "%s", infoBuffer);
+                OutputDebugStringA(infoBuffer);
+            }
+
+            glDeleteProgram(programID);
+            return 0;
+        }
+
+        return (ShaderProgram*) (uintptr_t) programID;
+    }
+
+    GLuint loadShader(GLenum stage, char const* source)
+    {
+        auto shaderID = glCreateShader(stage);
+
+        glShaderSource(shaderID, 1, &source, nullptr);
+        glCompileShader(shaderID);
+
+        GLint success = GL_FALSE;
+        glGetShaderiv(shaderID, GL_COMPILE_STATUS, &success);
+        if( !success )
+        {
+            int maxSize = 0;
+            glGetShaderiv(shaderID, GL_INFO_LOG_LENGTH, &maxSize);
+
+            auto infoBuffer = (char*) malloc(maxSize);
+
+            int infoSize = 0;
+            glGetShaderInfoLog(shaderID, maxSize, &infoSize, infoBuffer);
+            if( infoSize > 0 )
+            {
+                fprintf(stderr, "%s", infoBuffer);
+                OutputDebugStringA(infoBuffer);
+            }
+
+            glDeleteShader(shaderID);
+            return 0;
+        }
+
+        return shaderID;
     }
 };
 

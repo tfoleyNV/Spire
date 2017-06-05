@@ -16,6 +16,9 @@ struct ShaderCompileRequest
     {
         char const* name;
         char const* profile;
+
+        char const* sourcePath;
+        char const* sourceText;
     };
 
     char const* sourcePath;

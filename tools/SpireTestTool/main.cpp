@@ -839,7 +839,7 @@ TestResult runHLSLRenderComparisonTest(TestInput& input)
 
 TestResult runHLSLCrossCompileRenderComparisonTest(TestInput& input)
 {
-    return runHLSLRenderComparisonTestImpl(input, "-spire", "-spire-glsl");
+    return runHLSLRenderComparisonTestImpl(input, "-spire", "-glsl-cross");
 }
 
 TestResult runTest(

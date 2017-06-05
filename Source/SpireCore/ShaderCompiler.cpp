@@ -396,6 +396,22 @@ namespace Spire
                     }
                     break;
 
+                case CodeGenTarget::GLSL:
+                    {
+                        String glsl = emitGLSL(context);
+
+                        if (context.compileResult)
+                        {
+                            result.outputSource = glsl;
+                        }
+                        else
+                        {
+                            fprintf(stdout, "%s", glsl.begin());
+                        }
+                        return result;
+                    }
+                    break;
+
                 case CodeGenTarget::DXBytecode:
                     {
                         auto code = EmitDXBytecode(context);
