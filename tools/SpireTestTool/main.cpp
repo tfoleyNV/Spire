@@ -797,15 +797,18 @@ TestResult doImageComparison(String const& filePath)
     return kTestResult_Pass;
 }
 
-TestResult runHLSLRenderComparisonTest(TestInput& input)
+TestResult runHLSLRenderComparisonTestImpl(
+    TestInput& input,
+    char const* expectedArg,
+    char const* actualArg)
 {
     auto filePath = input.filePath;
 
     String expectedOutput;
     String actualOutput;
 
-    TestResult hlslResult   =  doRenderComparisonTestRun(input, "-hlsl",  ".expected",    &expectedOutput);
-    TestResult spireResult  =  doRenderComparisonTestRun(input, "-spire", ".actual",      &actualOutput);
+    TestResult hlslResult   =  doRenderComparisonTestRun(input, expectedArg,  ".expected",    &expectedOutput);
+    TestResult spireResult  =  doRenderComparisonTestRun(input, actualArg, ".actual",      &actualOutput);
 
     CoreLib::IO::File::WriteAllText(filePath + ".expected", expectedOutput);
     CoreLib::IO::File::WriteAllText(filePath + ".actual",   actualOutput);
@@ -827,6 +830,15 @@ TestResult runHLSLRenderComparisonTest(TestInput& input)
     return kTestResult_Pass;
 }
 
+TestResult runHLSLRenderComparisonTest(TestInput& input)
+{
+    return runHLSLRenderComparisonTestImpl(input, "-hlsl", "-spire");
+}
+
+TestResult runHLSLCrossCompileRenderComparisonTest(TestInput& input)
+{
+    return runHLSLRenderComparisonTestImpl(input, "-spire", "-spire-glsl");
+}
 
 TestResult runTest(
     String const&       filePath,
@@ -842,6 +854,7 @@ TestResult runTest(
         { "SIMPLE", &runSimpleTest },
         { "COMPARE_HLSL", &runHLSLComparisonTest },
         { "COMPARE_HLSL_RENDER", &runHLSLRenderComparisonTest },
+        { "COMPARE_HLSL_CROSS_COMPILE_RENDER", &runHLSLCrossCompileRenderComparisonTest},
         { "COMPARE_GLSL", &runGLSLComparisonTest },
         { nullptr, nullptr },
     };
