@@ -56,11 +56,30 @@ namespace Spire
         SIMPLE_MODIFIER(Param);
         SIMPLE_MODIFIER(Extern);
         SIMPLE_MODIFIER(Input);
-        SIMPLE_MODIFIER(Intrinsic);
         SIMPLE_MODIFIER(Transparent);
         SIMPLE_MODIFIER(FromStdLib);
 
 #undef SIMPLE_MODIFIER
+
+        enum class IntrinsicOp
+        {
+            Unknown = 0,
+#define INTRINSIC(NAME) NAME,
+#include "intrinsic-defs.h"
+        };
+
+        IntrinsicOp findIntrinsicOp(char const* name);
+
+        class IntrinsicModifier : public Modifier
+        {
+        public:
+            // token that names the intrinsic op
+            Token opToken;
+
+            // The opcode for the intrinsic operation
+            IntrinsicOp op = IntrinsicOp::Unknown;
+        };
+
 
         class InOutModifier : public OutModifier {};
 
@@ -1463,7 +1482,6 @@ namespace Spire
         class StructSyntaxNode : public AggTypeDecl
         {
         public:
-            bool IsIntrinsic = false;
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
         };
 
@@ -1675,7 +1693,6 @@ namespace Spire
             String InternalName;
             bool IsInline() { return HasModifier<InlineModifier>(); }
             bool IsExtern() { return HasModifier<ExternModifier>(); }
-            bool HasSideEffect() { return !HasModifier<IntrinsicModifier>(); }
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
             FunctionSyntaxNode()
             {

@@ -1540,12 +1540,14 @@ namespace Spire
                     else
                         expr->Type = ExpressionType::Error;
                 };
+#if 0
                 if (expr->Operator == Operator::Assign)
                 {
                     expr->Type = rightType;
                     checkAssign();
                 }
                 else
+#endif
                 {
                     expr->FunctionExpr = CheckExpr(expr->FunctionExpr);
                     CheckInvokeExprWithCheckedOperands(expr);

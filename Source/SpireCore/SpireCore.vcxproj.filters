@@ -54,6 +54,9 @@
     <ClInclude Include="lookup.h">
       <Filter>Front End</Filter>
     </ClInclude>
+    <ClInclude Include="intrinsic-defs.h">
+      <Filter>Front End</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Lexer.cpp">

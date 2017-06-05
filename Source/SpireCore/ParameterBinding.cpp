@@ -569,7 +569,7 @@ static void addExplicitParameterBindings_GLSL(
     LayoutSemanticInfo semanticInfo;
     semanticInfo.index = 0;
     semanticInfo.space = 0;
-    if( resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::DescriptorTableSlot) )
+    if( (resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::DescriptorTableSlot)) )
     {
         // Try to find `binding` and `set`
         if(!findLayoutArg<GLSLBindingLayoutModifier>(varDecl, &semanticInfo.index))
@@ -577,19 +577,19 @@ static void addExplicitParameterBindings_GLSL(
 
         findLayoutArg<GLSLSetLayoutModifier>(varDecl, &semanticInfo.space);
     }
-    else if( resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::VertexInput) )
+    else if( (resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::VertexInput)) )
     {
         // Try to find `location` binding
         if(!findLayoutArg<GLSLLocationLayoutModifier>(varDecl, &semanticInfo.index))
             return;
     }
-    else if( resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::FragmentOutput) )
+    else if( (resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::FragmentOutput)) )
     {
         // Try to find `location` binding
         if(!findLayoutArg<GLSLLocationLayoutModifier>(varDecl, &semanticInfo.index))
             return;
     }
-    else if( resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::SpecializationConstant) )
+    else if( (resInfo = typeLayout->FindResourceInfo(LayoutResourceKind::SpecializationConstant)) )
     {
         // Try to find `constant_id` binding
         if(!findLayoutArg<GLSLConstantIDLayoutModifier>(varDecl, &semanticInfo.index))

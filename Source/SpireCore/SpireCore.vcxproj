@@ -381,6 +381,7 @@
     <ClInclude Include="DiagnosticDefs.h" />
     <ClInclude Include="Diagnostics.h" />
     <ClInclude Include="Emit.h" />
+    <ClInclude Include="intrinsic-defs.h" />
     <ClInclude Include="lookup.h" />
     <ClInclude Include="ParameterBinding.h" />
     <ClInclude Include="Preprocessor.h" />

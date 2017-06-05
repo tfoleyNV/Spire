@@ -583,7 +583,6 @@ namespace Spire
                 CASE(instance, InstanceModifier);
                 CASE(__builtin, BuiltinModifier);
 
-                CASE(__intrinsic, IntrinsicModifier);
                 CASE(inline, InlineModifier);
                 CASE(public, PublicModifier);
                 CASE(require, RequireModifier);
@@ -612,6 +611,36 @@ namespace Spire
                 CASE(triangleadj,   HLSLTriangleAdjModifier);
 
                 #undef CASE
+
+                else if (AdvanceIf(parser, "__intrinsic"))
+                {
+                    auto modifier = new IntrinsicModifier();
+                    modifier->Position = loc;
+
+                    if (AdvanceIf(parser, TokenType::LParent))
+                    {
+                        if (parser->LookAheadToken(TokenType::IntLiterial))
+                        {
+                            modifier->op = (IntrinsicOp)StringToInt(parser->ReadToken().Content);
+                        }
+                        else
+                        {
+                            modifier->opToken = parser->ReadToken(TokenType::Identifier);
+
+                            modifier->op = findIntrinsicOp(modifier->opToken.Content.Buffer());
+
+                            if (modifier->op == IntrinsicOp::Unknown)
+                            {
+                                parser->sink->diagnose(loc, Diagnostics::unimplemented, "unknown intrinsic op");
+                            }
+                        }
+
+                        parser->ReadToken(TokenType::RParent);
+                    }
+
+                    AddModifier(&modifierLink, modifier);
+                }
+
 
                 else if (AdvanceIf(parser, "layout"))
                 {
@@ -761,6 +790,7 @@ namespace Spire
 
                 // Note(tfoley): A bit of a hack:
                 case TokenType::Comma:
+                case TokenType::OpAssign:
                     break;
 
                 // Note(tfoley): Even more of a hack!
@@ -2129,11 +2159,6 @@ namespace Spire
             FillPosition(rs.Ptr());
             ReadToken("struct");
             rs->Name = ReadToken(TokenType::Identifier);
-            if (LookAheadToken("__intrinsic"))
-            {
-                ReadToken();
-                rs->IsIntrinsic = true;
-            }
             ReadToken(TokenType::LBrace);
             ParseDeclBody(this, rs.Ptr(), TokenType::RBrace);
 

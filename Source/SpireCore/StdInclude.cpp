@@ -7,10 +7,13 @@
 
 enum { kLibIncludeStringLine = __LINE__+1 };
 const char * LibIncludeStringChunks[] = { R"(
-__generic<T,U> __intrinsic U operator,(T left, U right);
 
-__generic<T> __intrinsic T operator?:(bool condition, T ifTrue, T ifFalse);
-__generic<T, let N : int> __intrinsic vector<T,N> operator?:(vector<bool,N> condition, vector<T,N> ifTrue, vector<T,N> ifFalse);
+__generic<T> __intrinsic(Assign) T operator=(out T left, T right);
+
+__generic<T,U> __intrinsic(Sequence) U operator,(T left, U right);
+
+__generic<T> __intrinsic(Select) T operator?:(bool condition, T ifTrue, T ifFalse);
+__generic<T, let N : int> __intrinsic(Select) vector<T,N> operator?:(vector<bool,N> condition, vector<T,N> ifTrue, vector<T,N> ifFalse);
 
 __generic<T> __magic_type(HLSLAppendStructuredBufferType) struct AppendStructuredBuffer
 {
@@ -436,27 +439,27 @@ __intrinsic uint4 msad4(uint reference, uint2 source, uint4 accum);
 // General inner products
 
 // scalar-scalar
-__generic<T : __BuiltinArithmeticType> __intrinsic T mul(T x, T y);
+__generic<T : __BuiltinArithmeticType> __intrinsic(Mul_Scalar_Scalar) T mul(T x, T y);
 
 // scalar-vector and vector-scalar
-__generic<T : __BuiltinArithmeticType, let N : int> __intrinsic vector<T,N> mul(vector<T,N> x, T y);
-__generic<T : __BuiltinArithmeticType, let N : int> __intrinsic vector<T,N> mul(T x, vector<T,N> y);
+__generic<T : __BuiltinArithmeticType, let N : int> __intrinsic(Mul_Vector_Scalar) vector<T,N> mul(vector<T,N> x, T y);
+__generic<T : __BuiltinArithmeticType, let N : int> __intrinsic(Mul_Scalar_Vector) vector<T,N> mul(T x, vector<T,N> y);
 
 // scalar-matrix and matrix-scalar
-__generic<T : __BuiltinArithmeticType, let N : int, let M :int> __intrinsic matrix<T,N,M> mul(matrix<T,N,M> x, T y);
-__generic<T : __BuiltinArithmeticType, let N : int, let M :int> __intrinsic matrix<T,N,M> mul(T x, matrix<T,N,M> y);
+__generic<T : __BuiltinArithmeticType, let N : int, let M :int> __intrinsic(Mul_Matrix_Scalar) matrix<T,N,M> mul(matrix<T,N,M> x, T y);
+__generic<T : __BuiltinArithmeticType, let N : int, let M :int> __intrinsic(Mul_Scalar_Matrix) matrix<T,N,M> mul(T x, matrix<T,N,M> y);
 
 // vector-vector (dot product)
-__generic<T : __BuiltinArithmeticType, let N : int> __intrinsic T mul(vector<T,N> x, vector<T,N> y);
+__generic<T : __BuiltinArithmeticType, let N : int> __intrinsic(InnerProduct_Vector_Vector) T mul(vector<T,N> x, vector<T,N> y);
 
 // vector-matrix
-__generic<T : __BuiltinArithmeticType, let N : int, let M : int> __intrinsic vector<T,M> mul(vector<T,N> x, matrix<T,N,M> y);
+__generic<T : __BuiltinArithmeticType, let N : int, let M : int> __intrinsic(InnerProduct_Vector_Matrix) vector<T,M> mul(vector<T,N> x, matrix<T,N,M> y);
 
 // matrix-vector
-__generic<T : __BuiltinArithmeticType, let N : int, let M : int> __intrinsic vector<T,N> mul(matrix<T,N,M> x, vector<T,M> y);
+__generic<T : __BuiltinArithmeticType, let N : int, let M : int> __intrinsic(InnerProduct_Matrix_Vector) vector<T,N> mul(matrix<T,N,M> x, vector<T,M> y);
 
 // matrix-matrix
-__generic<T : __BuiltinArithmeticType, let R : int, let N : int, let C : int> __intrinsic matrix<T,R,C> mul(matrix<T,R,N> x, matrix<T,N,C> y);
+__generic<T : __BuiltinArithmeticType, let R : int, let N : int, let C : int> __intrinsic(InnerProduct_Matrix_Matrix) matrix<T,R,C> mul(matrix<T,R,N> x, matrix<T,N,C> y);
 
 // noise (deprecated)
 __intrinsic float noise(float x);
@@ -799,27 +802,71 @@ namespace Spire
 
         String SpireStdLib::code;
 
+        enum
+        {
+            SINT_MASK   = 1 << 0,
+            FLOAT_MASK  = 1 << 1,
+            COMPARISON  = 1 << 2,
+            BOOL_MASK   = 1 << 3,
+            UINT_MASK   = 1 << 4,
+
+            INT_MASK = SINT_MASK | UINT_MASK,
+            ARITHMETIC_MASK = INT_MASK | FLOAT_MASK,
+            LOGICAL_MASK = INT_MASK | BOOL_MASK,
+            ANY_MASK = INT_MASK | FLOAT_MASK | BOOL_MASK,
+        };
+
         String SpireStdLib::GetCode()
         {
             if (code.Length() > 0)
                 return code;
             StringBuilder sb;
+
             // generate operator overloads
-            Operator floatUnaryOps[] = { Operator::Neg, Operator::Not, Operator::PreInc, Operator::PreDec };
-            Operator intUnaryOps[] = { Operator::Neg, Operator::Not, Operator::BitNot, Operator::PreInc, Operator::PreDec};
-            Operator floatOps[] = { Operator::Mul, Operator::Div,
-                Operator::Add, Operator::Sub, Operator::And, Operator::Or,
-                Operator::Eql, Operator::Neq, Operator::Greater, Operator::Less, Operator::Geq, Operator::Leq };
-            Operator intOps[] = {  Operator::Mul, Operator::Div, Operator::Mod,
-                Operator::Add, Operator::Sub,
-                Operator::Lsh, Operator::Rsh,
-                Operator::Eql, Operator::Neq, Operator::Greater, Operator::Less, Operator::Geq, Operator::Leq,
-                Operator::BitAnd, Operator::BitXor, Operator::BitOr,
-                Operator::And,
-                Operator::Or };
+
+
+
+            struct OpInfo { IntrinsicOp opCode; char const* opName; unsigned flags;  };
+
+            OpInfo unaryOps[] = {
+                { IntrinsicOp::Neg,     "-",    ARITHMETIC_MASK },
+                { IntrinsicOp::Not,     "!",    ANY_MASK        },
+                { IntrinsicOp::Not,     "~",    INT_MASK        },
+                { IntrinsicOp::PreInc,  "++",   ARITHMETIC_MASK },
+                { IntrinsicOp::PreDec,  "--",   ARITHMETIC_MASK },
+            };
+
+            OpInfo binaryOps[] = {
+                { IntrinsicOp::Add,     "+",    ARITHMETIC_MASK },
+                { IntrinsicOp::Sub,     "-",    ARITHMETIC_MASK },
+                { IntrinsicOp::Mul,     "*",    ARITHMETIC_MASK },
+                { IntrinsicOp::Div,     "/",    ARITHMETIC_MASK },
+                { IntrinsicOp::Mod,     "%",    ARITHMETIC_MASK },
+
+                { IntrinsicOp::And,     "&&",   LOGICAL_MASK },
+                { IntrinsicOp::Or,      "||",   LOGICAL_MASK },
+
+                { IntrinsicOp::BitAnd,  "&",    LOGICAL_MASK },
+                { IntrinsicOp::BitOr,   "|",    LOGICAL_MASK },
+                { IntrinsicOp::BitXor,  "^",    LOGICAL_MASK },
+
+                { IntrinsicOp::Lsh,     "<<",   INT_MASK },
+                { IntrinsicOp::Rsh,     ">>",   INT_MASK },
+
+                { IntrinsicOp::Eql,     "==",   COMPARISON },
+                { IntrinsicOp::Neq,     "!=",   COMPARISON },
+
+                { IntrinsicOp::Greater, ">",    ARITHMETIC_MASK | COMPARISON },
+                { IntrinsicOp::Less,    "<",    ARITHMETIC_MASK | COMPARISON },
+                { IntrinsicOp::Geq,     ">=",   ARITHMETIC_MASK | COMPARISON },
+                { IntrinsicOp::Leq,     "<=",   ARITHMETIC_MASK | COMPARISON },
+            };
+
+            /*
             String floatTypes[] = { "float", "float2", "float3", "float4" };
             String intTypes[] = { "int", "int2", "int3", "int4" };
             String uintTypes[] = { "uint", "uint2", "uint3", "uint4" };
+            */
 
             String path = getStdlibPath();
 
@@ -832,13 +879,14 @@ namespace Spire
             static const struct {
                 char const* name;
                 BaseType	tag;
+                unsigned    flags;
             } kBaseTypes[] = {
-                { "void",	BaseType::Void },
-                { "int",	BaseType::Int },
-                { "float",	BaseType::Float },
-                { "uint",	BaseType::UInt },
-                { "bool",	BaseType::Bool },
-                { "uint64_t", BaseType::UInt64 },
+                { "void",	BaseType::Void,     0 },
+                { "int",	BaseType::Int,      SINT_MASK },
+                { "float",	BaseType::Float,    FLOAT_MASK },
+                { "uint",	BaseType::UInt,     UINT_MASK },
+                { "bool",	BaseType::Bool,     BOOL_MASK },
+                { "uint64_t", BaseType::UInt64, UINT_MASK },
             };
             static const int kBaseTypeCount = sizeof(kBaseTypes) / sizeof(kBaseTypes[0]);
             for (int tt = 0; tt < kBaseTypeCount; ++tt)
@@ -1208,39 +1256,7 @@ namespace Spire
             sb << "__generic<T> __magic_type(Patch) struct Patch {};\n";
 
 
-            // Synthesize matrix-vector, vector-matrix, and matrix-matrix multiply operations
-            // TODO(tfoley): just make these generic
-
-#if 0
-            // matrix-vector
-            for (int rr = 2; rr <= 4; ++rr)
-            for (int kk = 2; kk <= 4; ++kk)
-            {
-                sb << "__intrinsic float" << rr << " mul("
-                    << "float" << rr << "x" << kk << " left,"
-                    << "float" << kk << " right);\n";
-            }
-
-            // vector-matrix
-            for (int cc = 2; cc <= 4; ++cc)
-            for (int kk = 2; kk <= 4; ++kk)
-            {
-                sb << "__intrinsic float" << cc << " mul("
-                    << "float" << kk << " left,"
-                    << "float" << kk << "x" << cc << " right);\n";
-            }
-
-            // matrix-matrix
-            for (int rr = 2; rr <= 4; ++rr)
-            for (int kk = 2; kk <= 4; ++kk)
-            for (int cc = 2; cc <= 4; ++cc)
-            {
-                sb << "__intrinsic float" << rr << "x" << cc << " mul("
-                    << "float" << rr << "x" << kk << " left,"
-                    << "float" << kk << "x" << cc << " right);\n";
-            }
-#endif
-
+            // Stale declarations for GLSL inner-product builtins
 #if 0
             sb << "__intrinsic vec3 operator * (vec3, mat3);\n";
             sb << "__intrinsic vec3 operator * (mat3, vec3);\n";
@@ -1250,19 +1266,70 @@ namespace Spire
 
             sb << "__intrinsic mat3 operator * (mat3, mat3);\n";
             sb << "__intrinsic mat4 operator * (mat4, mat4);\n";
-
-            sb << "__intrinsic bool operator && (bool, bool);\n";
-            sb << "__intrinsic bool operator || (bool, bool);\n";
 #endif
+
+#if 0
+            sb << "__intrinsic(And) bool operator && (bool, bool);\n";
+            sb << "__intrinsic(Or) bool operator || (bool, bool);\n";
 
             for (auto type : intTypes)
             {
-                sb << "__intrinsic bool operator && (bool, " << type << ");\n";
-                sb << "__intrinsic bool operator || (bool, " << type << ");\n";
-                sb << "__intrinsic bool operator && (" << type << ", bool);\n";
-                sb << "__intrinsic bool operator || (" << type << ", bool);\n";
+                sb << "__intrinsic(And) bool operator && (bool, " << type << ");\n";
+                sb << "__intrinsic(Or) bool operator || (bool, " << type << ");\n";
+                sb << "__intrinsic(And) bool operator && (" << type << ", bool);\n";
+                sb << "__intrinsic(Or) bool operator || (" << type << ", bool);\n";
+            }
+#endif
+
+            for (auto op : unaryOps)
+            {
+                for (auto type : kBaseTypes)
+                {
+                    if ((type.flags & op.flags) == 0)
+                        continue;
+
+                    // scalar version
+                    sb << "__intrinsic(" << int(op.opCode) << ") " << type.name << " operator" << op.opName << "(" << type.name << " value);\n";
+
+                    // vector version
+                    sb << "__generic<let N : int> ";
+                    sb << "__intrinsic(" << int(op.opCode) << ") vector<" << type.name << ",N> operator" << op.opName << "( vector<" << type.name << ",N> value);\n";
+
+                    // matrix version
+                    sb << "__generic<let N : int, let M : int> ";
+                    sb << "__intrinsic(" << int(op.opCode) << ") matrix<" << type.name << ",N,M> operator" << op.opName << "( matrix<" << type.name << ",N,M> value);\n";
+                }
             }
 
+            for (auto op : binaryOps)
+            {
+                for (auto type : kBaseTypes)
+                {
+                    if ((type.flags & op.flags) == 0)
+                        continue;
+
+                    char const* leftType = type.name;
+                    char const* rightType = leftType;
+                    char const* resultType = leftType;
+
+                    if (op.flags & COMPARISON) resultType = "bool";
+
+                    // TODO: handle `SHIFT`
+
+                    // scalar version
+                    sb << "__intrinsic(" << int(op.opCode) << ") " << resultType << " operator" << op.opName << "(" << leftType << " left, " << rightType << " right);\n";
+
+                    // vector version
+                    sb << "__generic<let N : int> ";
+                    sb << "__intrinsic(" << int(op.opCode) << ") vector<" << resultType << ",N> operator" << op.opName << "(vector<" << leftType << ",N> left, vector<" << rightType << ",N> right);\n";
+
+                    // matrix version
+                    sb << "__generic<let N : int, let M : int> ";
+                    sb << "__intrinsic(" << int(op.opCode) << ") matrix<" << resultType << ",N,M> operator" << op.opName << "(matrix<" << leftType << ",N,M> left, matrix<" << rightType << ",N,M> right);\n";
+                }
+            }
+
+#if 0
             for (auto op : intUnaryOps)
             {
                 String opName = GetOperatorFunctionName(op);
@@ -1339,6 +1406,7 @@ namespace Spire
                     }
                 }
             }
+#endif
 
             // Output a suitable `#line` directive to point at our raw stdlib code above
             sb << "\n#line " << kLibIncludeStringLine << " \"" << path << "\"\n";

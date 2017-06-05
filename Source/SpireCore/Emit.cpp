@@ -236,15 +236,15 @@ enum
     kPrecedence_Mod = kPrecedence_Mul,
 
     kPrecedence_Prefix,
-    kPrecedence_Postifx,
-    kPrecedence_Atomic = kPrecedence_Postifx
+    kPrecedence_Postfix,
+    kPrecedence_Atomic = kPrecedence_Postfix
 };
 
 static void EmitExprWithPrecedence(EmitContext* context, RefPtr<ExpressionSyntaxNode> expr, int outerPrec);
 
 static void EmitPostfixExpr(EmitContext* context, RefPtr<ExpressionSyntaxNode> expr)
 {
-    EmitExprWithPrecedence(context, expr, kPrecedence_Postifx);
+    EmitExprWithPrecedence(context, expr, kPrecedence_Postfix);
 }
 
 static void EmitExpr(EmitContext* context, RefPtr<ExpressionSyntaxNode> expr)
@@ -262,7 +262,7 @@ static bool MaybeEmitParens(EmitContext* context, int outerPrec, int prec)
     return false;
 }
 
-static void EmitBinExpr(EmitContext* context, int outerPrec, int prec, char const* op, RefPtr<OperatorExpressionSyntaxNode> binExpr)
+static void EmitBinExpr(EmitContext* context, int outerPrec, int prec, char const* op, RefPtr<InvokeExpressionSyntaxNode> binExpr)
 {
     bool needsClose = MaybeEmitParens(context, outerPrec, prec);
     EmitExprWithPrecedence(context, binExpr->Arguments[0], prec);
@@ -282,7 +282,7 @@ static void EmitUnaryExpr(
     int prec,
     char const* preOp,
     char const* postOp,
-    RefPtr<OperatorExpressionSyntaxNode> binExpr)
+    RefPtr<InvokeExpressionSyntaxNode> binExpr)
 {
     bool needsClose = MaybeEmitParens(context, outerPrec, prec);
     Emit(context, preOp);
@@ -294,24 +294,20 @@ static void EmitUnaryExpr(
     }
 }
 
-static void EmitExprWithPrecedence(EmitContext* context, RefPtr<ExpressionSyntaxNode> expr, int outerPrec)
+static void emitCallExpr(
+    EmitContext*                        context,
+    RefPtr<InvokeExpressionSyntaxNode>  callExpr,
+    int                                 outerPrec)
 {
-    bool needClose = false;
-    if (auto selectExpr = expr.As<SelectExpressionSyntaxNode>())
+    auto funcExpr = callExpr->FunctionExpr;
+    if (auto funcDeclRef = funcExpr.As<DeclRefExpr>())
     {
-        needClose = MaybeEmitParens(context, outerPrec, kPrecedence_Conditional);
-
-        EmitExprWithPrecedence(context, selectExpr->Arguments[0], kPrecedence_Conditional);
-        Emit(context, " ? ");
-        EmitExprWithPrecedence(context, selectExpr->Arguments[1], kPrecedence_Conditional);
-        Emit(context, " : ");
-        EmitExprWithPrecedence(context, selectExpr->Arguments[2], kPrecedence_Conditional);
-    }
-    else if (auto binExpr = expr.As<OperatorExpressionSyntaxNode>())
-    {
-        switch (binExpr->Operator)
+        auto funcDecl = funcDeclRef->declRef.GetDecl();
+        if (auto intrinsicModifier = funcDecl->FindModifier<IntrinsicModifier>())
         {
-#define CASE(NAME, OP) case Operator::NAME: EmitBinExpr(context, outerPrec, kPrecedence_##NAME, #OP, binExpr); break
+            switch (intrinsicModifier->op)
+            {
+#define CASE(NAME, OP) case IntrinsicOp::NAME: EmitBinExpr(context, outerPrec, kPrecedence_##NAME, #OP, callExpr); return
             CASE(Mul, *);
             CASE(Div, / );
             CASE(Mod, %);
@@ -342,61 +338,118 @@ static void EmitExprWithPrecedence(EmitContext* context, RefPtr<ExpressionSyntax
             CASE(AndAssign, &=);
             CASE(XorAssign, ^=);
 #undef CASE
-        case Operator::Sequence: EmitBinExpr(context, outerPrec, kPrecedence_Comma, ",", binExpr); break;
-#define PREFIX(NAME, OP) case Operator::NAME: EmitUnaryExpr(context, outerPrec, kPrecedence_Prefix, #OP, "", binExpr); break
-#define POSTFIX(NAME, OP) case Operator::NAME: EmitUnaryExpr(context, outerPrec, kPrecedence_Postfix, "", #OP, binExpr); break
+        case IntrinsicOp::Sequence: EmitBinExpr(context, outerPrec, kPrecedence_Comma, ",", callExpr); break;
+#define PREFIX(NAME, OP) case IntrinsicOp::NAME: EmitUnaryExpr(context, outerPrec, kPrecedence_Prefix, #OP, "", callExpr); break
+#define POSTFIX(NAME, OP) case IntrinsicOp::NAME: EmitUnaryExpr(context, outerPrec, kPrecedence_Postfix, "", #OP, callExpr); break
 
             PREFIX(Neg, -);
             PREFIX(Not, !);
             PREFIX(BitNot, ~);
             PREFIX(PreInc, ++);
             PREFIX(PreDec, --);
-            PREFIX(PostInc, ++);
-            PREFIX(PostDec, --);
+            POSTFIX(PostInc, ++);
+            POSTFIX(PostDec, --);
 #undef PREFIX
 #undef POSTFIX
-        default:
-            assert(!"unreachable");
-            break;
+
+            case IntrinsicOp::InnerProduct_Vector_Vector:
+                // HLSL allows `mul()` to be used as a synonym for `dot()`,
+                // so we need to translate to `dot` for GLSL
+                if (context->target == CodeGenTarget::GLSL)
+                {
+                    Emit(context, "dot(");
+                    EmitExpr(context, callExpr->Arguments[0]);
+                    Emit(context, ", ");
+                    EmitExpr(context, callExpr->Arguments[1]);
+                    Emit(context, ")");
+                    return;
+                }
+                break;
+
+            case IntrinsicOp::InnerProduct_Matrix_Matrix:
+            case IntrinsicOp::InnerProduct_Matrix_Vector:
+            case IntrinsicOp::InnerProduct_Vector_Matrix:
+                // HLSL exposes these with the `mul()` function, while GLSL uses ordinary
+                // `operator*`.
+                //
+                // The other critical detail here is that the way we handle matrix
+                // conventions requires that the operands to the product be swapped.
+                if (context->target == CodeGenTarget::GLSL)
+                {
+                    Emit(context, "((");
+                    EmitExpr(context, callExpr->Arguments[1]);
+                    Emit(context, ") * (");
+                    EmitExpr(context, callExpr->Arguments[0]);
+                    Emit(context, ")");
+                    return;
+                }
+                break;
+
+            default:
+                break;
+            }
         }
     }
-    else if (auto appExpr = expr.As<InvokeExpressionSyntaxNode>())
-    {
-        needClose = MaybeEmitParens(context, outerPrec, kPrecedence_Postifx);
 
-        auto funcExpr = appExpr->FunctionExpr;
-        if (auto funcDeclRefExpr = funcExpr.As<DeclRefExpr>())
+    // Fall through to default handling...
+
+    bool needClose = MaybeEmitParens(context, outerPrec, kPrecedence_Postfix);
+
+    if (auto funcDeclRefExpr = funcExpr.As<DeclRefExpr>())
+    {
+        auto declRef = funcDeclRefExpr->declRef;
+        if (auto ctorDeclRef = declRef.As<ConstructorDeclRef>())
         {
-            auto declRef = funcDeclRefExpr->declRef;
-            if (auto ctorDeclRef = declRef.As<ConstructorDeclRef>())
-            {
-                // We really want to emit a reference to the type begin constructed
-                EmitType(context, expr->Type);
-            }
-            else
-            {
-                // default case: just emit the decl ref
-                EmitExpr(context, funcExpr);
-            }
+            // We really want to emit a reference to the type begin constructed
+            EmitType(context, callExpr->Type);
         }
         else
         {
-            // default case: just emit the expression
-            EmitPostfixExpr(context, funcExpr);
+            // default case: just emit the decl ref
+            EmitExpr(context, funcExpr);
         }
+    }
+    else
+    {
+        // default case: just emit the expression
+        EmitPostfixExpr(context, funcExpr);
+    }
 
-        Emit(context, "(");
-        int argCount = appExpr->Arguments.Count();
-        for (int aa = 0; aa < argCount; ++aa)
-        {
-            if (aa != 0) Emit(context, ", ");
-            EmitExpr(context, appExpr->Arguments[aa]);
-        }
+    Emit(context, "(");
+    int argCount = callExpr->Arguments.Count();
+    for (int aa = 0; aa < argCount; ++aa)
+    {
+        if (aa != 0) Emit(context, ", ");
+        EmitExpr(context, callExpr->Arguments[aa]);
+    }
+    Emit(context, ")");
+
+    if (needClose)
+    {
         Emit(context, ")");
+    }
+}
+
+static void EmitExprWithPrecedence(EmitContext* context, RefPtr<ExpressionSyntaxNode> expr, int outerPrec)
+{
+    bool needClose = false;
+    if (auto selectExpr = expr.As<SelectExpressionSyntaxNode>())
+    {
+        needClose = MaybeEmitParens(context, outerPrec, kPrecedence_Conditional);
+
+        EmitExprWithPrecedence(context, selectExpr->Arguments[0], kPrecedence_Conditional);
+        Emit(context, " ? ");
+        EmitExprWithPrecedence(context, selectExpr->Arguments[1], kPrecedence_Conditional);
+        Emit(context, " : ");
+        EmitExprWithPrecedence(context, selectExpr->Arguments[2], kPrecedence_Conditional);
+    }
+    else if (auto callExpr = expr.As<InvokeExpressionSyntaxNode>())
+    {
+        emitCallExpr(context, callExpr, outerPrec);
     }
     else if (auto memberExpr = expr.As<MemberExpressionSyntaxNode>())
     {
-        needClose = MaybeEmitParens(context, outerPrec, kPrecedence_Postifx);
+        needClose = MaybeEmitParens(context, outerPrec, kPrecedence_Postfix);
 
         // TODO(tfoley): figure out a good way to reference
         // declarations that might be generic and/or might
@@ -412,7 +465,7 @@ static void EmitExprWithPrecedence(EmitContext* context, RefPtr<ExpressionSyntax
         }
         else
         {
-            EmitExprWithPrecedence(context, memberExpr->BaseExpression, kPrecedence_Postifx);
+            EmitExprWithPrecedence(context, memberExpr->BaseExpression, kPrecedence_Postfix);
             Emit(context, ".");
         }
 
@@ -420,9 +473,9 @@ static void EmitExprWithPrecedence(EmitContext* context, RefPtr<ExpressionSyntax
     }
     else if (auto swizExpr = expr.As<SwizzleExpr>())
     {
-        needClose = MaybeEmitParens(context, outerPrec, kPrecedence_Postifx);
+        needClose = MaybeEmitParens(context, outerPrec, kPrecedence_Postfix);
 
-        EmitExprWithPrecedence(context, swizExpr->base, kPrecedence_Postifx);
+        EmitExprWithPrecedence(context, swizExpr->base, kPrecedence_Postfix);
         Emit(context, ".");
         static const char* kComponentNames[] = { "x", "y", "z", "w" };
         int elementCount = swizExpr->elementCount;
@@ -433,9 +486,9 @@ static void EmitExprWithPrecedence(EmitContext* context, RefPtr<ExpressionSyntax
     }
     else if (auto indexExpr = expr.As<IndexExpressionSyntaxNode>())
     {
-        needClose = MaybeEmitParens(context, outerPrec, kPrecedence_Postifx);
+        needClose = MaybeEmitParens(context, outerPrec, kPrecedence_Postfix);
 
-        EmitExprWithPrecedence(context, indexExpr->BaseExpression, kPrecedence_Postifx);
+        EmitExprWithPrecedence(context, indexExpr->BaseExpression, kPrecedence_Postfix);
         Emit(context, "[");
         EmitExpr(context, indexExpr->IndexExpression);
         Emit(context, "]");
