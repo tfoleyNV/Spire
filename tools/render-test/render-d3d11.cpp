@@ -865,10 +865,10 @@ public:
 
     virtual ShaderProgram* compileProgram(ShaderCompileRequest const& request) override
     {
-        auto dxVertexShaderBlob     = compileHLSLShader(request.sourcePath, request.sourceText, request.vertexShader    .name,  request.vertexShader    .profile);
+        auto dxVertexShaderBlob     = compileHLSLShader(request.source.path, request.source.text, request.vertexShader    .name,  request.vertexShader    .profile);
         if(!dxVertexShaderBlob)     return nullptr;
 
-        auto dxFragmentShaderBlob   = compileHLSLShader(request.sourcePath, request.sourceText, request.fragmentShader  .name,  request.fragmentShader  .profile);
+        auto dxFragmentShaderBlob   = compileHLSLShader(request.source.path, request.source.text, request.fragmentShader  .name,  request.fragmentShader  .profile);
         if(!dxFragmentShaderBlob)   return nullptr;
 
         ID3D11VertexShader* dxVertexShader;

@@ -95,7 +95,7 @@ namespace Spire
                 }
             }
 
-            String emitGLSL(ExtraContext& context)
+            String emitGLSLForEntryPoint(ExtraContext& context, EntryPointOption const& entryPoint)
             {
                 if (context.getOptions().passThrough != PassThroughMode::None)
                 {
@@ -308,7 +308,7 @@ namespace Spire
                 ExtraContext&				context,
                 EntryPointOption const&		entryPoint)
             {
-                String rawGLSL = emitGLSL(context);
+                String rawGLSL = emitGLSLForEntryPoint(context, entryPoint);
 
                 static glslang_CompileFunc glslang_compile = nullptr;
                 if (!glslang_compile)
@@ -373,48 +373,27 @@ namespace Spire
                 return sb.ProduceString();
             }
 
-            TranslationUnitResult DoNewEmitLogic(ExtraContext& context)
+            // Do emit logic for a single entry point
+            EntryPointResult emitEntryPoint(ExtraContext& context, EntryPointOption& entryPoint)
             {
-                //
-                TranslationUnitResult result;
+                EntryPointResult result;
 
                 switch (context.getOptions().Target)
                 {
-                case CodeGenTarget::HLSL:
-                    {
-                        String hlslProgram = EmitHLSL(context);
-
-                        if (context.compileResult)
-                        {
-                            result.outputSource = hlslProgram;
-                        }
-                        else
-                        {
-                            fprintf(stdout, "%s", hlslProgram.begin());
-                        }
-                        return result;
-                    }
-                    break;
-
                 case CodeGenTarget::GLSL:
                     {
-                        String glsl = emitGLSL(context);
-
-                        if (context.compileResult)
-                        {
-                            result.outputSource = glsl;
-                        }
-                        else
-                        {
-                            fprintf(stdout, "%s", glsl.begin());
-                        }
-                        return result;
+                        String code = emitGLSLForEntryPoint(context, entryPoint);
+                        result.outputSource = code;
                     }
                     break;
 
                 case CodeGenTarget::DXBytecode:
                     {
-                        auto code = EmitDXBytecode(context);
+                        auto code = EmitDXBytecodeForEntryPoint(context, entryPoint);
+
+                        // TODO(tfoley): Need to figure out an appropriate interface
+                        // for returning binary code, in addition to source.
+#if 0
                         if (context.compileResult)
                         {
                             StringBuilder sb;
@@ -424,6 +403,7 @@ namespace Spire
                             result.outputSource = codeString;
                         }
                         else
+#endif
                         {
                             int col = 0;
                             for(auto ii : code)
@@ -448,22 +428,15 @@ namespace Spire
 
                 case CodeGenTarget::DXBytecodeAssembly:
                     {
-                        String hlslProgram = EmitDXBytecodeAssembly(context);
-
-                        // HACK(tfoley): just print it out since that is what people probably expect.
-                        // TODO: need a way to control where output gets routed across all possible targets.
-                        fprintf(stdout, "%s", hlslProgram.begin());
-                        return result;
+                        String code = EmitDXBytecodeAssemblyForEntryPoint(context, entryPoint);
+                        result.outputSource = code;
                     }
                     break;
 
                 case CodeGenTarget::SPIRVAssembly:
                     {
-                        String spirvAsm = emitSPIRVAssembly(context);
-
-                        // HACK(tfoley): same hack as for DXBC assembly
-                        fprintf(stdout, "%s", spirvAsm.begin());
-                        return result;
+                        String code = emitSPIRVAssemblyForEntryPoint(context, entryPoint);
+                        result.outputSource = code;
                     }
                     break;
 
@@ -473,6 +446,80 @@ namespace Spire
 
                 default:
                     throw "unimplemented";
+                }
+
+                return result;
+
+
+            }
+
+            TranslationUnitResult emitTranslationUnitEntryPoints(ExtraContext& context)
+            {
+                TranslationUnitResult result;
+
+                for (auto& entryPoint : context.getTranslationUnitOptions().entryPoints)
+                {
+                    EntryPointResult entryPointResult = emitEntryPoint(context, entryPoint);
+
+                    result.entryPoints.Add(entryPointResult);
+                }
+
+                // The result for the translation unit will just be the concatenation
+                // of the results for each entry point. This doesn't actually make
+                // much sense, but it is good enough for now.
+                StringBuilder sb;
+                for (auto& entryPointResult : result.entryPoints)
+                {
+                    sb << entryPointResult.outputSource;
+                }
+
+                result.outputSource = sb.ProduceString();
+
+                return result;
+            }
+
+            // Do emit logic for an entire translation unit, which might
+            // have zero or more entry points
+            TranslationUnitResult emitTranslationUnit(ExtraContext& context)
+            {
+                // Most of our code generation targets will require us
+                // to proceed through one entry point at a time, but
+                // in some cases we can emit an entire translation unit
+                // in one go.
+
+                switch (context.getOptions().Target)
+                {
+                default:
+                    // The default behavior is going to loop over all the entry
+                    // points, and then collect an aggregate result.
+                    return emitTranslationUnitEntryPoints(context);
+
+                case CodeGenTarget::HLSL:
+                    // When targetting HLSL, we can emit the entire translation unit
+                    // as a single HLSL program, and include all the entry points.
+                    {
+
+                        String hlsl = EmitHLSL(context);
+
+                        TranslationUnitResult result;
+                        result.outputSource = hlsl;
+                        return result;
+                    }
+                    break;
+                }
+            }
+
+            TranslationUnitResult DoNewEmitLogic(ExtraContext& context)
+            {
+                TranslationUnitResult result = emitTranslationUnit(context);
+
+                // As a bit of a hack, we include a mode where we just
+                // print things to standard output, so that we can see them
+                //
+                // TODO(tfoley): Is this path ever needed/used?
+                if( !context.compileResult )
+                {
+                    fprintf(stdout, "%s", result.outputSource.Buffer());
                 }
 
                 return result;

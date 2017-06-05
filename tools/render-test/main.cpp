@@ -85,11 +85,16 @@ Error initializeShaders(
     fclose(sourceFile);
     sourceText[sourceSize] = 0;
 
+    ShaderCompileRequest::SourceInfo sourceInfo;
+    sourceInfo.path = sourcePath;
+    sourceInfo.text = sourceText;
+
     ShaderCompileRequest compileRequest;
-    compileRequest.sourcePath               = sourcePath;
-    compileRequest.sourceText               = sourceText;
+    compileRequest.source                   = sourceInfo;
+    compileRequest.vertexShader.source      = sourceInfo;
     compileRequest.vertexShader.name        = vertexEntryPointName;
     compileRequest.vertexShader.profile     = vertexProfileName;
+    compileRequest.fragmentShader.source    = sourceInfo;
     compileRequest.fragmentShader.name      = fragmentEntryPointName;
     compileRequest.fragmentShader.profile   = fragmentProfileName;
 

@@ -119,7 +119,7 @@ namespace SpireLib
 
         RefPtr<ProgramLayout> mReflectionData;
 
-        List<String> mTranslationUnitSources;
+        CompileResult mResult;
 
         List<String> mDependencyFilePaths;
 
@@ -172,7 +172,6 @@ namespace SpireLib
 
 
         CompileUnit parseTranslationUnit(
-            Spire::Compiler::CompileResult& result,
             TranslationUnitOptions const&   translationUnitOptions)
         {
             auto& options = Options;
@@ -219,7 +218,7 @@ namespace SpireLib
                 auto tokens = preprocessSource(
                     source,
                     sourceFilePath,
-                    result.GetErrorWriter(),
+                    mResult.GetErrorWriter(),
                     &includeHandler,
                     preprocesorDefinitions,
                     translationUnitSyntax.Ptr());
@@ -228,7 +227,7 @@ namespace SpireLib
                     translationUnitSyntax.Ptr(),
                     options,
                     tokens,
-                    result.GetErrorWriter(),
+                    mResult.GetErrorWriter(),
                     sourceFilePath,
                     languageScope);
             }
@@ -239,8 +238,7 @@ namespace SpireLib
             return translationUnit;
         }
 
-        int executeCompilerDriverActions(
-            Spire::Compiler::CompileResult& result)
+        int executeCompilerDriverActions()
         {
             // If we are being asked to do pass-through, then we need to do that here...
             if (Options.passThrough != PassThroughMode::None)
@@ -281,16 +279,16 @@ namespace SpireLib
             // TODO: this may trigger the loading and/or compilation of additional modules.
             for( auto& translationUnitOptions : Options.translationUnits )
             {
-                auto translationUnit = parseTranslationUnit(result, translationUnitOptions);
+                auto translationUnit = parseTranslationUnit(translationUnitOptions);
                 mCollectionOfTranslationUnits->translationUnits.Add(translationUnit);
             }
-            if( result.GetErrorCount() != 0 )
+            if( mResult.GetErrorCount() != 0 )
                 return 1;
 
             // Now perform semantic checks, emit output, etc.
             mSession->compiler->Compile(
-                result, mCollectionOfTranslationUnits.Ptr(), Options);
-            if(result.GetErrorCount() != 0)
+                mResult, mCollectionOfTranslationUnits.Ptr(), Options);
+            if(mResult.GetErrorCount() != 0)
                 return 1;
 
             mReflectionData = mCollectionOfTranslationUnits->layout;
@@ -301,23 +299,14 @@ namespace SpireLib
         // Act as expected of the API-based compiler
         int executeAPIActions()
         {
-            Spire::Compiler::CompileResult result;
-            result.mSink = &mSink;
+            mResult.mSink = &mSink;
 
-            int err = executeCompilerDriverActions(result);
+            int err = executeCompilerDriverActions();
 
             mDiagnosticOutput = mSink.outputBuffer.ProduceString();
 
             if(mSink.GetErrorCount() != 0)
                 return mSink.GetErrorCount();
-
-            // Copy over the per-translation-unit results
-            int translationUnitCount = result.translationUnits.Count();
-            for( int tt = 0; tt < translationUnitCount; ++tt )
-            {
-                auto source = result.translationUnits[tt].outputSource;
-                mTranslationUnitSources.Add(source);
-            }
 
             return err;
         }
@@ -677,7 +666,17 @@ SPIRE_API char const* spGetTranslationUnitSource(
     int                     translationUnitIndex)
 {
     auto req = REQ(request);
-    return req->mTranslationUnitSources[translationUnitIndex].begin();
+    return req->mResult.translationUnits[translationUnitIndex].outputSource.Buffer();
+}
+
+SPIRE_API char const* spGetEntryPointSource(
+    SpireCompileRequest*    request,
+    int                     translationUnitIndex,
+    int                     entryPointIndex)
+{
+    auto req = REQ(request);
+    return req->mResult.translationUnits[translationUnitIndex].entryPoints[entryPointIndex].outputSource.Buffer();
+
 }
 
 // Reflection API

@@ -22,6 +22,9 @@ struct EmitContext
 
     // The target language we want to generate code for
     CodeGenTarget target;
+
+    // A set of words reserved by the target
+    Dictionary<String, String> reservedWords;
 };
 
 //
@@ -96,9 +99,50 @@ static void Emit(EmitContext* context, char const* text)
     Emit(context, text, text + strlen(text));
 }
 
-static void Emit(EmitContext* context, String const& text)
+static void emit(EmitContext* context, String const& text)
 {
     Emit(context, text.begin(), text.end());
+}
+
+static bool isReservedWord(EmitContext* context, String const& name)
+{
+    return context->reservedWords.TryGetValue(name) != nullptr;
+}
+
+static void emitName(EmitContext* context, String const& inName)
+{
+    String name = inName;
+
+    // By default, we would like to emit a name in the generated
+    // code exactly as it appeared in the soriginal program.
+    // When that isn't possible, we'd like to emit a name as
+    // close to the original as possible (to ensure that existing
+    // debugging tools still work reasonably well).
+    //
+    // One reason why a name might not be allowed as-is is that
+    // it could collide with a reserved word in the target language.
+    // Another reason is that it might not follow a naming convention
+    // imposed by the target (e.g., in GLSL names starting with
+    // `gl_` or containing `__` are reserved).
+    //
+    // Given a name that should not be allowed, we want to
+    // change it to a name that *is* allowed. e.g., by adding
+    // `_` to the end of a reserved word.
+    //
+    // The next problem this creates is that the modified name
+    // could not collide with an existing use of the same
+    // (valid) name.
+    //
+    // For now we are going to solve this problem in a simple
+    // and ad hoc fashion, but longer term we'll want to do
+    // something sytematic.
+
+    if (isReservedWord(context, name))
+    {
+        name = name + "_";
+    }
+
+    emit(context, name);
 }
 
 static void Emit(EmitContext* context, UInt value)
@@ -372,7 +416,7 @@ static void EmitExprWithPrecedence(EmitContext* context, RefPtr<ExpressionSyntax
             Emit(context, ".");
         }
 
-        Emit(context, memberExpr->declRef.GetName());
+        emitName(context, memberExpr->declRef.GetName());
     }
     else if (auto swizExpr = expr.As<SwizzleExpr>())
     {
@@ -415,7 +459,7 @@ static void EmitExprWithPrecedence(EmitContext* context, RefPtr<ExpressionSyntax
         }
         else
         {
-            Emit(context, varExpr->Variable);
+            emitName(context, varExpr->Variable);
         }
     }
     else if (auto derefExpr = expr.As<DerefExpr>())
@@ -534,7 +578,7 @@ static void EmitDeclarator(EmitContext* context, EDeclarator* declarator)
     switch (declarator->flavor)
     {
     case EDeclarator::Flavor::Name:
-        Emit(context, declarator->name);
+        emitName(context, declarator->name);
         break;
 
     case EDeclarator::Flavor::Array:
@@ -1051,7 +1095,7 @@ static void emitTokenWithLocation(EmitContext* context, Token const& token)
     }
 
     // Emit the raw textual content of the token
-    Emit(context, token.Content);
+    emit(context, token.Content);
 }
 
 static void EmitUnparsedStmt(EmitContext* context, RefPtr<UnparsedStmt> stmt)
@@ -1206,7 +1250,7 @@ static void EmitDeclRef(EmitContext* context, DeclRef declRef)
     // TODO: need to qualify a declaration name based on parent scopes/declarations
 
     // Emit the name for the declaration itself
-    Emit(context, declRef.GetName());
+    emitName(context, declRef.GetName());
 
     // If the declaration is nested directly in a generic, then
     // we need to output the generic arguments here
@@ -1252,11 +1296,11 @@ static void EmitModifiers(EmitContext* context, RefPtr<Decl> decl)
             Emit(context, ", ");
         }
 
-        Emit(context, mod->nameToken.Content);
+        emit(context, mod->nameToken.Content);
         if(mod->valToken.Type != TokenType::Unknown)
         {
             Emit(context, " = ");
-            Emit(context, mod->valToken.Content);
+            emit(context, mod->valToken.Content);
         }
     }
     if(anyLayout)
@@ -1304,7 +1348,7 @@ static void EmitModifiers(EmitContext* context, RefPtr<Decl> decl)
         else if (auto uncheckedAttr = mod.As<HLSLAttribute>())
         {
             Emit(context, "[");
-            Emit(context, uncheckedAttr->nameToken.Content);
+            emit(context, uncheckedAttr->nameToken.Content);
             auto& args = uncheckedAttr->args;
             auto argCount = args.Count();
             if (argCount != 0)
@@ -1322,7 +1366,7 @@ static void EmitModifiers(EmitContext* context, RefPtr<Decl> decl)
 
         else if(auto simpleModifier = mod.As<SimpleModifier>())
         {
-            Emit(context, simpleModifier->nameToken.Content);
+            emit(context, simpleModifier->nameToken.Content);
             Emit(context, " ");
         }
 
@@ -1349,7 +1393,7 @@ static void EmitSemantic(EmitContext* context, RefPtr<HLSLSemantic> semantic, ES
     if (auto simple = semantic.As<HLSLSimpleSemantic>())
     {
         Emit(context, ": ");
-        Emit(context, simple->name.Content);
+        emit(context, simple->name.Content);
     }
     else if(auto registerSemantic = semantic.As<HLSLRegisterSemantic>())
     {
@@ -1391,6 +1435,16 @@ static void EmitSemantic(EmitContext* context, RefPtr<HLSLSemantic> semantic, ES
 
 static void EmitSemantics(EmitContext* context, RefPtr<Decl> decl, ESemanticMask mask = kESemanticMask_Default )
 {
+    // Don't emit semantics if we aren't translating down to HLSL
+    switch (context->target)
+    {
+    case CodeGenTarget::HLSL:
+        break;
+
+    default:
+        return;
+    }
+
     for (auto mod = decl->modifiers.first; mod; mod = mod->next)
     {
         auto semantic = mod.As<HLSLSemantic>();
@@ -1446,7 +1500,7 @@ static void EmitStructDecl(EmitContext* context, RefPtr<StructSyntaxNode> decl)
         return;
 
     Emit(context, "struct ");
-    Emit(context, decl->Name.Content);
+    emitName(context, decl->Name.Content);
     Emit(context, "\n{\n");
 
     // TODO(tfoley): Need to hoist members functions, etc. out to global scope
@@ -1610,7 +1664,7 @@ static void emitHLSLParameterBlockDecl(
     if( auto reflectionNameModifier = varDecl->FindModifier<ParameterBlockReflectionName>() )
     {
         Emit(context, " ");
-        Emit(context, reflectionNameModifier->nameToken.Content);
+        emitName(context, reflectionNameModifier->nameToken.Content);
     }
 
     EmitSemantics(context, varDecl, kESemanticMask_None);
@@ -1762,7 +1816,7 @@ static void emitGLSLParameterBlockDecl(
     if( auto reflectionNameModifier = varDecl->FindModifier<ParameterBlockReflectionName>() )
     {
         Emit(context, " ");
-        Emit(context, reflectionNameModifier->nameToken.Content);
+        emitName(context, reflectionNameModifier->nameToken.Content);
     }
 
     Emit(context, "\n{\n");
@@ -1788,7 +1842,7 @@ static void emitGLSLParameterBlockDecl(
     if( varDecl->Name.Type != TokenType::Unknown )
     {
         Emit(context, " ");
-        Emit(context, varDecl->Name.Content);
+        emitName(context, varDecl->Name.Content);
     }
 
     Emit(context, ";\n");
@@ -1881,9 +1935,9 @@ static void EmitFuncDecl(EmitContext* context, RefPtr<FunctionSyntaxNode> decl)
     }
 }
 
-static void emitGLSLPreprocessorDirective(
-    EmitContext*                        context,
-    RefPtr<GLSLPreprocessorDirective>   directive)
+static void emitGLSLPreprocessorDirectives(
+    EmitContext*                context,
+    RefPtr<ProgramSyntaxNode>   program)
 {
     switch(context->target)
     {
@@ -1895,37 +1949,46 @@ static void emitGLSLPreprocessorDirective(
         break;
     }
 
-    if( auto versionDirective = directive.As<GLSLVersionDirective>() )
+    if( auto versionDirective = program->FindModifier<GLSLVersionDirective>() )
     {
         // TODO(tfoley): Emit an appropriate `#line` directive...
 
         Emit(context, "#version ");
-        Emit(context, versionDirective->versionNumberToken.Content);
+        emit(context, versionDirective->versionNumberToken.Content);
         if(versionDirective->glslProfileToken.Type != TokenType::Unknown)
         {
             Emit(context, " ");
-            Emit(context, versionDirective->glslProfileToken.Content);
+            emit(context, versionDirective->glslProfileToken.Content);
         }
         Emit(context, "\n");
     }
-    else if( auto extensionDirective = directive.As<GLSLExtensionDirective>() )
+    else
+    {
+        // No explicit version was given (probably because we are cross-compiling).
+        //
+        // We need to pick an appropriate version, ideally based on the features
+        // that the shader ends up using.
+        //
+        // For now we just fall back to a reasonably recent version.
+
+        Emit(context, "#version 420\n");
+    }
+
+    // TODO: when cross-compiling we may need to output additional `#extension` directives
+    // based on the features that we have used.
+
+    for( auto extensionDirective :  program->GetModifiersOfType<GLSLExtensionDirective>() )
     {
         // TODO(tfoley): Emit an appropriate `#line` directive...
 
         Emit(context, "#extension ");
-        Emit(context, extensionDirective->extensionNameToken.Content);
+        emit(context, extensionDirective->extensionNameToken.Content);
         Emit(context, " : ");
-        Emit(context, extensionDirective->dispositionToken.Content);
+        emit(context, extensionDirective->dispositionToken.Content);
         Emit(context, "\n");
     }
-    // TODO: handle other cases...
-    else
-    {
-    }
 
-    // TODO(tfoley): We really need to emit a `#version` directive unconditionally,
-    // and we might need to emit `#extension` during cross-compilation, if we
-    // are making use of extended functionality...
+    // TODO: handle other cases...
 }
 
 static void EmitProgram(
@@ -1934,16 +1997,14 @@ static void EmitProgram(
     RefPtr<ProgramLayout>       programLayout)
 {
     // There may be global-scope modifiers that we should emit now
-    for(auto modifier : program->GetModifiersOfType<GLSLPreprocessorDirective>())
-    {
-        emitGLSLPreprocessorDirective(context, modifier);
-    }
+    emitGLSLPreprocessorDirectives(context, program);
 
     switch(context->target)
     {
     case CodeGenTarget::GLSL:
         {
-            Emit(context, "#extension GL_GOOGLE_cpp_style_line_directive : require\n");
+            // TODO(tfoley): Need a plan for how to enable/disable these as needed...
+//            Emit(context, "#extension GL_GOOGLE_cpp_style_line_directive : require\n");
         }
         break;
 
@@ -2073,6 +2134,161 @@ static void EmitDecl(EmitContext* context, RefPtr<DeclBase> declBase)
     }
 }
 
+static void registerReservedWord(
+    EmitContext*    context,
+    String const&   name)
+{
+    context->reservedWords.Add(name, name);
+}
+
+static void registerReservedWords(
+    EmitContext*    context)
+{
+#define WORD(NAME) registerReservedWord(context, #NAME)
+
+    switch (context->target)
+    {
+    case CodeGenTarget::GLSL:
+        WORD(attribute);
+        WORD(const);
+        WORD(uniform);
+        WORD(varying);
+        WORD(buffer);
+
+        WORD(shared);
+        WORD(coherent);
+        WORD(volatile);
+        WORD(restrict);
+        WORD(readonly);
+        WORD(writeonly);
+        WORD(atomic_unit);
+        WORD(layout);
+        WORD(centroid);
+        WORD(flat);
+        WORD(smooth);
+        WORD(noperspective);
+        WORD(patch);
+        WORD(sample);
+        WORD(break);
+        WORD(continue);
+        WORD(do);
+        WORD(for);
+        WORD(while);
+        WORD(switch);
+        WORD(case);
+        WORD(default);
+        WORD(if);
+        WORD(else);
+        WORD(subroutine);
+        WORD(in);
+        WORD(out);
+        WORD(inout);
+        WORD(float);
+        WORD(double);
+        WORD(int);
+        WORD(void);
+        WORD(bool);
+        WORD(true);
+        WORD(false);
+        WORD(invariant);
+        WORD(precise);
+        WORD(discard);
+        WORD(return);
+
+        WORD(lowp);
+        WORD(mediump);
+        WORD(highp);
+        WORD(precision);
+        WORD(struct);
+        WORD(uint);
+
+        WORD(common);
+        WORD(partition);
+        WORD(active);
+        WORD(asm);
+        WORD(class);
+        WORD(union);
+        WORD(enum);
+        WORD(typedef);
+        WORD(template);
+        WORD(this);
+        WORD(resource);
+
+        WORD(goto);
+        WORD(inline);
+        WORD(noinline);
+        WORD(public);
+        WORD(static);
+        WORD(extern);
+        WORD(external);
+        WORD(interface);
+        WORD(long);
+        WORD(short);
+        WORD(half);
+        WORD(fixed);
+        WORD(unsigned);
+        WORD(superp);
+        WORD(input);
+        WORD(output);
+        WORD(filter);
+        WORD(sizeof);
+        WORD(cast);
+        WORD(namespace);
+        WORD(using);
+
+#define CASE(NAME) \
+    WORD(NAME ## 2); WORD(NAME ## 3); WORD(NAME ## 4)
+
+        CASE(mat);
+        CASE(dmat);
+        CASE(mat2x);
+        CASE(mat3x);
+        CASE(mat4x);
+        CASE(dmat2x);
+        CASE(dmat3x);
+        CASE(dmat4x);
+        CASE(vec);
+        CASE(ivec);
+        CASE(bvec);
+        CASE(dvec);
+        CASE(uvec);
+        CASE(hvec);
+        CASE(fvec);
+
+#undef CASE
+
+#define CASE(NAME)          \
+    WORD(NAME ## 1D);       \
+    WORD(NAME ## 2D);       \
+    WORD(NAME ## 3D);       \
+    WORD(NAME ## Cube);     \
+    WORD(NAME ## 1DArray);  \
+    WORD(NAME ## 2DArray);  \
+    WORD(NAME ## 3DArray);  \
+    WORD(NAME ## CubeArray);\
+    WORD(NAME ## 2DMS);     \
+    WORD(NAME ## 2DMSArray) \
+    /* end */
+
+#define CASE2(NAME)     \
+    CASE(NAME);         \
+    CASE(i ## NAME);    \
+    CASE(u ## NAME)     \
+    /* end */
+
+    CASE2(sampler);
+    CASE2(image);
+    CASE2(texture);
+
+#undef CASE2
+#undef CASE
+        break;
+
+    default:
+        break;
+    }
+}
+
 String emitProgram(
     ProgramSyntaxNode*  program,
     ProgramLayout*      programLayout,
@@ -2082,6 +2298,8 @@ String emitProgram(
 
     EmitContext context;
     context.target = target;
+
+    registerReservedWords(&context);
 
     EmitProgram(&context, program, programLayout);
 

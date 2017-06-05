@@ -303,6 +303,15 @@ extern "C"
         SpireCompileRequest*    request,
         int                     translationUnitIndex);
 
+    /** Get the output code associated with a specific entry point.
+
+    The lifetime of the output pointer is the same as `request`.
+    */
+    SPIRE_API char const* spGetEntryPointSource(
+        SpireCompileRequest*    request,
+        int                     translationUnitIndex,
+        int                     entryPointIndex);
+
 
     /* Note(tfoley): working on new reflection interface...
     */

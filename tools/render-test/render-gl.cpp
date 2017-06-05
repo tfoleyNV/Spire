@@ -165,8 +165,8 @@ public:
     {
         auto programID = glCreateProgram();
 
-        auto vertexShaderID   = loadShader(GL_VERTEX_SHADER,   request.vertexShader  .sourceText);
-        auto fragmentShaderID = loadShader(GL_FRAGMENT_SHADER, request.fragmentShader.sourceText);
+        auto vertexShaderID   = loadShader(GL_VERTEX_SHADER,   request.vertexShader  .source.text);
+        auto fragmentShaderID = loadShader(GL_FRAGMENT_SHADER, request.fragmentShader.source.text);
 
         glAttachShader(programID, vertexShaderID);
         glAttachShader(programID, fragmentShaderID);

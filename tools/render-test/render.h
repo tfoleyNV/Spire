@@ -12,19 +12,23 @@ typedef struct ShaderProgram    ShaderProgram;
 
 struct ShaderCompileRequest
 {
+    struct SourceInfo
+    {
+        char const* path;
+        char const* text;
+    };
+
     struct EntryPoint
     {
         char const* name;
         char const* profile;
 
-        char const* sourcePath;
-        char const* sourceText;
+        SourceInfo  source;
     };
 
-    char const* sourcePath;
-    char const* sourceText;
-    EntryPoint  vertexShader;
-    EntryPoint  fragmentShader;
+    SourceInfo source;
+    EntryPoint vertexShader;
+    EntryPoint fragmentShader;
 };
 
 class ShaderCompiler

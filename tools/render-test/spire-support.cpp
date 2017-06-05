@@ -19,10 +19,10 @@ struct SpireShaderCompilerWrapper : public ShaderCompiler
 
         int translationUnitIndex = spAddTranslationUnit(spireRequest, SPIRE_SOURCE_LANGUAGE_SPIRE, nullptr);
 
-        spAddTranslationUnitSourceString(spireRequest, translationUnitIndex, request.sourcePath, request.sourceText);
+        spAddTranslationUnitSourceString(spireRequest, translationUnitIndex, request.source.path, request.source.text);
 
-        spAddTranslationUnitEntryPoint(spireRequest, translationUnitIndex, request.vertexShader.name,   spFindProfile(spireSession, request.vertexShader.profile));
-        spAddTranslationUnitEntryPoint(spireRequest, translationUnitIndex, request.fragmentShader.name, spFindProfile(spireSession, request.fragmentShader.profile));
+        int vertexEntryPoint = spAddTranslationUnitEntryPoint(spireRequest, translationUnitIndex, request.vertexShader.name,   spFindProfile(spireSession, request.vertexShader.profile));
+        int fragmentEntryPoint = spAddTranslationUnitEntryPoint(spireRequest, translationUnitIndex, request.fragmentShader.name, spFindProfile(spireSession, request.fragmentShader.profile));
 
         int compileErr = spCompile(spireRequest);
         if(auto diagnostics = spGetDiagnosticOutput(spireRequest))
@@ -37,9 +37,14 @@ struct SpireShaderCompilerWrapper : public ShaderCompiler
         }
 
         char const* translatedCode = spGetTranslationUnitSource(spireRequest, translationUnitIndex);
+        char const* vertexCode = spGetEntryPointSource(spireRequest, translationUnitIndex, vertexEntryPoint);
+        char const* fragmentCode = spGetEntryPointSource(spireRequest, translationUnitIndex, fragmentEntryPoint);
 
         ShaderCompileRequest innerRequest = request;
-        innerRequest.sourceText = translatedCode;
+        innerRequest.source.text = translatedCode;
+        innerRequest.vertexShader.source.text = vertexCode;
+        innerRequest.fragmentShader.source.text = fragmentCode;
+
 
         auto result = innerCompiler->compileProgram(innerRequest);
 

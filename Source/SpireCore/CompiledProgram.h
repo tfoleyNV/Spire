@@ -35,9 +35,15 @@ namespace Spire
 
         void IndentString(StringBuilder & sb, String src);
 
+        struct EntryPointResult
+        {
+            String outputSource;
+        };
+
         struct TranslationUnitResult
         {
             String outputSource;
+            List<EntryPointResult> entryPoints;
         };
 
         class CompileResult
