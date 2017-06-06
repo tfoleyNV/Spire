@@ -659,6 +659,13 @@ spGetDependencyFilePath(
     return req->mDependencyFilePaths[index].begin();
 }
 
+SPIRE_API int
+spGetTranslationUnitCount(
+    SpireCompileRequest*    request)
+{
+    auto req = REQ(request);
+    return req->mResult.translationUnits.Count();
+}
 
 // Get the output code associated with a specific translation unit
 SPIRE_API char const* spGetTranslationUnitSource(

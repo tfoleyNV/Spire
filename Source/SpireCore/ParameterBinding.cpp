@@ -278,19 +278,26 @@ getTypeLayoutForGlobalShaderParameter_GLSL(
 {
     auto rules = context->layoutRules;
     auto type = varDecl->getType();
+
     // A GLSL shader parameter will be marked with
     // a qualifier to match the boundary it uses
+    //
+    // In the case of a parameter block, we will have
+    // consumed this qualifier as part of parsing,
+    // so that it won't be present on the declaration
+    // any more. As such we also inspect the type
+    // of the variable.
 
     // TODO(tfoley): We have multiple variations of
     // the `uniform` modifier right now, and that
     // needs to get fixed...
-    if(varDecl->HasModifier<HLSLUniformModifier>())
+    if(varDecl->HasModifier<HLSLUniformModifier>() || type->As<ConstantBufferType>())
         return CreateTypeLayout(type, rules->getConstantBufferRules());
 
-    if(varDecl->HasModifier<GLSLBufferModifier>())
+    if(varDecl->HasModifier<GLSLBufferModifier>() || type->As<GLSLShaderStorageBufferType>())
         return CreateTypeLayout(type, rules->getShaderStorageBufferRules());
 
-    if( varDecl->HasModifier<InModifier>() )
+    if( varDecl->HasModifier<InModifier>() || type->As<GLSLInputParameterBlockType>())
     {
         // Special case to handle "arrayed" shader inputs, as used
         // for Geometry and Hull input
@@ -317,7 +324,7 @@ getTypeLayoutForGlobalShaderParameter_GLSL(
         return CreateTypeLayout(type, rules->getVaryingInputRules());
     }
 
-    if( varDecl->HasModifier<OutModifier>() )
+    if( varDecl->HasModifier<OutModifier>() || type->As<GLSLOutputParameterBlockType>())
     {
         // Special case to handle "arrayed" shader outputs, as used
         // for Hull Shader output

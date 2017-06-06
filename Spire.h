@@ -294,6 +294,11 @@ extern "C"
         SpireCompileRequest*    request,
         int                     index);
 
+    /** Get the number of tranlsation units associated with the compilation request
+    */
+    SPIRE_API int
+    spGetTranslationUnitCount(
+        SpireCompileRequest*    request);
 
     /** Get the output code associated with a specific translation unit
 
