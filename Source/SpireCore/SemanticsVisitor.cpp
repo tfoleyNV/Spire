@@ -520,10 +520,30 @@ namespace Spire
             typedef unsigned int ConversionCost;
             enum : ConversionCost
             {
+                // No conversion at all
                 kConversionCost_None = 0,
-                kConversionCost_Promotion = 10,
-                kConversionCost_Conversion = 20,
 
+                // Conversion that is lossless and keeps the "kind" of the value the same
+                kConversionCost_RankPromotion = 100,
+
+                // Conversions that are lossless, but change "kind"
+                kConversionCost_UnsignedToSignedPromotion = 200,
+
+                // Conversion from signed->unsigned integer of same or greater size
+                kConversionCost_SignedToUnsignedConversion = 300,
+
+                // Cost of converting an integer to a floating-point type
+                kConversionCost_IntegerToFloatConversion = 400,
+
+                // Catch-all for conversions that should be discouraged
+                // (i.e., that really shouldn't be made implicitly)
+                //
+                // TODO: make these conversions not be allowed implicitly in "Spire mode"
+                kConversionCost_GeneralConversion = 900,
+
+                // Additional conversion cost to add when promoting from a scalar to
+                // a vector (this will be added to the cost, if any, of converting
+                // the element type of the vector)
                 kConversionCost_ScalarToVector = 1,
             };
 
@@ -638,18 +658,68 @@ namespace Spire
                         auto toInfo = GetBaseTypeConversionInfo(toBasicType->BaseType);
                         auto fromInfo = GetBaseTypeConversionInfo(fromBasicType->BaseType);
 
+                        // We expect identical types to have been dealt with already.
+                        assert(toInfo.kind != fromInfo.kind || toInfo.rank != fromInfo.rank);
+
                         if (outToExpr)
                             *outToExpr = CreateImplicitCastExpr(toType, fromExpr);
 
+
                         if (outCost)
                         {
-                            if (toInfo.kind == fromInfo.kind && toInfo.rank > fromInfo.rank)
+                            // Conversions within the same kind are easist to handle
+                            if (toInfo.kind == fromInfo.kind)
                             {
-                                *outCost = kConversionCost_Promotion;
+                                // If we are converting to a "larger" type, then
+                                // we are doing a lossless promotion, and otherwise
+                                // we are doing a demotion.
+                                if( toInfo.rank > fromInfo.rank)
+                                    *outCost = kConversionCost_RankPromotion;
+                                else
+                                    *outCost = kConversionCost_GeneralConversion;
                             }
+                            // If we are converting from an unsigned integer type to
+                            // a signed integer type that is guaranteed to be larger,
+                            // then that is also a lossless promotion.
+                            else if(toInfo.kind == kBaseTypeConversionKind_Signed
+                                && fromInfo.kind == kBaseTypeConversionKind_Unsigned
+                                && toInfo.rank > fromInfo.rank)
+                            {
+                                // TODO: probably need to weed out cases involving
+                                // "pointer-sized" integers if these are treated
+                                // as distinct from 32- and 64-bit types.
+                                // E.g., there is no guarantee that conversion
+                                // from 32-bit unsigned to pointer-sized signed
+                                // is lossless, because pointers could be 32-bit,
+                                // and the same applies for conversion from
+                                // `uintptr` to `uint64`.
+                                *outCost = kConversionCost_UnsignedToSignedPromotion;
+                            }
+                            // Conversion from signed to unsigned is always lossy,
+                            // but it is preferred over conversions from unsigned
+                            // to signed, for same-size types.
+                            else if(toInfo.kind == kBaseTypeConversionKind_Unsigned
+                                && fromInfo.kind == kBaseTypeConversionKind_Signed
+                                && toInfo.rank >= fromInfo.rank)
+                            {
+                                *outCost = kConversionCost_SignedToUnsignedConversion;
+                            }
+                            // Conversion from an integer to a floating-point type
+                            // is never considered a promotion (even when the value
+                            // would fit in the available bits).
+                            // If the destination type is at least 32 bits we consider
+                            // this a reasonably good conversion, though.
+                            else if (toInfo.kind == kBaseTypeConversionKind_Float
+                                && toInfo.rank >= kBaseTypeConversionRank_Int32)
+                            {
+                                *outCost = kConversionCost_IntegerToFloatConversion;
+                            }
+                            // All other cases are considered as "general" conversions,
+                            // where we don't consider any one conversion better than
+                            // any others.
                             else
                             {
-                                *outCost = kConversionCost_Conversion;
+                                *outCost = kConversionCost_GeneralConversion;
                             }
                         }
 
@@ -3755,6 +3825,9 @@ namespace Spire
                     for (auto candidate : context.bestCandidates)
                     {
                         String declString = getDeclSignatureString(candidate.item);
+
+                        declString = declString + "[" + String(candidate.conversionCostSum) + "]";
+
                         getSink()->diagnose(candidate.item.declRef, Diagnostics::overloadCandidate, declString);
 
                         candidateIndex++;
