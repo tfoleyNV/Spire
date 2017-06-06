@@ -503,6 +503,19 @@ namespace Spire
 
                         TranslationUnitResult result;
                         result.outputSource = hlsl;
+
+                        // Because the user might ask for per-entry-point source,
+                        // we will just attach the same string as the result for
+                        // each entry point.
+                        for( auto& entryPoint : context.getTranslationUnitOptions().entryPoints )
+                        {
+                            (void)entryPoint;
+
+                            EntryPointResult entryPointResult;
+                            entryPointResult.outputSource = hlsl;
+                            result.entryPoints.Add(entryPointResult);
+                        }
+
                         return result;
                     }
                     break;
