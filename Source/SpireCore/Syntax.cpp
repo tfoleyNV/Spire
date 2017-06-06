@@ -35,6 +35,9 @@ namespace Spire
             case Compiler::BaseType::UInt:
                 res.Append("uint");
                 break;
+            case Compiler::BaseType::UInt64:
+                res.Append("uint64_t");
+                break;
             case Compiler::BaseType::Bool:
                 res.Append("bool");
                 break;

@@ -853,8 +853,8 @@ namespace Spire
                 { IntrinsicOp::Lsh,     "<<",   INT_MASK },
                 { IntrinsicOp::Rsh,     ">>",   INT_MASK },
 
-                { IntrinsicOp::Eql,     "==",   COMPARISON },
-                { IntrinsicOp::Neq,     "!=",   COMPARISON },
+                { IntrinsicOp::Eql,     "==",   ANY_MASK | COMPARISON },
+                { IntrinsicOp::Neq,     "!=",   ANY_MASK | COMPARISON },
 
                 { IntrinsicOp::Greater, ">",    ARITHMETIC_MASK | COMPARISON },
                 { IntrinsicOp::Less,    "<",    ARITHMETIC_MASK | COMPARISON },
