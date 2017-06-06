@@ -610,6 +610,10 @@ namespace Spire
                 CASE(lineadj,       HLSLLineAdjModifier);
                 CASE(triangleadj,   HLSLTriangleAdjModifier);
 
+                // Modifiers for unary operator declarations
+                CASE(__prefix,   PrefixModifier);
+                CASE(__postfix,  PostfixModifier);
+
                 #undef CASE
 
                 else if (AdvanceIf(parser, "__intrinsic"))
@@ -2818,7 +2822,7 @@ namespace Spire
                     auto left = ParseExpression(Precedence(level + 1));
                     while (GetOpLevel(this, tokenReader.PeekTokenType()) == level)
                     {
-                        RefPtr<OperatorExpressionSyntaxNode> tmp = new InfixExpressionSyntaxNode();
+                        RefPtr<OperatorExpressionSyntaxNode> tmp = new InfixExpr();
                         tmp->FunctionExpr = parseOperator(this);
 
                         tmp->Arguments.Add(left);
@@ -2833,7 +2837,7 @@ namespace Spire
                     auto left = ParseExpression(Precedence(level + 1));
                     if (GetOpLevel(this, tokenReader.PeekTokenType()) == level)
                     {
-                        RefPtr<OperatorExpressionSyntaxNode> tmp = new InfixExpressionSyntaxNode();
+                        RefPtr<OperatorExpressionSyntaxNode> tmp = new InfixExpr();
                         tmp->Arguments.Add(left);
                         FillPosition(tmp.Ptr());
                         tmp->FunctionExpr = parseOperator(this);
@@ -2854,7 +2858,7 @@ namespace Spire
                 LookAheadToken(TokenType::OpBitNot) ||
                 LookAheadToken(TokenType::OpSub))
             {
-                RefPtr<OperatorExpressionSyntaxNode> unaryExpr = new PrefixExpressionSyntaxNode();
+                RefPtr<OperatorExpressionSyntaxNode> unaryExpr = new PrefixExpr();
                 FillPosition(unaryExpr.Ptr());
                 unaryExpr->FunctionExpr = parseOperator(this);
                 unaryExpr->Arguments.Add(ParseLeafExpression());
@@ -2957,7 +2961,7 @@ namespace Spire
             {
                 if (LookAheadToken(TokenType::OpInc))
                 {
-                    RefPtr<OperatorExpressionSyntaxNode> unaryExpr = new PostfixExpressionSyntaxNode();
+                    RefPtr<OperatorExpressionSyntaxNode> unaryExpr = new PostfixExpr();
                     FillPosition(unaryExpr.Ptr());
                     unaryExpr->FunctionExpr = parseOperator(this);
                     unaryExpr->Arguments.Add(rs);

@@ -58,6 +58,8 @@ namespace Spire
         SIMPLE_MODIFIER(Input);
         SIMPLE_MODIFIER(Transparent);
         SIMPLE_MODIFIER(FromStdLib);
+        SIMPLE_MODIFIER(Prefix);
+        SIMPLE_MODIFIER(Postfix);
 
 #undef SIMPLE_MODIFIER
 
@@ -1913,9 +1915,9 @@ namespace Spire
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
         };
 
-        class InfixExpressionSyntaxNode   : public OperatorExpressionSyntaxNode {};
-        class PrefixExpressionSyntaxNode  : public OperatorExpressionSyntaxNode {};
-        class PostfixExpressionSyntaxNode : public OperatorExpressionSyntaxNode {};
+        class InfixExpr   : public OperatorExpressionSyntaxNode {};
+        class PrefixExpr  : public OperatorExpressionSyntaxNode {};
+        class PostfixExpr : public OperatorExpressionSyntaxNode {};
 
         class IndexExpressionSyntaxNode : public ExpressionSyntaxNode
         {

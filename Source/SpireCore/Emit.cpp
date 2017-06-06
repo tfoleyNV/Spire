@@ -551,7 +551,7 @@ static void EmitExprWithPrecedence(EmitContext* context, RefPtr<ExpressionSyntax
             EmitType(context, castExpr->Type);
             Emit(context, "(");
             EmitExpr(context, castExpr->Expression);
-            Emit(context, ") ");
+            Emit(context, ")");
             break;
 
         default:
@@ -561,8 +561,9 @@ static void EmitExprWithPrecedence(EmitContext* context, RefPtr<ExpressionSyntax
 
             Emit(context, "(");
             EmitType(context, castExpr->Type);
-            Emit(context, ") ");
+            Emit(context, ")(");
             EmitExpr(context, castExpr->Expression);
+            Emit(context, ")");
             break;
         }
 

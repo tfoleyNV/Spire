@@ -271,6 +271,10 @@ DIAGNOSTIC(39999, Error, ambiguousReference, "amiguous reference to '$0'");
 
 DIAGNOSTIC(39999, Error, declarationDidntDeclareAnything, "declaration does not declare anything");
 
+
+DIAGNOSTIC(39999, Error, expectedPrefixOperator, "function called as prefix operator was not declared `__prefix`")
+DIAGNOSTIC(39999, Error, expectedPostfixOperator, "function called as postfix operator was not declared `__postfix`")
+
 //
 // 4xxxx - IL code generation.
 //

@@ -2585,6 +2585,7 @@ namespace Spire
                     GenericArgumentInferenceFailed,
                     Unchecked,
                     ArityChecked,
+                    FixityChecked,
                     TypeChecked,
                     Appicable,
                 };
@@ -2734,6 +2735,48 @@ namespace Spire
                 return false;
             }
 
+            bool TryCheckOverloadCandidateFixity(
+                OverloadResolveContext&		context,
+                OverloadCandidate const&	candidate)
+            {
+                auto expr = context.appExpr;
+
+                auto decl = candidate.item.declRef.decl;
+
+                if(auto prefixExpr = expr.As<PrefixExpr>())
+                {
+                    if(decl->HasModifier<PrefixModifier>())
+                        return true;
+
+                    if (context.mode != OverloadResolveContext::Mode::JustTrying)
+                    {
+                        getSink()->diagnose(context.appExpr, Diagnostics::expectedPrefixOperator);
+                        getSink()->diagnose(decl, Diagnostics::seeDefinitionOf, decl->getName());
+                    }
+
+                    return false;
+                }
+                else if(auto postfixExpr = expr.As<PostfixExpr>())
+                {
+                    if(decl->HasModifier<PostfixModifier>())
+                        return true;
+
+                    if (context.mode != OverloadResolveContext::Mode::JustTrying)
+                    {
+                        getSink()->diagnose(context.appExpr, Diagnostics::expectedPostfixOperator);
+                        getSink()->diagnose(decl, Diagnostics::seeDefinitionOf, decl->getName());
+                    }
+
+                    return false;
+                }
+                else
+                {
+                    return true;
+                }
+
+                return false;
+            }
+
             bool TryCheckGenericOverloadCandidateTypes(
                 OverloadResolveContext&	context,
                 OverloadCandidate&		candidate)
@@ -2855,6 +2898,10 @@ namespace Spire
                     return;
 
                 candidate.status = OverloadCandidate::Status::ArityChecked;
+                if (!TryCheckOverloadCandidateFixity(context, candidate))
+                    return;
+
+                candidate.status = OverloadCandidate::Status::FixityChecked;
                 if (!TryCheckOverloadCandidateTypes(context, candidate))
                     return;
 
@@ -2928,6 +2975,9 @@ namespace Spire
                 context.appExpr->Type = ExpressionType::Error;
 
                 if (!TryCheckOverloadCandidateArity(context, candidate))
+                    goto error;
+
+                if (!TryCheckOverloadCandidateFixity(context, candidate))
                     goto error;
 
                 if (!TryCheckOverloadCandidateTypes(context, candidate))

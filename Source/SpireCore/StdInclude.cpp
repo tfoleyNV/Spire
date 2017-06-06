@@ -810,6 +810,7 @@ namespace Spire
             BOOL_MASK   = 1 << 3,
             UINT_MASK   = 1 << 4,
             ASSIGNMENT  = 1 << 5,
+            POSTFIX     = 1 << 6,
 
             INT_MASK = SINT_MASK | UINT_MASK,
             ARITHMETIC_MASK = INT_MASK | FLOAT_MASK,
@@ -833,8 +834,10 @@ namespace Spire
                 { IntrinsicOp::Neg,     "-",    ARITHMETIC_MASK },
                 { IntrinsicOp::Not,     "!",    ANY_MASK        },
                 { IntrinsicOp::Not,     "~",    INT_MASK        },
-                { IntrinsicOp::PreInc,  "++",   ARITHMETIC_MASK },
-                { IntrinsicOp::PreDec,  "--",   ARITHMETIC_MASK },
+                { IntrinsicOp::PreInc,  "++",   ARITHMETIC_MASK | ASSIGNMENT },
+                { IntrinsicOp::PreDec,  "--",   ARITHMETIC_MASK | ASSIGNMENT },
+                { IntrinsicOp::PostInc, "++",   ARITHMETIC_MASK | ASSIGNMENT | POSTFIX },
+                { IntrinsicOp::PostDec, "--",   ARITHMETIC_MASK | ASSIGNMENT | POSTFIX },
             };
 
             OpInfo binaryOps[] = {
@@ -842,7 +845,7 @@ namespace Spire
                 { IntrinsicOp::Sub,     "-",    ARITHMETIC_MASK },
                 { IntrinsicOp::Mul,     "*",    ARITHMETIC_MASK },
                 { IntrinsicOp::Div,     "/",    ARITHMETIC_MASK },
-                { IntrinsicOp::Mod,     "%",    ARITHMETIC_MASK },
+                { IntrinsicOp::Mod,     "%",    INT_MASK },
 
                 { IntrinsicOp::And,     "&&",   LOGICAL_MASK },
                 { IntrinsicOp::Or,      "||",   LOGICAL_MASK },
@@ -1302,16 +1305,22 @@ namespace Spire
                     if ((type.flags & op.flags) == 0)
                         continue;
 
+                    char const* fixity = (op.flags & POSTFIX) != 0 ? "__postfix " : "__prefix ";
+                    char const* qual = (op.flags & ASSIGNMENT) != 0 ? "in out " : "";
+
                     // scalar version
-                    sb << "__intrinsic(" << int(op.opCode) << ") " << type.name << " operator" << op.opName << "(" << type.name << " value);\n";
+                    sb << fixity;
+                    sb << "__intrinsic(" << int(op.opCode) << ") " << type.name << " operator" << op.opName << "(" << qual << type.name << " value);\n";
 
                     // vector version
                     sb << "__generic<let N : int> ";
-                    sb << "__intrinsic(" << int(op.opCode) << ") vector<" << type.name << ",N> operator" << op.opName << "( vector<" << type.name << ",N> value);\n";
+                    sb << fixity;
+                    sb << "__intrinsic(" << int(op.opCode) << ") vector<" << type.name << ",N> operator" << op.opName << "(" << qual << "vector<" << type.name << ",N> value);\n";
 
                     // matrix version
                     sb << "__generic<let N : int, let M : int> ";
-                    sb << "__intrinsic(" << int(op.opCode) << ") matrix<" << type.name << ",N,M> operator" << op.opName << "( matrix<" << type.name << ",N,M> value);\n";
+                    sb << fixity;
+                    sb << "__intrinsic(" << int(op.opCode) << ") matrix<" << type.name << ",N,M> operator" << op.opName << "(" << qual << "matrix<" << type.name << ",N,M> value);\n";
                 }
             }
 
