@@ -1037,12 +1037,14 @@ namespace Spire
         class VectorExpressionType : public ArithmeticExpressionType
         {
         public:
+#if 0
             VectorExpressionType(
                 RefPtr<ExpressionType>	elementType,
                 RefPtr<IntVal>			elementCount)
                 : elementType(elementType)
                 , elementCount(elementCount)
             {}
+#endif
 
             // The type of vector elements.
             // As an invariant, this should be a basic type or an alias.
@@ -1052,12 +1054,9 @@ namespace Spire
             RefPtr<IntVal>			elementCount;
 
             virtual String ToString() override;
-            virtual RefPtr<Val> SubstituteImpl(Substitutions* subst, int* ioDiff) override;
 
         protected:
             virtual BasicExpressionType* GetScalarType() override;
-            virtual bool EqualsImpl(ExpressionType * type) override;
-            virtual ExpressionType* CreateCanonicalType() override;
         };
 
         // A matrix type, e.g., `matrix<T,R,C>`
@@ -1909,10 +1908,14 @@ namespace Spire
         class OperatorExpressionSyntaxNode : public InvokeExpressionSyntaxNode
         {
         public:
-            Operator Operator;
-            void SetOperator(RefPtr<Scope> scope, Spire::Compiler::Operator op);
+//            Operator Operator;
+//            void SetOperator(RefPtr<Scope> scope, Spire::Compiler::Operator op);
             virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
         };
+
+        class InfixExpressionSyntaxNode   : public OperatorExpressionSyntaxNode {};
+        class PrefixExpressionSyntaxNode  : public OperatorExpressionSyntaxNode {};
+        class PostfixExpressionSyntaxNode : public OperatorExpressionSyntaxNode {};
 
         class IndexExpressionSyntaxNode : public ExpressionSyntaxNode
         {
@@ -2696,6 +2699,10 @@ namespace Spire
         void RegisterMagicDecl(
             RefPtr<Decl>                decl,
             RefPtr<MagicTypeModifier>   modifier);
+
+        // Look up a magic declaration by its name
+        RefPtr<Decl> findMagicDecl(
+            String const& name);
 
         // Create an instance of a syntax class by name
         SyntaxNodeBase* createInstanceOfSyntaxClassByName(

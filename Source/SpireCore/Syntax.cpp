@@ -491,10 +491,10 @@ namespace Spire
                 else if (magicMod->name == "Vector")
                 {
                     assert(subst && subst->args.Count() == 2);
-                    auto vecType = new VectorExpressionType(
-                        ExtractGenericArgType(subst->args[0]),
-                        ExtractGenericArgInteger(subst->args[1]));
+                    auto vecType = new VectorExpressionType();
                     vecType->declRef = declRef;
+                    vecType->elementType = ExtractGenericArgType(subst->args[0]);
+                    vecType->elementCount = ExtractGenericArgInteger(subst->args[1]);
                     return vecType;
                 }
                 else if (magicMod->name == "Matrix")
@@ -768,50 +768,6 @@ namespace Spire
             return elementType->AsBasicType();
         }
 
-        bool VectorExpressionType::EqualsImpl(ExpressionType * type)
-        {
-            if (auto vecType = type->AsVectorType())
-            {
-                return elementType->Equals(vecType->elementType)
-                    && elementCount->EqualsVal(vecType->elementCount.Ptr());
-            }
-            
-            return false;
-        }
-
-        ExpressionType* VectorExpressionType::CreateCanonicalType()
-        {
-            auto canElementType = elementType->GetCanonicalType();
-            auto canType = new VectorExpressionType(canElementType, elementCount);
-            canType->declRef = declRef;
-            sCanonicalTypes.Add(canType);
-            return canType;
-        }
-
-        RefPtr<Val> VectorExpressionType::SubstituteImpl(Substitutions* subst, int* ioDiff)
-        {
-            assert(elementType->EqualsVal(declRef.substitutions->args[0].Ptr()));
-            assert(elementCount->EqualsVal(declRef.substitutions->args[1].Ptr()));
-
-            int diff = 0;
-            auto substDeclRef = declRef.SubstituteImpl(subst, &diff);
-            auto substElementType = elementType->SubstituteImpl(subst, &diff).As<ExpressionType>();
-            auto substElementCount = elementCount->SubstituteImpl(subst, &diff).As<IntVal>();
-
-            if (!diff)
-                return this;
-
-            (*ioDiff)++;
-            auto substType = new VectorExpressionType(substElementType, substElementCount);
-            substType->declRef = substDeclRef;
-
-            assert(substElementType->EqualsVal(substDeclRef.substitutions->args[0].Ptr()));
-            assert(substElementCount->EqualsVal(substDeclRef.substitutions->args[1].Ptr()));
-
-            return substType;
-        }
-
-
         // MatrixExpressionType
 
         String MatrixExpressionType::ToString()
@@ -843,6 +799,7 @@ namespace Spire
 
         //
 
+#if 0
         String GetOperatorFunctionName(Operator op)
         {
             switch (op)
@@ -915,6 +872,7 @@ namespace Spire
                 return "";
             }
         }
+#endif
         String OperatorToString(Operator op)
         {
             switch (op)
@@ -1336,6 +1294,7 @@ namespace Spire
 
         // OperatorExpressionSyntaxNode
 
+#if 0
         void OperatorExpressionSyntaxNode::SetOperator(RefPtr<Scope> scope, Spire::Compiler::Operator op)
         {
             this->Operator = op;
@@ -1345,6 +1304,7 @@ namespace Spire
             opExpr->Position = this->Position;
             this->FunctionExpr = opExpr;
         }
+#endif
 
         RefPtr<SyntaxNode> OperatorExpressionSyntaxNode::Accept(SyntaxVisitor * visitor)
         {
@@ -1373,7 +1333,13 @@ namespace Spire
             RefPtr<Decl>                decl,
             RefPtr<MagicTypeModifier>   modifier)
         {
-            ExpressionType::sMagicDecls[decl->Name.Content] = decl.Ptr();
+            ExpressionType::sMagicDecls[modifier->name] = decl.Ptr();
+        }
+
+        RefPtr<Decl> findMagicDecl(
+            String const& name)
+        {
+            return ExpressionType::sMagicDecls[name].GetValue();
         }
 
         ExpressionType* ExpressionType::GetBool()

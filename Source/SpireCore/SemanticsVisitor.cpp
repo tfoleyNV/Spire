@@ -1577,6 +1577,8 @@ namespace Spire
             }
             virtual RefPtr<ExpressionSyntaxNode> VisitOperatorExpression(OperatorExpressionSyntaxNode *expr) override
             {
+#if 0
+
                 for (int i = 0; i < expr->Arguments.Count(); i++)
                     expr->Arguments[i] = expr->Arguments[i]->Accept(this).As<ExpressionSyntaxNode>();
                 auto & leftType = expr->Arguments[0]->Type;
@@ -1625,6 +1627,10 @@ namespace Spire
                         checkAssign();
                 }
                 return expr;
+#endif
+
+                // Treat operator application just like a function call
+                return VisitInvokeExpression(expr);
             }
             virtual RefPtr<ExpressionSyntaxNode> VisitConstantExpression(ConstantExpressionSyntaxNode *expr) override
             {
@@ -1912,6 +1918,33 @@ namespace Spire
                 return subscriptExpr;
             }
 
+            // The way that we have designed out type system, pretyt much *every*
+            // type is a reference to some declaration in the standard library.
+            // That means that when we construct a new type on the fly, we need
+            // to make sure that it is wired up to reference the appropriate
+            // declaration, or else it won't compare as equal to other types
+            // that *do* reference the declaration.
+            //
+            // This function is used to construct a `vector<T,N>` type
+            // programmatically, so that it will work just like a type of
+            // that form constructed by the user.
+            RefPtr<VectorExpressionType> createVectorType(
+                RefPtr<ExpressionType>  elementType,
+                RefPtr<IntVal>          elementCount)
+            {
+                auto vectorGenericDecl = findMagicDecl("Vector").As<GenericDecl>();
+                auto vectorTypeDecl = vectorGenericDecl->inner;
+               
+                auto substitutions = new Substitutions();
+                substitutions->genericDecl = vectorGenericDecl.Ptr();
+                substitutions->args.Add(elementType);
+                substitutions->args.Add(elementCount);
+
+                auto declRef = DeclRef(vectorTypeDecl.Ptr(), substitutions);
+
+                return DeclRefType::Create(declRef)->As<VectorExpressionType>();
+            }
+
             virtual RefPtr<ExpressionSyntaxNode> VisitIndexExpression(IndexExpressionSyntaxNode* subscriptExpr) override
             {
                 auto baseExpr = subscriptExpr->BaseExpression;
@@ -1976,7 +2009,7 @@ namespace Spire
                 {
                     // TODO(tfoley): We shouldn't go and recompute
                     // row types over and over like this... :(
-                    auto rowType = new VectorExpressionType(
+                    auto rowType = createVectorType(
                         matType->getElementType(),
                         matType->getColumnCount());
 
@@ -2175,7 +2208,7 @@ namespace Spire
                 if(!joinElementType)
                     return nullptr;
 
-                return new VectorExpressionType(
+                return createVectorType(
                     joinElementType,
                     vectorType->elementCount);
             }
@@ -2276,7 +2309,7 @@ namespace Spire
                         if(!joinElementType)
                             return nullptr;
 
-                        return new VectorExpressionType(
+                        return createVectorType(
                             joinElementType,
                             leftVector->elementCount);
                     }
@@ -4331,7 +4364,7 @@ namespace Spire
                 {
                     // TODO(tfoley): would be nice to "re-sugar" type
                     // here if the input type had a sugared name...
-                    swizExpr->Type = new VectorExpressionType(
+                    swizExpr->Type = createVectorType(
                         baseElementType,
                         new ConstantIntVal(elementCount));
                 }

@@ -809,6 +809,7 @@ namespace Spire
             COMPARISON  = 1 << 2,
             BOOL_MASK   = 1 << 3,
             UINT_MASK   = 1 << 4,
+            ASSIGNMENT  = 1 << 5,
 
             INT_MASK = SINT_MASK | UINT_MASK,
             ARITHMETIC_MASK = INT_MASK | FLOAT_MASK,
@@ -860,6 +861,19 @@ namespace Spire
                 { IntrinsicOp::Less,    "<",    ARITHMETIC_MASK | COMPARISON },
                 { IntrinsicOp::Geq,     ">=",   ARITHMETIC_MASK | COMPARISON },
                 { IntrinsicOp::Leq,     "<=",   ARITHMETIC_MASK | COMPARISON },
+
+                { IntrinsicOp::AddAssign,     "+=",    ASSIGNMENT | ARITHMETIC_MASK },
+                { IntrinsicOp::SubAssign,     "-=",    ASSIGNMENT | ARITHMETIC_MASK },
+                { IntrinsicOp::MulAssign,     "*=",    ASSIGNMENT | ARITHMETIC_MASK },
+                { IntrinsicOp::DivAssign,     "/=",    ASSIGNMENT | ARITHMETIC_MASK },
+                { IntrinsicOp::ModAssign,     "%=",    ASSIGNMENT | ARITHMETIC_MASK },
+                { IntrinsicOp::AndAssign,     "&=",    ASSIGNMENT | LOGICAL_MASK },
+                { IntrinsicOp::OrAssign,      "|=",    ASSIGNMENT | LOGICAL_MASK },
+                { IntrinsicOp::XorAssign,     "^=",    ASSIGNMENT | LOGICAL_MASK },
+                { IntrinsicOp::LshAssign,     "<<=",   ASSIGNMENT | INT_MASK },
+                { IntrinsicOp::RshAssign,     ">>=",   ASSIGNMENT | INT_MASK },
+
+
             };
 
             /*
@@ -1314,18 +1328,21 @@ namespace Spire
 
                     if (op.flags & COMPARISON) resultType = "bool";
 
+                    char const* leftQual = "";
+                    if(op.flags & ASSIGNMENT) leftQual = "in out ";
+
                     // TODO: handle `SHIFT`
 
                     // scalar version
-                    sb << "__intrinsic(" << int(op.opCode) << ") " << resultType << " operator" << op.opName << "(" << leftType << " left, " << rightType << " right);\n";
+                    sb << "__intrinsic(" << int(op.opCode) << ") " << resultType << " operator" << op.opName << "(" << leftQual << leftType << " left, " << rightType << " right);\n";
 
                     // vector version
                     sb << "__generic<let N : int> ";
-                    sb << "__intrinsic(" << int(op.opCode) << ") vector<" << resultType << ",N> operator" << op.opName << "(vector<" << leftType << ",N> left, vector<" << rightType << ",N> right);\n";
+                    sb << "__intrinsic(" << int(op.opCode) << ") vector<" << resultType << ",N> operator" << op.opName << "(" << leftQual << "vector<" << leftType << ",N> left, vector<" << rightType << ",N> right);\n";
 
                     // matrix version
                     sb << "__generic<let N : int, let M : int> ";
-                    sb << "__intrinsic(" << int(op.opCode) << ") matrix<" << resultType << ",N,M> operator" << op.opName << "(matrix<" << leftType << ",N,M> left, matrix<" << rightType << ",N,M> right);\n";
+                    sb << "__intrinsic(" << int(op.opCode) << ") matrix<" << resultType << ",N,M> operator" << op.opName << "(" << leftQual << "matrix<" << leftType << ",N,M> left, matrix<" << rightType << ",N,M> right);\n";
                 }
             }
 
