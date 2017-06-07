@@ -2586,7 +2586,7 @@ namespace Spire
             }
             virtual RefPtr<StatementSyntaxNode> VisitVarDeclrStatement(VarDeclrStatementSyntaxNode* stmt)
             {
-                stmt->decl = stmt->decl->Accept(this).As<Decl>();
+                stmt->decl = stmt->decl->Accept(this).As<DeclBase>();
                 return stmt;
             }
             virtual RefPtr<StatementSyntaxNode> VisitWhileStatement(WhileStatementSyntaxNode* stmt)
