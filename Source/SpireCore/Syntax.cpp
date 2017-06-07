@@ -315,6 +315,7 @@ namespace Spire
         RefPtr<ExpressionType> ExpressionType::Void;
 #endif
         RefPtr<ExpressionType> ExpressionType::Error;
+        RefPtr<ExpressionType> ExpressionType::initializerListType;
         RefPtr<ExpressionType> ExpressionType::Overloaded;
 
         Dictionary<int, RefPtr<ExpressionType>> ExpressionType::sBuiltinTypes;
@@ -324,11 +325,13 @@ namespace Spire
         void ExpressionType::Init()
         {
             Error = new ErrorType();
+            initializerListType = new InitializerListType();
             Overloaded = new OverloadGroupType();
         }
         void ExpressionType::Finalize()
         {
             Error = nullptr;
+            initializerListType = nullptr;
             Overloaded = nullptr;
             // Note(tfoley): This seems to be just about the only way to clear out a List<T>
             sCanonicalTypes = List<RefPtr<ExpressionType>>();
@@ -611,6 +614,28 @@ namespace Spire
         }
 
         int OverloadGroupType::GetHashCode()
+        {
+            return (int)(int64_t)(void*)this;
+        }
+
+        // InitializerListType
+
+        String InitializerListType::ToString()
+        {
+            return "initializer list";
+        }
+
+        bool InitializerListType::EqualsImpl(ExpressionType * /*type*/)
+        {
+            return false;
+        }
+
+        ExpressionType* InitializerListType::CreateCanonicalType()
+        {
+            return this;
+        }
+
+        int InitializerListType::GetHashCode()
         {
             return (int)(int64_t)(void*)this;
         }
@@ -1367,6 +1392,11 @@ namespace Spire
             return sBuiltinTypes[(int)BaseType::Void].GetValue().Ptr();
         }
 
+        ExpressionType* ExpressionType::getInitializerListType()
+        {
+            return initializerListType.Ptr();
+        }
+
         ExpressionType* ExpressionType::GetError()
         {
             return ExpressionType::Error.Ptr();
@@ -1383,8 +1413,7 @@ namespace Spire
 
         RefPtr<SyntaxNode> InitializerListExpr::Accept(SyntaxVisitor * visitor)
         {
-            // TODO(tfoley): This case obviously needs to be implemented...
-            return this;
+            return visitor->visitInitializerListExpr(this);
         }
 
         //

@@ -450,6 +450,7 @@ namespace Spire
         {
         public:
             static RefPtr<ExpressionType> Error;
+            static RefPtr<ExpressionType> initializerListType;
             static RefPtr<ExpressionType> Overloaded;
 
             static Dictionary<int, RefPtr<ExpressionType>> sBuiltinTypes;
@@ -466,6 +467,7 @@ namespace Spire
             static ExpressionType* GetInt();
             static ExpressionType* GetUInt();
             static ExpressionType* GetVoid();
+            static ExpressionType* getInitializerListType();
             static ExpressionType* GetError();
 
         public:
@@ -748,6 +750,19 @@ namespace Spire
 
         // The type of a reference to an overloaded name
         class OverloadGroupType : public ExpressionType
+        {
+        public:
+            virtual String ToString() override;
+
+        protected:
+            virtual bool EqualsImpl(ExpressionType * type) override;
+            virtual ExpressionType* CreateCanonicalType() override;
+            virtual int GetHashCode() override;
+        };
+
+        // The type of an initializer-list expression (before it has
+        // been coerced to some other type)
+        class InitializerListType : public ExpressionType
         {
         public:
             virtual String ToString() override;
@@ -2688,6 +2703,8 @@ namespace Spire
                     decl->Accept(this);
                 }
             }
+
+            virtual RefPtr<ExpressionSyntaxNode> visitInitializerListExpr(InitializerListExpr* expr) = 0;
         };
 
         // Note(tfoley): These logically belong to `ExpressionType`,

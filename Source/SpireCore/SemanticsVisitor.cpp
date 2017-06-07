@@ -646,6 +646,120 @@ namespace Spire
                     return true;
                 }
 
+                // Coercion from an initializer list is allowed for many types
+                if( auto fromInitializerListExpr = fromExpr.As<InitializerListExpr>())
+                {
+                    auto argCount = fromInitializerListExpr->args.Count();
+
+                    // In the case where we need to build a reuslt expression,
+                    // we will collect the new arguments here
+                    List<RefPtr<ExpressionSyntaxNode>> coercedArgs;
+
+                    if(auto toDeclRefType = toType->As<DeclRefType>())
+                    {
+                        auto toTypeDeclRef = toDeclRefType->declRef;
+                        if(auto toStructDeclRef = toTypeDeclRef.As<StructDeclRef>())
+                        {
+                            // Trying to initialize a `struct` type given an initializer list.
+                            // We will go through the fields in order and try to match them
+                            // up with initializer arguments.
+
+
+                            int argIndex = 0;
+                            for(auto& fieldDeclRef : toStructDeclRef.GetMembersOfType<FieldDeclRef>())
+                            {
+                                if(argIndex >= argCount)
+                                {
+                                    // We've consumed all the arguments, so we should stop
+                                    break;
+                                }
+
+                                auto arg = fromInitializerListExpr->args[argIndex++];
+
+                                // 
+                                RefPtr<ExpressionSyntaxNode> coercedArg;
+                                ConversionCost argCost;
+
+                                bool argResult = TryCoerceImpl(
+                                    fieldDeclRef.GetType(),
+                                    outToExpr ? &coercedArg : nullptr,
+                                    arg->Type,
+                                    arg,
+                                    outCost ? &argCost : nullptr);
+
+                                // No point in trying further if any argument fails
+                                if(!argResult)
+                                    return false;
+
+                                // TODO(tfoley): what to do with cost?
+                                // This only matters if/when we allow an initializer list as an argument to
+                                // an overloaded call.
+
+                                if( outToExpr )
+                                {
+                                    coercedArgs.Add(coercedArg);
+                                }
+                            }
+                        }
+                    }
+                    else if(auto toArrayType = toType->As<ArrayExpressionType>())
+                    {
+                        // TODO(tfoley): If we can compute the size of the array statically,
+                        // then we want to check that there aren't too many initializers present
+
+                        auto toElementType = toArrayType->BaseType;
+
+                        for(auto& arg : fromInitializerListExpr->args)
+                        {
+                            RefPtr<ExpressionSyntaxNode> coercedArg;
+                            ConversionCost argCost;
+
+                            bool argResult = TryCoerceImpl(
+                                    toElementType,
+                                    outToExpr ? &coercedArg : nullptr,
+                                    arg->Type,
+                                    arg,
+                                    outCost ? &argCost : nullptr);
+
+                            // No point in trying further if any argument fails
+                            if(!argResult)
+                                return false;
+
+                            if( outToExpr )
+                            {
+                                coercedArgs.Add(coercedArg);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // By default, we don't allow a type to be initialized using
+                        // an initializer list.
+                        return false;
+                    }
+
+                    // For now, coercion from an initializer list has no cost
+                    if(outCost)
+                    {
+                        *outCost = kConversionCost_None;
+                    }
+
+                    // We were able to coerce all the arguments given, and so
+                    // we need to construct a suitable expression to remember the result
+                    if(outToExpr)
+                    {
+                        auto toInitializerListExpr = new InitializerListExpr();
+                        toInitializerListExpr->Position = fromInitializerListExpr->Position;
+                        toInitializerListExpr->Type = toType;
+                        toInitializerListExpr->args = coercedArgs;
+
+
+                        *outToExpr = toInitializerListExpr;
+                    }
+
+                    return true;
+                }
+
                 //
 
                 if (auto toBasicType = toType->AsBasicType())
@@ -1511,6 +1625,47 @@ namespace Spire
                 return 1;
             }
 
+            void maybeInferArraySizeForVariable(Variable* varDecl)
+            {
+                // Not an array?
+                auto arrayType = varDecl->Type->AsArrayType();
+                if (!arrayType) return;
+
+                // Explicit element count given?
+                auto elementCount = arrayType->ArrayLength;
+                if (elementCount) return;
+
+                // No initializer?
+                auto initExpr = varDecl->Expr;
+                if(!initExpr) return;
+
+                // Is the initializer an initializer list?
+                if(auto initializerListExpr = initExpr.As<InitializerListExpr>())
+                {
+                    auto argCount = initializerListExpr->args.Count();
+                    elementCount = new ConstantIntVal(argCount);
+                }
+                // Is the type of the initializer an array type?
+                else if(auto arrayInitType = initExpr->Type->As<ArrayExpressionType>())
+                {
+                    elementCount = arrayInitType->ArrayLength;
+                }
+                else
+                {
+                    // Nothing to do: we couldn't infer a size
+                    return;
+                }
+
+                // Create a new array type based on the size we found,
+                // and install it into our type.
+                auto newArrayType = new ArrayExpressionType();
+                newArrayType->BaseType = arrayType->BaseType;
+                newArrayType->ArrayLength = elementCount;
+
+                // Okay we are good to go!
+                varDecl->Type.type = newArrayType;
+            }
+
             void ValidateArraySizeForVariable(Variable* varDecl)
             {
                 auto arrayType = varDecl->Type->AsArrayType();
@@ -1554,15 +1709,33 @@ namespace Spire
                 if (varDecl->Type.Equals(ExpressionType::GetVoid()))
                     getSink()->diagnose(varDecl, Diagnostics::invalidTypeVoid);
 
-                // If this is an array variable, then make sure it is an okay array type...
+                if(auto initExpr = varDecl->Expr)
+                {
+                    initExpr = CheckTerm(initExpr);
+                    varDecl->Expr = initExpr;
+                }
+
+                // If this is an array variable, then we first want to give
+                // it a chance to infer an array size from its initializer
+                //
+                // TODO(tfoley): May need to extend this to handle the
+                // multi-dimensional case...
+                maybeInferArraySizeForVariable(varDecl);
+                //
+                // Next we want to make sure that the declared (or inferred)
+                // size for the array meets whatever language-specific
+                // constraints we want to enforce (e.g., disallow empty
+                // arrays in specific cases)
                 ValidateArraySizeForVariable(varDecl);
 
-                varDecl->SetCheckState(DeclCheckState::CheckedHeader);
 
-                if (varDecl->Expr != NULL)
+                if(auto initExpr = varDecl->Expr)
                 {
-                    varDecl->Expr = varDecl->Expr->Accept(this).As<ExpressionSyntaxNode>();
-                    varDecl->Expr = Coerce(varDecl->Type, varDecl->Expr);
+                    // TODO(tfoley): should coercion of initializer lists be special-cased
+                    // here, or handled as a general case for coercion?
+
+                    initExpr = Coerce(varDecl->Type, initExpr);
+                    varDecl->Expr = initExpr;
                 }
 
                 varDecl->SetCheckState(DeclCheckState::Checked);
@@ -4610,6 +4783,25 @@ namespace Spire
                 return expr;
             }
             SemanticsVisitor & operator = (const SemanticsVisitor &) = delete;
+
+
+            //
+
+            virtual RefPtr<ExpressionSyntaxNode> visitInitializerListExpr(InitializerListExpr* expr) override
+            {
+                // When faced with an initializer list, we first just check the sub-expressions blindly.
+                // Actually making them conform to a desired type will wait for when we know the desired
+                // type based on context.
+
+                for( auto& arg : expr->args )
+                {
+                    arg = CheckTerm(arg);
+                }
+
+                expr->Type = ExpressionType::getInitializerListType();
+
+                return expr;
+            }
         };
 
         SyntaxVisitor * CreateSemanticsVisitor(
