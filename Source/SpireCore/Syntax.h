@@ -953,25 +953,19 @@ namespace Spire
         class PointerLikeType : public BuiltinGenericType
         {};
 
-        // Types that behave like arrays, in that they can be
-        // subscripted (explicitly) to access members defined
-        // in the element type.
-        class ArrayLikeType : public BuiltinGenericType
-        {};
-
         // Generic types used in existing Spire code
         // TODO(tfoley): check that these are actually working right...
         class PatchType : public PointerLikeType {};
-        class StorageBufferType : public ArrayLikeType {};
+        class StorageBufferType : public BuiltinGenericType {};
         class UniformBufferType : public PointerLikeType {};
-        class PackedBufferType : public ArrayLikeType {};
+        class PackedBufferType : public BuiltinGenericType {};
 
         // HLSL buffer-type resources
 
-        class HLSLBufferType : public ArrayLikeType {};
-        class HLSLRWBufferType : public ArrayLikeType {};
-        class HLSLStructuredBufferType : public ArrayLikeType {};
-        class HLSLRWStructuredBufferType : public ArrayLikeType {};
+        class HLSLBufferType : public BuiltinGenericType {};
+        class HLSLRWBufferType : public BuiltinGenericType {};
+        class HLSLStructuredBufferType : public BuiltinGenericType {};
+        class HLSLRWStructuredBufferType : public BuiltinGenericType {};
 
         class UntypedBufferResourceType : public DeclRefType {};
         class HLSLByteAddressBufferType : public UntypedBufferResourceType {};
@@ -980,8 +974,8 @@ namespace Spire
         class HLSLAppendStructuredBufferType : public BuiltinGenericType {};
         class HLSLConsumeStructuredBufferType : public BuiltinGenericType {};
 
-        class HLSLInputPatchType : public ArrayLikeType {};
-        class HLSLOutputPatchType : public ArrayLikeType {};
+        class HLSLInputPatchType : public BuiltinGenericType {};
+        class HLSLOutputPatchType : public BuiltinGenericType {};
 
         // HLSL geometry shader output stream types
 
@@ -1702,6 +1696,20 @@ namespace Spire
         {
             SPIRE_DECLARE_DECL_REF(ConstructorDecl);
         };
+
+        // A subscript operation used to index instances of a type
+        class SubscriptDecl : public FunctionDeclBase
+        {
+        public:
+            virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
+        };
+
+        struct SubscriptDeclRef : FuncDeclBaseRef
+        {
+            SPIRE_DECLARE_DECL_REF(SubscriptDecl);
+        };
+
+        //
 
         class FunctionSyntaxNode : public FunctionDeclBase
         {
@@ -2684,6 +2692,8 @@ namespace Spire
 
             virtual void VisitConstructorDecl(ConstructorDecl* /*decl*/)
             {}
+
+            virtual void visitSubscriptDecl(SubscriptDecl* decl) = 0;
 
             virtual void VisitTraitDecl(TraitDecl* /*decl*/)
             {}

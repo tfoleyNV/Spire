@@ -33,6 +33,8 @@ __generic<T> __magic_type(HLSLBufferType) struct Buffer
 
     __intrinsic T Load(int location);
     __intrinsic T Load(int location, out uint status);
+
+    __intrinsic __subscript(uint index) -> T;
 };
 
 __magic_type(HLSLByteAddressBufferType) struct ByteAddressBuffer
@@ -61,6 +63,8 @@ __generic<T> __magic_type(HLSLStructuredBufferType) struct StructuredBuffer
 
     __intrinsic T Load(int location);
     __intrinsic T Load(int location, out uint status);
+
+    __intrinsic __subscript(uint index) -> T;
 };
 
 __generic<T> __magic_type(HLSLConsumeStructuredBufferType) struct ConsumeStructuredBuffer
@@ -74,10 +78,13 @@ __generic<T> __magic_type(HLSLConsumeStructuredBufferType) struct ConsumeStructu
 
 __generic<T> __magic_type(HLSLInputPatchType) struct InputPatch
 {
+    __intrinsic __subscript(uint index) -> T;
 };
 
 __generic<T> __magic_type(HLSLOutputPatchType) struct OutputPatch
 {
+    // TODO(tfoley): How to indicate that this is write-only?
+    __intrinsic __subscript(uint index) -> T;
 };
 
 __generic<T> __magic_type(HLSLRWBufferType) struct RWBuffer
@@ -89,6 +96,9 @@ __generic<T> __magic_type(HLSLRWBufferType) struct RWBuffer
 
     __intrinsic T Load(int location);
     __intrinsic T Load(int location, out uint status);
+
+    // TODO(tfoley): How to indicate that this is read-write?
+    __intrinsic __subscript(uint index) -> T;
 };
 
 __magic_type(HLSLRWByteAddressBufferType) struct RWByteAddressBuffer
@@ -216,6 +226,9 @@ __generic<T> __magic_type(HLSLRWStructuredBufferType) struct RWStructuredBuffer
 
     __intrinsic T Load(int location);
     __intrinsic T Load(int location, out uint status);
+
+    // TODO(tfoley): How to indicate that this is read-write?
+    __intrinsic __subscript(uint index) -> T;
 };
 
 __generic<T> __magic_type(HLSLPointStreamType) struct PointStream {};
@@ -1372,6 +1385,12 @@ namespace Spire
                                 sb << "int sampleIndex, ";
                                 sb << "int" << kBaseTextureTypes[tt].coordCount << " offset);\n";
                             }
+                        }
+
+                        if(baseShape != TextureType::ShapeCube)
+                        {
+                            // subscript operator
+                            sb << "__intrinsic __subscript(uint" << kBaseTextureTypes[tt].coordCount + isArray << " location);\n";
                         }
 
                         if( !isMultisample )

@@ -2006,6 +2006,33 @@ namespace Spire
             return decl;
         }
 
+        static RefPtr<SubscriptDecl> ParseSubscriptDecl(Parser* parser)
+        {
+            RefPtr<SubscriptDecl> decl = new SubscriptDecl();
+            parser->FillPosition(decl.Ptr());
+            parser->ReadToken("__subscript");
+
+            // TODO: the use of this name here is a bit magical...
+            decl->Name.Content = "operator[]";
+
+            parseParameterList(parser, decl);
+
+            if( AdvanceIf(parser, TokenType::RightArrow) )
+            {
+                decl->ReturnType = parser->ParseTypeExp();
+            }
+
+            if (AdvanceIf(parser, TokenType::Semicolon))
+            {
+                // empty body
+            }
+            else
+            {
+                decl->Body = parser->ParseBlockStatement();
+            }
+            return decl;
+        }
+
         // Parse a declaration of a new modifier keyword
         static RefPtr<ModifierDecl> parseModifierDecl(Parser* parser)
         {
@@ -2071,6 +2098,8 @@ namespace Spire
                 decl = ParseExtensionDecl(parser);
             else if (parser->LookAheadToken("__init"))
                 decl = ParseConstructorDecl(parser);
+            else if (parser->LookAheadToken("__subscript"))
+                decl = ParseSubscriptDecl(parser);
             else if (parser->LookAheadToken("__trait"))
                 decl = ParseTraitDecl(parser);
             else if(parser->LookAheadToken("__modifier"))

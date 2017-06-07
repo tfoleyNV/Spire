@@ -376,9 +376,10 @@ static void emitCallExpr(
     int                                 outerPrec)
 {
     auto funcExpr = callExpr->FunctionExpr;
-    if (auto funcDeclRef = funcExpr.As<DeclRefExpr>())
+    if (auto funcDeclRefExpr = funcExpr.As<DeclRefExpr>())
     {
-        auto funcDecl = funcDeclRef->declRef.GetDecl();
+        auto funcDeclRef = funcDeclRefExpr->declRef;
+        auto funcDecl = funcDeclRef.GetDecl();
         if (auto intrinsicModifier = funcDecl->FindModifier<IntrinsicModifier>())
         {
             switch (intrinsicModifier->op)
@@ -471,6 +472,30 @@ static void emitCallExpr(
 
             default:
                 break;
+            }
+
+
+            // We might be calling an intrinsic subscript operation,
+            // and should desugar it accordingly
+            if(auto subscriptDeclRef = funcDeclRef.As<SubscriptDeclRef>())
+            {
+                // We expect any subscript operation to be invoked as a member,
+                // so the function expression had better be in the correct form.
+                if(auto memberExpr = funcExpr.As<MemberExpressionSyntaxNode>())
+                {
+
+                    Emit(context, "(");
+                    EmitExpr(context, memberExpr->BaseExpression);
+                    Emit(context, ")[");
+                    int argCount = callExpr->Arguments.Count();
+                    for (int aa = 0; aa < argCount; ++aa)
+                    {
+                        if (aa != 0) Emit(context, ", ");
+                        EmitExpr(context, callExpr->Arguments[aa]);
+                    }
+                    Emit(context, "]");
+                    return;
+                }
             }
         }
     }
