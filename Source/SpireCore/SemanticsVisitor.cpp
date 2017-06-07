@@ -2909,12 +2909,12 @@ namespace Spire
                 {
                     if (argCount < paramCounts.required)
                     {
-                        getSink()->diagnose(context.appExpr, Diagnostics::unimplemented, "not enough arguments for call");
+                        getSink()->diagnose(context.appExpr, Diagnostics::notEnoughArguments, argCount, paramCounts.required);
                     }
                     else
                     {
                         assert(argCount > paramCounts.allowed);
-                        getSink()->diagnose(context.appExpr, Diagnostics::unimplemented, "too many arguments for call");
+                        getSink()->diagnose(context.appExpr, Diagnostics::tooManyArguments, argCount, paramCounts.allowed);
                     }
                 }
 

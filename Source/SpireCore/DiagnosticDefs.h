@@ -210,7 +210,6 @@ DIAGNOSTIC(33027, Error, argumentTypeDoesNotMatchParameterType, "argument type (
 DIAGNOSTIC(33028, Error, nameIsNotAParameterOfCallee, "'$0' is not a parameter of '$1'.")
 DIAGNOSTIC(33029, Error, requirementsClashWithPreviousDef, "'$0': requirement clash with previous definition.")
 DIAGNOSTIC(33030, Error, positionArgumentAfterNamed, "positional argument cannot appear after a named argument.")
-DIAGNOSTIC(33031, Error, tooManyArguments, "too many arguments.")
 DIAGNOSTIC(33032, Error, functionRedefinition, "'$0': function redefinition.")
 DIAGNOSTIC(33034, Error, recordTypeVariableInImportOperator, "cannot declare a record-typed variable in an import operator.")
 DIAGNOSTIC(33037, Error, componetMarkedExportCannotHaveParameters, "component '$0': definition marked as 'export' cannot have parameters.")
@@ -280,6 +279,9 @@ DIAGNOSTIC(39999, Error, declarationDidntDeclareAnything, "declaration does not 
 
 DIAGNOSTIC(39999, Error, expectedPrefixOperator, "function called as prefix operator was not declared `__prefix`")
 DIAGNOSTIC(39999, Error, expectedPostfixOperator, "function called as postfix operator was not declared `__postfix`")
+
+DIAGNOSTIC(39999, Error, notEnoughArguments, "not enough arguments to call (got $0, expected $1)")
+DIAGNOSTIC(39999, Error, tooManyArguments, "too many arguments to call (got $0, expected $1)")
 
 //
 // 4xxxx - IL code generation.

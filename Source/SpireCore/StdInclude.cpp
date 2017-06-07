@@ -8,6 +8,8 @@
 enum { kLibIncludeStringLine = __LINE__+1 };
 const char * LibIncludeStringChunks[] = { R"(
 
+typedef uint UINT;
+
 __generic<T> __intrinsic(Assign) T operator=(out T left, T right);
 
 __generic<T,U> __intrinsic(Sequence) U operator,(T left, U right);
@@ -17,22 +19,57 @@ __generic<T, let N : int> __intrinsic(Select) vector<T,N> operator?:(vector<bool
 
 __generic<T> __magic_type(HLSLAppendStructuredBufferType) struct AppendStructuredBuffer
 {
+    __intrinsic void Append(T value);
+
+    __intrinsic void GetDimensions(
+        out uint numStructs,
+        out uint stride);
 };
 
 __generic<T> __magic_type(HLSLBufferType) struct Buffer
 {
+    __intrinsic void GetDimensions(
+        out uint dim);
+
+    __intrinsic T Load(int location);
+    __intrinsic T Load(int location, out uint status);
 };
 
 __magic_type(HLSLByteAddressBufferType) struct ByteAddressBuffer
 {
+    __intrinsic void GetDimensions(
+        out uint dim);
+
+    __intrinsic uint Load(int location);
+    __intrinsic uint Load(int location, out uint status);
+
+    __intrinsic uint2 Load2(int location);
+    __intrinsic uint2 Load2(int location, out uint status);
+
+    __intrinsic uint3 Load3(int location);
+    __intrinsic uint3 Load3(int location, out uint status);
+
+    __intrinsic uint4 Load4(int location);
+    __intrinsic uint4 Load4(int location, out uint status);
 };
 
 __generic<T> __magic_type(HLSLStructuredBufferType) struct StructuredBuffer
 {
+    __intrinsic void GetDimensions(
+        out uint numStructs,
+        out uint stride);
+
+    __intrinsic T Load(int location);
+    __intrinsic T Load(int location, out uint status);
 };
 
 __generic<T> __magic_type(HLSLConsumeStructuredBufferType) struct ConsumeStructuredBuffer
 {
+    __intrinsic T Consume();
+
+    __intrinsic void GetDimensions(
+        out uint numStructs,
+        out uint stride);
 };
 
 __generic<T> __magic_type(HLSLInputPatchType) struct InputPatch
@@ -45,20 +82,147 @@ __generic<T> __magic_type(HLSLOutputPatchType) struct OutputPatch
 
 __generic<T> __magic_type(HLSLRWBufferType) struct RWBuffer
 {
+    // Note(tfoley): duplication with declaration of `Buffer`
+
+    __intrinsic void GetDimensions(
+        out uint dim);
+
+    __intrinsic T Load(int location);
+    __intrinsic T Load(int location, out uint status);
 };
 
 __magic_type(HLSLRWByteAddressBufferType) struct RWByteAddressBuffer
 {
+    // Note(tfoley): supports alll operations from `ByteAddressBuffer`
+    // TODO(tfoley): can this be made a sub-type?
+
+    __intrinsic void GetDimensions(
+        out uint dim);
+
+    __intrinsic uint Load(int location);
+    __intrinsic uint Load(int location, out uint status);
+
+    __intrinsic uint2 Load2(int location);
+    __intrinsic uint2 Load2(int location, out uint status);
+
+    __intrinsic uint3 Load3(int location);
+    __intrinsic uint3 Load3(int location, out uint status);
+
+    __intrinsic uint4 Load4(int location);
+    __intrinsic uint4 Load4(int location, out uint status);
+
+    // Added operations:
+
+    __intrinsic void InterlockedAdd(
+        UINT dest,
+        UINT value,
+        out UINT original_value);
+    __intrinsic void InterlockedAdd(
+        UINT dest,
+        UINT value);
+
+    __intrinsic void InterlockedAnd(
+        UINT dest,
+        UINT value,
+        out UINT original_value);
+    __intrinsic void InterlockedAnd(
+        UINT dest,
+        UINT value);
+
+    __intrinsic void InterlockedCompareExchange(
+        UINT dest,
+        UINT compare_value,
+        UINT value,
+        out UINT original_value);
+    __intrinsic void InterlockedCompareExchange(
+        UINT dest,
+        UINT compare_value,
+        UINT value);
+
+    __intrinsic void InterlockedCompareStore(
+        UINT dest,
+        UINT compare_value,
+        UINT value);
+    __intrinsic void InterlockedCompareStore(
+        UINT dest,
+        UINT compare_value);
+
+    __intrinsic void InterlockedExchange(
+        UINT dest,
+        UINT value,
+        out UINT original_value);
+    __intrinsic void InterlockedExchange(
+        UINT dest,
+        UINT value);
+
+    __intrinsic void InterlockedMax(
+        UINT dest,
+        UINT value,
+        out UINT original_value);
+    __intrinsic void InterlockedMax(
+        UINT dest,
+        UINT value);
+
+    __intrinsic void InterlockedMin(
+        UINT dest,
+        UINT value,
+        out UINT original_value);
+    __intrinsic void InterlockedMin(
+        UINT dest,
+        UINT value);
+
+    __intrinsic void InterlockedOr(
+        UINT dest,
+        UINT value,
+        out UINT original_value);
+    __intrinsic void InterlockedOr(
+        UINT dest,
+        UINT value);
+
+    __intrinsic void InterlockedXor(
+        UINT dest,
+        UINT value,
+        out UINT original_value);
+    __intrinsic void InterlockedXor(
+        UINT dest,
+        UINT value);
+
+    __intrinsic void Store(
+        uint address,
+        uint value);
+
+    __intrinsic void Store2(
+        uint address,
+        uint2 value);
+
+    __intrinsic void Store3(
+        uint address,
+        uint3 value);
+
+    __intrinsic void Store4(
+        uint address,
+        uint4 value);
 };
 
 __generic<T> __magic_type(HLSLRWStructuredBufferType) struct RWStructuredBuffer
 {
+    __intrinsic uint DecrementCounter();
+
+    __intrinsic void GetDimensions(
+        out uint numStructs,
+        out uint stride);
+
+    __intrinsic void IncrementCounter();
+
+    __intrinsic T Load(int location);
+    __intrinsic T Load(int location, out uint status);
 };
 
 __generic<T> __magic_type(HLSLPointStreamType) struct PointStream {};
 __generic<T> __magic_type(HLSLLineStreamType) struct LineStream {};
 __generic<T> __magic_type(HLSLLineStreamType) struct TriangleStream {};
 
+)", R"(
 
 // Note(tfoley): Trying to systematically add all the HLSL builtins
 
