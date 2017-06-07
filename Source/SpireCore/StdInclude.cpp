@@ -1350,6 +1350,23 @@ namespace Spire
                                 sb << "int" << kBaseTextureTypes[tt].coordCount << " offset);\n";
                             }
 
+                            sb << "T Sample(SamplerState s, ";
+                            sb << "float" << kBaseTextureTypes[tt].coordCount + isArray << " location, ";
+                            if( baseShape != TextureType::ShapeCube )
+                            {
+                                sb << "int" << kBaseTextureTypes[tt].coordCount << " offset, ";
+                            }
+                            sb << "float clamp);\n";
+
+                            sb << "T Sample(SamplerState s, ";
+                            sb << "float" << kBaseTextureTypes[tt].coordCount + isArray << " location, ";
+                            if( baseShape != TextureType::ShapeCube )
+                            {
+                                sb << "int" << kBaseTextureTypes[tt].coordCount << " offset, ";
+                            }
+                            sb << "float clamp, out uint status);\n";
+
+
                             // `SampleBias()`
                             sb << "T SampleBias(SamplerState s, ";
                             sb << "float" << kBaseTextureTypes[tt].coordCount + isArray << " location, float bias);\n";
