@@ -727,15 +727,10 @@ __generic<T : __BuiltinFloatingPointType, let N : int>
 __intrinsic
 vector<T,N> reflect(vector<T,N> i, vector<T,N> n);
 
-// Reflect incident vector across plane with given normal
-__generic<T : __BuiltinFloatingPointType, let N : int>
-__intrinsic
-vector<T,N> reflect(vector<T,N> i, vector<T,N> n);
-
 // Refract incident vector given surface normal and index of refraction
 __generic<T : __BuiltinFloatingPointType, let N : int>
 __intrinsic
-vector<T,N> reflect(vector<T,N> i, vector<T,N> n, float eta);
+vector<T,N> refract(vector<T,N> i, vector<T,N> n, float eta);
 
 // Reverse order of bits
 __intrinsic uint reversebits(uint value);
