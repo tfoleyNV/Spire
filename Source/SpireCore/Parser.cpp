@@ -2969,7 +2969,7 @@ namespace Spire
                 }
                 else if (LookAheadToken(TokenType::OpDec))
                 {
-                    RefPtr<OperatorExpressionSyntaxNode> unaryExpr = new OperatorExpressionSyntaxNode();
+                    RefPtr<OperatorExpressionSyntaxNode> unaryExpr = new PostfixExpr();
                     FillPosition(unaryExpr.Ptr());
                     unaryExpr->FunctionExpr = parseOperator(this);
                     unaryExpr->Arguments.Add(rs);
