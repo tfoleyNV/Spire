@@ -80,9 +80,9 @@ namespace Spire
             RefPtr<ProgramSyntaxNode> Parse();
 
             Token ReadToken();
-            Token ReadToken(CoreLib::Text::TokenType type);
+            Token ReadToken(TokenType type);
             Token ReadToken(const char * string);
-            bool LookAheadToken(CoreLib::Text::TokenType type, int offset = 0);
+            bool LookAheadToken(TokenType type, int offset = 0);
             bool LookAheadToken(const char * string, int offset = 0);
             void                                        parseSourceFile(ProgramSyntaxNode* program);
             RefPtr<ProgramSyntaxNode>					ParseProgram();
@@ -118,7 +118,7 @@ namespace Spire
         static void ParseDeclBody(
             Parser*						parser,
             ContainerDecl*				containerDecl,
-            CoreLib::Text::TokenType	closingToken);
+            TokenType	                closingToken);
 
         static RefPtr<Modifier> ParseOptSemantics(
             Parser* parser);
@@ -168,8 +168,8 @@ namespace Spire
         }
 
         static void Unexpected(
-            Parser*                     parser,
-            CoreLib::Text::TokenType    expected)
+            Parser*     parser,
+            TokenType    expected)
         {
             // Don't emit "unexpected token" errors if we are in recovering mode
             if (!parser->isRecovering)
@@ -183,14 +183,14 @@ namespace Spire
             }
         }
 
-        static CoreLib::Text::TokenType SkipToMatchingToken(TokenReader* reader, CoreLib::Text::TokenType tokenType);
+        static TokenType SkipToMatchingToken(TokenReader* reader, TokenType tokenType);
 
         // Skip a singel balanced token, which is either a single token in
         // the common case, or a matched pair of tokens for `()`, `[]`, and `{}`
-        static CoreLib::Text::TokenType SkipBalancedToken(
+        static TokenType SkipBalancedToken(
             TokenReader* reader)
         {
-            CoreLib::Text::TokenType tokenType = reader->AdvanceToken().Type;
+            TokenType tokenType = reader->AdvanceToken().Type;
             switch (tokenType)
             {
             default:
@@ -204,9 +204,9 @@ namespace Spire
         }
 
         // Skip balanced 
-        static CoreLib::Text::TokenType SkipToMatchingToken(
+        static TokenType SkipToMatchingToken(
             TokenReader*                reader,
-            CoreLib::Text::TokenType    tokenType)
+            TokenType    tokenType)
         {
             for (;;)
             {
@@ -222,7 +222,7 @@ namespace Spire
 
         // Is the given token type one that is used to "close" a
         // balanced construct.
-        static bool IsClosingToken(CoreLib::Text::TokenType tokenType)
+        static bool IsClosingToken(TokenType tokenType)
         {
             switch (tokenType)
             {
@@ -287,9 +287,9 @@ namespace Spire
 
         static bool TryRecover(
             Parser*                         parser,
-            CoreLib::Text::TokenType const* recoverBefore,
+            TokenType const* recoverBefore,
             int                             recoverBeforeCount,
-            CoreLib::Text::TokenType const* recoverAfter,
+            TokenType const* recoverAfter,
             int                             recoverAfterCount)
         {
             if (!parser->isRecovering)
@@ -311,7 +311,7 @@ namespace Spire
             TokenReader* tokenReader = &parser->tokenReader;
             for (;;)
             {
-                CoreLib::Text::TokenType peek = tokenReader->PeekTokenType();
+                TokenType peek = tokenReader->PeekTokenType();
 
                 // Is the next token in our recover-before set?
                 // If so, then we have recovered successfully!
@@ -356,7 +356,7 @@ namespace Spire
                 }
 
                 // Skip balanced tokens and try again.
-                CoreLib::Text::TokenType skipped = SkipBalancedToken(tokenReader);
+                TokenType skipped = SkipBalancedToken(tokenReader);
                 
                 // If we happened to find a matched pair of tokens, and
                 // the end of it was a token we were looking for,
@@ -374,9 +374,9 @@ namespace Spire
 
         static bool TryRecoverBefore(
             Parser*                     parser,
-            CoreLib::Text::TokenType    before0)
+            TokenType    before0)
         {
-            CoreLib::Text::TokenType recoverBefore[] = { before0 };
+            TokenType recoverBefore[] = { before0 };
             return TryRecover(parser, recoverBefore, 1, nullptr, 0);
         }
 
@@ -384,12 +384,12 @@ namespace Spire
         static bool TryRecover(
             Parser*                     parser)
         {
-            CoreLib::Text::TokenType recoverBefore[] = { TokenType::RBrace };
-            CoreLib::Text::TokenType recoverAfter[] = { TokenType::Semicolon };
+            TokenType recoverBefore[] = { TokenType::RBrace };
+            TokenType recoverAfter[] = { TokenType::Semicolon };
             return TryRecover(parser, recoverBefore, 1, recoverAfter, 1);
         }
 
-        Token Parser::ReadToken(CoreLib::Text::TokenType expected)
+        Token Parser::ReadToken(TokenType expected)
         {
             if (tokenReader.PeekTokenType() == expected)
             {
@@ -425,7 +425,7 @@ namespace Spire
                 && r.PeekToken().Content == string;
     }
 
-        bool Parser::LookAheadToken(CoreLib::Text::TokenType type, int offset)
+        bool Parser::LookAheadToken(TokenType type, int offset)
         {
             TokenReader r = tokenReader;
             for (int ii = 0; ii < offset; ++ii)
@@ -435,7 +435,7 @@ namespace Spire
         }
 
         // Consume a token and return true it if matches, otherwise false
-        bool AdvanceIf(Parser* parser, CoreLib::Text::TokenType tokenType)
+        bool AdvanceIf(Parser* parser, TokenType tokenType)
         {
             if (parser->LookAheadToken(tokenType))
             {
@@ -460,7 +460,7 @@ namespace Spire
         // for end-of-file and expect that token (potentially producing
         // an error) and return true to maintain forward progress.
         // Otherwise return false.
-        bool AdvanceIfMatch(Parser* parser, CoreLib::Text::TokenType tokenType)
+        bool AdvanceIfMatch(Parser* parser, TokenType tokenType)
         {
             // If we've run into a syntax error, but haven't recovered inside
             // the block, then try to recover here.
@@ -2154,7 +2154,7 @@ namespace Spire
         static void ParseDeclBody(
             Parser*         parser,
             ContainerDecl*  containerDecl,
-            CoreLib::Text::TokenType       closingToken)
+            TokenType       closingToken)
         {
             while(!AdvanceIfMatch(parser, closingToken))
             {
@@ -2634,7 +2634,7 @@ namespace Spire
 
 
 
-        Precedence GetOpLevel(Parser* parser, CoreLib::Text::TokenType type)
+        Precedence GetOpLevel(Parser* parser, TokenType type)
         {
             switch(type)
             {

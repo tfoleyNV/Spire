@@ -50,7 +50,7 @@ namespace Spire
 
             bool IsAtEnd() const { return mCursor == mEnd; }
             Token PeekToken() const;
-            CoreLib::Text::TokenType PeekTokenType() const;
+            TokenType PeekTokenType() const;
             CodePosition PeekLoc() const;
 
             Token AdvanceToken();
@@ -61,12 +61,40 @@ namespace Spire
             Token* mEnd;
         };
 
-        
-        class Lexer
+        typedef unsigned int LexerFlags;
+        enum
         {
-        public:
-            TokenList Parse(const String & fileName, const String & str, DiagnosticSink * sink);
+            kLexerFlag_InDirective = 1 << 0,
+            kLexerFlag_ExpectFileName = 2 << 0,
         };
+
+        struct Lexer
+        {
+            Lexer(
+                String const&   path,
+                String const&   content,
+                DiagnosticSink* sink);
+
+            ~Lexer();
+
+            Token lexToken();
+
+            TokenList lexAllTokens();
+
+            String          path;
+            String          content;
+            DiagnosticSink* sink;
+
+            char const*     cursor;
+            char const*     end;
+            CodePosition    loc;
+            TokenFlags      tokenFlags;
+            LexerFlags      lexerFlags;
+        };
+
+        // Helper routines for extracting values from tokens
+        String getStringLiteralTokenValue(Token const& token);
+        String getFileNameTokenValue(Token const& token);
     }
 }
 

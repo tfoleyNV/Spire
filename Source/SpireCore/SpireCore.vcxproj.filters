@@ -57,6 +57,15 @@
     <ClInclude Include="intrinsic-defs.h">
       <Filter>Front End</Filter>
     </ClInclude>
+    <ClInclude Include="source-loc.h">
+      <Filter>Front End</Filter>
+    </ClInclude>
+    <ClInclude Include="token.h">
+      <Filter>Front End</Filter>
+    </ClInclude>
+    <ClInclude Include="token-defs.h">
+      <Filter>Front End</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Lexer.cpp">
@@ -99,6 +108,9 @@
       <Filter>Front End</Filter>
     </ClCompile>
     <ClCompile Include="lookup.cpp">
+      <Filter>Front End</Filter>
+    </ClCompile>
+    <ClCompile Include="token.cpp">
       <Filter>Front End</Filter>
     </ClCompile>
   </ItemGroup>

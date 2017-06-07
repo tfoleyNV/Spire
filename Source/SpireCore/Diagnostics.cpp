@@ -57,7 +57,7 @@ void printDiagnosticArg(StringBuilder& sb, QualType const& type)
     sb << type.type->ToString();
 }
 
-void printDiagnosticArg(StringBuilder& sb, CoreLib::Text::TokenType tokenType)
+void printDiagnosticArg(StringBuilder& sb, TokenType tokenType)
 {
     sb << TokenTypeToString(tokenType);
 }
@@ -72,7 +72,7 @@ CodePosition const& getDiagnosticPos(SyntaxNode const* syntax)
     return syntax->Position;
 }
 
-CodePosition const& getDiagnosticPos(CoreLib::Text::Token const& token)
+CodePosition const& getDiagnosticPos(Token const& token)
 {
     return token.Position;
 }

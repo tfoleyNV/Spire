@@ -1,6 +1,8 @@
 #ifndef CORELIB_FUNC_H
 #define CORELIB_FUNC_H
 
+#if 0
+
 #include "SmartPointer.h"
 
 namespace CoreLib
@@ -208,5 +210,7 @@ namespace CoreLib
 		};
 	}
 }
+
+#endif
 
 #endif

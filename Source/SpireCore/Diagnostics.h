@@ -2,7 +2,9 @@
 #define RASTER_RENDERER_COMPILE_ERROR_H
 
 #include "../CoreLib/Basic.h"
-#include "../CoreLib/Tokenizer.h"
+
+#include "source-loc.h"
+#include "token.h"
 
 #include "../../Spire.h"
 
@@ -11,7 +13,6 @@ namespace Spire
     namespace Compiler
     {
         using namespace CoreLib::Basic;
-        using namespace CoreLib::Text;
 
         enum class Severity
         {
@@ -86,7 +87,7 @@ namespace Spire
         void printDiagnosticArg(StringBuilder& sb, ExpressionType* type);
         void printDiagnosticArg(StringBuilder& sb, TypeExp const& type);
         void printDiagnosticArg(StringBuilder& sb, QualType const& type);
-        void printDiagnosticArg(StringBuilder& sb, CoreLib::Text::TokenType tokenType);
+        void printDiagnosticArg(StringBuilder& sb, TokenType tokenType);
         void printDiagnosticArg(StringBuilder& sb, Token const& token);
 
         template<typename T>
@@ -100,7 +101,7 @@ namespace Spire
         class SyntaxNode;
         class ShaderClosure;
         CodePosition const& getDiagnosticPos(SyntaxNode const* syntax);
-        CodePosition const& getDiagnosticPos(CoreLib::Text::Token const& token);
+        CodePosition const& getDiagnosticPos(Token const& token);
         CodePosition const& getDiagnosticPos(TypeExp const& typeExp);
 
         template<typename T>

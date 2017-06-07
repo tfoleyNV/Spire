@@ -1,12 +1,9 @@
 #ifndef SPIRE_NO_CORE_LIB
-#include "Source/CoreLib/CommandLineParser.cpp"
 #include "Source/CoreLib/LibIO.cpp"
 #include "Source/CoreLib/LibMath.cpp"
 #include "Source/CoreLib/LibString.cpp"
 #include "Source/CoreLib/Stream.cpp"
 #include "Source/CoreLib/TextIO.cpp"
-#include "Source/CoreLib/Tokenizer.cpp"
-#include "Source/CoreLib/VectorMath.cpp"
 #endif
 #include "Source/SpireCore/Diagnostics.cpp"
 #include "Source/SpireCore/Emit.cpp"
@@ -19,6 +16,7 @@
 #include "Source/SpireCore/ShaderCompiler.cpp"
 #include "Source/SpireCore/StdInclude.cpp"
 #include "Source/SpireCore/Syntax.cpp"
+#include "Source/SpireCore/token.cpp"
 #include "Source/SpireCore/TypeLayout.cpp"
 #include "Source/SpireCore/Reflection.cpp"
 #include "Source/SpireLib/SpireLib.cpp"

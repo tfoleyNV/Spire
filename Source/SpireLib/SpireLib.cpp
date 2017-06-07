@@ -1,7 +1,6 @@
 #include "../../Spire.h"
 
 #include "../CoreLib/LibIO.h"
-#include "../CoreLib/Tokenizer.h"
 #include "../SpireCore/StdInclude.h"
 #include "../SpireCore/Parser.h"
 #include "../SpireCore/Preprocessor.h"
@@ -18,7 +17,6 @@
 
 using namespace CoreLib::Basic;
 using namespace CoreLib::IO;
-using namespace CoreLib::Text;
 using namespace Spire::Compiler;
 
 namespace SpireLib

@@ -11,8 +11,6 @@
 #include <assert.h>
 
 using namespace CoreLib;
-using namespace CoreLib::Text;
-
 
 // This file provides an implementation of a simple C-style preprocessor.
 // It does not aim for 100% compatibility with any particular preprocessor
@@ -215,8 +213,8 @@ static PreprocessorInputStream* CreateInputStreamForSource(Preprocessor* preproc
     InitializeInputStream(preprocessor, inputStream);
 
     // Use existing `Lexer` to generate a token stream.
-    Lexer lexer;
-    inputStream->lexedTokens = lexer.Parse(fileName, source, GetSink(preprocessor));
+    Lexer lexer(fileName, source, GetSink(preprocessor));
+    inputStream->lexedTokens = lexer.lexAllTokens();
     inputStream->tokenReader = TokenReader(inputStream->lexedTokens);
 
     return inputStream;
@@ -277,7 +275,7 @@ static Token PeekRawToken(PreprocessorInputStream* inputStream)
 }
 
 // Peek one token type from an input stream
-static CoreLib::Text::TokenType PeekRawTokenType(PreprocessorInputStream* inputStream)
+static TokenType PeekRawTokenType(PreprocessorInputStream* inputStream)
 {
     return inputStream->tokenReader.PeekTokenType();
 }
@@ -358,7 +356,7 @@ static Token PeekRawToken(Preprocessor* preprocessor)
 // Without advancing preprocessor state, look *two* raw tokens ahead
 // (This is only needed in order to determine when we are possibly
 // expanding a function-style macro)
-CoreLib::Text::TokenType PeekSecondRawTokenType(Preprocessor* preprocessor)
+TokenType PeekSecondRawTokenType(Preprocessor* preprocessor)
 {
     // We need to find the strema that `advanceRawToken` would read from.
     PreprocessorInputStream* inputStream = preprocessor->inputStream;
@@ -409,7 +407,7 @@ static CodePosition PeekLoc(Preprocessor* preprocessor)
 }
 
 // Get the `TokenType` of the current (raw) token
-static CoreLib::Text::TokenType PeekRawTokenType(Preprocessor* preprocessor)
+static TokenType PeekRawTokenType(Preprocessor* preprocessor)
 {
     return PeekRawToken(preprocessor).Type;
 }
@@ -767,7 +765,7 @@ static Token PeekToken(Preprocessor* preprocessor)
 }
 
 // Peek the type of the next token, including macro expansion.
-static CoreLib::Text::TokenType PeekTokenType(Preprocessor* preprocessor)
+static TokenType PeekTokenType(Preprocessor* preprocessor)
 {
     return PeekToken(preprocessor).Type;
 }
@@ -794,6 +792,10 @@ struct PreprocessorDirectiveContext
     // Has any kind of parse error been encountered in
     // the directive so far?
     bool            parseError;
+
+    // Have we done the necessary checks at the end
+    // of the directive already?
+    bool            haveDoneEndOfDirectiveChecks;
 };
 
 // Get the token for  the preprocessor directive being parsed.
@@ -835,32 +837,26 @@ static PreprocessorMacro* LookupMacro(PreprocessorDirectiveContext* context, Str
 // Determine if we have read everthing on the directive's line.
 static bool IsEndOfLine(PreprocessorDirectiveContext* context)
 {
-    // Is the next token at the start of its own line?
-    // If so, we have read to the end of the directive.
-    return (PeekRawToken(context->preprocessor).flags & TokenFlag::AtStartOfLine) != 0;
+    return PeekRawToken(context->preprocessor).Type == TokenType::EndOfDirective;
+}
+
+// Peek one raw token in a directive, without going past the end of the line.
+static Token PeekRawToken(PreprocessorDirectiveContext* context)
+{
+    return PeekRawToken(context->preprocessor);
 }
 
 // Read one raw token in a directive, without going past the end of the line.
 static Token AdvanceRawToken(PreprocessorDirectiveContext* context)
 {
     if (IsEndOfLine(context))
-        return context->preprocessor->endOfFileToken;
+        return PeekRawToken(context);
     return AdvanceRawToken(context->preprocessor);
 }
 
-// Peek one raw token in a directive, without going past the end of the line.
-static Token PeekRawToken(PreprocessorDirectiveContext* context)
-{
-    if (IsEndOfLine(context))
-        return context->preprocessor->endOfFileToken;
-    return PeekRawToken(context->preprocessor);
-}
-
 // Peek next raw token type, without going past the end of the line.
-static CoreLib::Text::TokenType PeekRawTokenType(PreprocessorDirectiveContext* context)
+static TokenType PeekRawTokenType(PreprocessorDirectiveContext* context)
 {
-    if (IsEndOfLine(context))
-        return TokenType::EndOfFile;
     return PeekRawTokenType(context->preprocessor);
 }
 
@@ -868,7 +864,7 @@ static CoreLib::Text::TokenType PeekRawTokenType(PreprocessorDirectiveContext* c
 static Token AdvanceToken(PreprocessorDirectiveContext* context)
 {
     if (IsEndOfLine(context))
-        context->preprocessor->endOfFileToken;
+        return PeekRawToken(context);
     return AdvanceToken(context->preprocessor);
 }
 
@@ -881,10 +877,10 @@ static Token PeekToken(PreprocessorDirectiveContext* context)
 }
 
 // Peek next token type, with macro-expansion, without going past the end of the line.
-static CoreLib::Text::TokenType PeekTokenType(PreprocessorDirectiveContext* context)
+static TokenType PeekTokenType(PreprocessorDirectiveContext* context)
 {
     if (IsEndOfLine(context))
-        return TokenType::EndOfFile;
+        return TokenType::EndOfDirective;
     return PeekTokenType(context->preprocessor);
 }
 
@@ -897,7 +893,7 @@ static void SkipToEndOfLine(PreprocessorDirectiveContext* context)
     }
 }
 
-static bool ExpectRaw(PreprocessorDirectiveContext* context, CoreLib::Text::TokenType tokenType, DiagnosticInfo const& diagnostic, Token* outToken = NULL)
+static bool ExpectRaw(PreprocessorDirectiveContext* context, TokenType tokenType, DiagnosticInfo const& diagnostic, Token* outToken = NULL)
 {
     if (PeekRawTokenType(context) != tokenType)
     {
@@ -915,7 +911,7 @@ static bool ExpectRaw(PreprocessorDirectiveContext* context, CoreLib::Text::Toke
     return true;
 }
 
-static bool Expect(PreprocessorDirectiveContext* context, CoreLib::Text::TokenType tokenType, DiagnosticInfo const& diagnostic, Token* outToken = NULL)
+static bool Expect(PreprocessorDirectiveContext* context, TokenType tokenType, DiagnosticInfo const& diagnostic, Token* outToken = NULL)
 {
     if (PeekTokenType(context) != tokenType)
     {
@@ -1348,7 +1344,7 @@ static void HandleElifDirective(PreprocessorDirectiveContext* context)
     // This is the behavior expected by at least one input program.
     // We will eventually want to be pedantic about this.
     // even if t
-    if (PeekRawTokenType(context) == TokenType::EndOfFile)
+    if (PeekRawTokenType(context) == TokenType::EndOfDirective)
     {
         GetSink(context)->diagnose(GetDirectiveLoc(context), Diagnostics::directiveExpectsExpression, GetDirectiveName(context));
         HandleElseDirective(context);
@@ -1410,13 +1406,44 @@ static void HandleEndIfDirective(PreprocessorDirectiveContext* context)
     DestroyConditional(conditional);
 }
 
+// Helper routine to check that we find the end of a directive where
+// we expect it.
+//
+// Most directives do not need to call this directly, since we have
+// a catch-all case in the main `HandleDirective()` funciton.
+// The `#include` case will call it directly to avoid complications
+// when it switches the input stream.
+static void expectEndOfDirective(PreprocessorDirectiveContext* context)
+{
+    if(context->haveDoneEndOfDirectiveChecks)
+        return;
+
+    context->haveDoneEndOfDirectiveChecks = true;
+
+    if (!IsEndOfLine(context))
+    {
+        // If we already saw a previous parse error, then don't
+        // emit another one for the same directive.
+        if (!context->parseError)
+        {
+            GetSink(context)->diagnose(PeekLoc(context), Diagnostics::unexpectedTokensAfterDirective, GetDirectiveName(context));
+        }
+        SkipToEndOfLine(context);
+    }
+
+    // Clear out the end-of-directive token
+    AdvanceRawToken(context->preprocessor);
+}
+
+
 // Handle a `#include` directive
 static void HandleIncludeDirective(PreprocessorDirectiveContext* context)
 {
     Token pathToken;
     if(!Expect(context, TokenType::StringLiterial, Diagnostics::expectedTokenInPreprocessorDirective, &pathToken))
         return;
-    String path = pathToken.Content;
+
+    String path = getFileNameTokenValue(pathToken);
 
     // TODO(tfoley): make this robust in presence of `#line`
     String pathIncludedFrom = GetDirectiveLoc(context).FileName;
@@ -1436,6 +1463,11 @@ static void HandleIncludeDirective(PreprocessorDirectiveContext* context)
         GetSink(context)->diagnose(pathToken.Position, Diagnostics::includeFailed, path);
         return;
     }
+
+    // Do all checking related to the end of this directive before we push a new stream,
+    // just to avoid complications where that check would need to deal with
+    // a switch of input stream
+    expectEndOfDirective(context);
 
     // Push the new file onto our stack of input streams
     // TODO(tfoley): check if we have made our include stack too deep
@@ -1512,9 +1544,17 @@ static void HandleDefineDirective(PreprocessorDirectiveContext* context)
     for(;;)
     {
         Token token = AdvanceRawToken(context);
-        macro->tokens.mTokens.Add(token);
-        if (token.Type == TokenType::EndOfFile)
+        if( token.Type == TokenType::EndOfDirective )
+        {
+            // Last token on line will be turned into a conceptual end-of-file
+            // token for the sub-stream that the macro expands into.
+            token.Type = TokenType::EndOfFile;
+            macro->tokens.mTokens.Add(token);
             break;
+        }
+
+        // In the ordinary case, we just add the token to the definition
+        macro->tokens.mTokens.Add(token);
     }
 }
 
@@ -1588,7 +1628,7 @@ static void HandleLineDirective(PreprocessorDirectiveContext* context)
     CodePosition directiveLoc = GetDirectiveLoc(context);
 
     String file;
-    if (PeekTokenType(context) == TokenType::EndOfFile)
+    if (PeekTokenType(context) == TokenType::EndOfDirective)
     {
         file = directiveLoc.FileName;
     }
@@ -1782,10 +1822,10 @@ static void HandleDirective(PreprocessorDirectiveContext* context)
     // Try to read the directive name.
     context->directiveToken = PeekRawToken(context);
 
-    CoreLib::Text::TokenType directiveTokenType = GetDirective(context).Type;
+    TokenType directiveTokenType = GetDirective(context).Type;
 
     // An empty directive is allowed, and ignored.
-    if (directiveTokenType == TokenType::EndOfFile)
+    if (directiveTokenType == TokenType::EndOfDirective)
     {
         return;
     }
@@ -1814,18 +1854,9 @@ static void HandleDirective(PreprocessorDirectiveContext* context)
     // Apply the directive-specific callback
     (directive->callback)(context);
 
-    // We expect the directive to consume the entire line, so if
+    // We expect the directive callback to consume the entire line, so if
     // it hasn't that is a parse error.
-    if (!IsEndOfLine(context))
-    {
-        // If we already saw a previous parse error, then don't
-        // emit another one for the same directive.
-        if (!context->parseError)
-        {
-            GetSink(context)->diagnose(PeekLoc(context), Diagnostics::unexpectedTokensAfterDirective, GetDirectiveName(context));
-        }
-        SkipToEndOfLine(context);
-    }
+    expectEndOfDirective(context);
 }
 
 // Read one token using the full preprocessor, with all its behaviors.
@@ -1846,6 +1877,7 @@ static Token ReadToken(Preprocessor* preprocessor)
             PreprocessorDirectiveContext directiveContext;
             directiveContext.preprocessor = preprocessor;
             directiveContext.parseError = false;
+            directiveContext.haveDoneEndOfDirectiveChecks = false;
 
             // Parse and handle the directive
             HandleDirective(&directiveContext);
@@ -1917,8 +1949,8 @@ static void DefineMacro(
     PreprocessorMacro* macro = CreateMacro(preprocessor);
 
     // Use existing `Lexer` to generate a token stream.
-    Lexer lexer;
-    macro->tokens = lexer.Parse(fileName, value, GetSink(preprocessor));
+    Lexer lexer(fileName, value, GetSink(preprocessor));
+    macro->tokens = lexer.lexAllTokens();
     macro->nameToken = Token(TokenType::Identifier, key, 0, 0, 0, fileName);
 
     PreprocessorMacro* oldMacro = NULL;

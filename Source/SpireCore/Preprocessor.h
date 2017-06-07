@@ -3,7 +3,6 @@
 #define SPIRE_PREPROCESSOR_H_INCLUDED
 
 #include "../CoreLib/Basic.h"
-#include "../CoreLib/Tokenizer.h"
 #include "../SpireCore/Lexer.h"
 
 namespace Spire{ namespace Compiler {

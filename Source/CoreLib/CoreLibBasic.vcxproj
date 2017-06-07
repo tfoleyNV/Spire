@@ -778,7 +778,6 @@
     <ClInclude Include="Linq.h" />
     <ClInclude Include="List.h" />
     <ClInclude Include="LibMath.h" />
-    <ClInclude Include="Tokenizer.h" />
     <ClInclude Include="SecureCRT.h" />
     <ClInclude Include="SmartPointer.h" />
     <ClInclude Include="Stream.h" />
@@ -789,7 +788,6 @@
     <ClCompile Include="LibIO.cpp" />
     <ClCompile Include="LibMath.cpp" />
     <ClCompile Include="LibString.cpp" />
-    <ClCompile Include="Tokenizer.cpp" />
     <ClCompile Include="Stream.cpp" />
     <ClCompile Include="TextIO.cpp" />
   </ItemGroup>

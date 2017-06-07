@@ -9,7 +9,6 @@
 #include "Preprocessor.h"
 #include "SyntaxVisitors.h"
 #include "StdInclude.h"
-#include "../CoreLib/Tokenizer.h"
 
 #include "Reflection.h"
 #include "Emit.h"

@@ -391,9 +391,12 @@
     <ClInclude Include="Lexer.h" />
     <ClInclude Include="Parser.h" />
     <ClInclude Include="ShaderCompiler.h" />
+    <ClInclude Include="source-loc.h" />
     <ClInclude Include="StdInclude.h" />
     <ClInclude Include="Syntax.h" />
     <ClInclude Include="SyntaxVisitors.h" />
+    <ClInclude Include="token-defs.h" />
+    <ClInclude Include="token.h" />
     <ClInclude Include="TypeLayout.h" />
   </ItemGroup>
   <ItemGroup>
@@ -410,6 +413,7 @@
     <ClCompile Include="SemanticsVisitor.cpp" />
     <ClCompile Include="StdInclude.cpp" />
     <ClCompile Include="Syntax.cpp" />
+    <ClCompile Include="token.cpp" />
     <ClCompile Include="TypeLayout.cpp" />
   </ItemGroup>
   <ItemGroup>
