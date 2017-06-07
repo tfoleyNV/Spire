@@ -1308,6 +1308,49 @@ namespace Spire
 
                         // TODO: `GetDimensions` operations
 
+                        for(int isFloat = 0; isFloat < 2; ++isFloat)
+                        for(int includeMipInfo = 0; includeMipInfo < 2; ++includeMipInfo)
+                        {
+                            char const* t = isFloat ? "out float " : "out UINT ";
+
+                            sb << "void GetDimensions(";
+                            if(includeMipInfo)
+                                sb << "UINT mipLevel, ";
+
+                            switch(baseShape)
+                            {
+                            case TextureType::Shape1D:
+                                sb << t << "width";
+                                break;
+
+                            case TextureType::Shape2D:
+                            case TextureType::ShapeCube:
+                                sb << t << "width,";
+                                sb << t << "height";
+                                break;
+
+                            case TextureType::Shape3D:
+                                sb << t << "width,";
+                                sb << t << "height,";
+                                sb << t << "depth";
+                                break;
+
+                            default:
+                                assert(!"unexpected");
+                                break;
+                            }
+
+                            if(isArray)
+                            {
+                                sb << ", " << t << "elements";
+                            }
+
+                            if(includeMipInfo)
+                                sb << ", " << t << "numberOfLevels";
+
+                            sb << ");\n";
+                        }
+
                         // `GetSamplePosition()`
                         if( isMultisample )
                         {
