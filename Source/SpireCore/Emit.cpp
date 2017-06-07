@@ -262,14 +262,86 @@ static bool MaybeEmitParens(EmitContext* context, int outerPrec, int prec)
     return false;
 }
 
-static void EmitBinExpr(EmitContext* context, int outerPrec, int prec, char const* op, RefPtr<InvokeExpressionSyntaxNode> binExpr)
+// When we are going to emit an expression in an l-value context,
+// we may need to ignore certain constructs that the type-checker
+// might have introduced, but which interfere with our ability
+// to use it effectively in the target language
+static RefPtr<ExpressionSyntaxNode> prepareLValueExpr(
+    EmitContext*                    context,
+    RefPtr<ExpressionSyntaxNode>    expr)
+{
+    for(;;)
+    {
+        if(auto typeCastExpr = expr.As<TypeCastExpressionSyntaxNode>())
+        {
+            expr = typeCastExpr->Expression;
+        }
+        // TODO: any other cases?
+        else
+        {
+            return expr;
+        }
+    }
+
+}
+
+static void emitInfixExprImpl(
+    EmitContext* context,
+    int outerPrec,
+    int prec,
+    char const* op,
+    RefPtr<InvokeExpressionSyntaxNode> binExpr,
+    bool isAssign)
 {
     bool needsClose = MaybeEmitParens(context, outerPrec, prec);
-    EmitExprWithPrecedence(context, binExpr->Arguments[0], prec);
+
+    auto left = binExpr->Arguments[0];
+    if(isAssign)
+    {
+        left = prepareLValueExpr(context, left);
+    }
+
+    EmitExprWithPrecedence(context, left, prec);
     Emit(context, " ");
     Emit(context, op);
     Emit(context, " ");
     EmitExprWithPrecedence(context, binExpr->Arguments[1], prec);
+    if (needsClose)
+    {
+        Emit(context, ")");
+    }
+}
+
+static void EmitBinExpr(EmitContext* context, int outerPrec, int prec, char const* op, RefPtr<InvokeExpressionSyntaxNode> binExpr)
+{
+    emitInfixExprImpl(context, outerPrec, prec, op, binExpr, false);
+}
+
+static void EmitBinAssignExpr(EmitContext* context, int outerPrec, int prec, char const* op, RefPtr<InvokeExpressionSyntaxNode> binExpr)
+{
+    emitInfixExprImpl(context, outerPrec, prec, op, binExpr, true);
+}
+
+static void emitUnaryExprImpl(
+    EmitContext* context,
+    int outerPrec,
+    int prec,
+    char const* preOp,
+    char const* postOp,
+    RefPtr<InvokeExpressionSyntaxNode> expr,
+    bool isAssign)
+{
+    bool needsClose = MaybeEmitParens(context, outerPrec, prec);
+    Emit(context, preOp);
+
+    auto arg = expr->Arguments[0];
+    if(isAssign)
+    {
+        arg = prepareLValueExpr(context, arg);
+    }
+
+    EmitExprWithPrecedence(context, arg, prec);
+    Emit(context, postOp);
     if (needsClose)
     {
         Emit(context, ")");
@@ -282,16 +354,20 @@ static void EmitUnaryExpr(
     int prec,
     char const* preOp,
     char const* postOp,
-    RefPtr<InvokeExpressionSyntaxNode> binExpr)
+    RefPtr<InvokeExpressionSyntaxNode> expr)
 {
-    bool needsClose = MaybeEmitParens(context, outerPrec, prec);
-    Emit(context, preOp);
-    EmitExprWithPrecedence(context, binExpr->Arguments[0], prec);
-    Emit(context, postOp);
-    if (needsClose)
-    {
-        Emit(context, ")");
-    }
+    emitUnaryExprImpl(context, outerPrec, prec, preOp, postOp, expr, false);
+}
+
+static void EmitUnaryAssignExpr(
+    EmitContext* context,
+    int outerPrec,
+    int prec,
+    char const* preOp,
+    char const* postOp,
+    RefPtr<InvokeExpressionSyntaxNode> expr)
+{
+    emitUnaryExprImpl(context, outerPrec, prec, preOp, postOp, expr, true);
 }
 
 static void emitCallExpr(
@@ -326,6 +402,9 @@ static void emitCallExpr(
             CASE(BitOr, | );
             CASE(And, &&);
             CASE(Or, || );
+#undef CASE
+
+#define CASE(NAME, OP) case IntrinsicOp::NAME: EmitBinAssignExpr(context, outerPrec, kPrecedence_##NAME, #OP, callExpr); return
             CASE(Assign, =);
             CASE(AddAssign, +=);
             CASE(SubAssign, -=);
@@ -341,18 +420,21 @@ static void emitCallExpr(
 
         case IntrinsicOp::Sequence: EmitBinExpr(context, outerPrec, kPrecedence_Comma, ",", callExpr); return;
 
-#define PREFIX(NAME, OP) case IntrinsicOp::NAME: EmitUnaryExpr(context, outerPrec, kPrecedence_Prefix, #OP, "", callExpr); return
-#define POSTFIX(NAME, OP) case IntrinsicOp::NAME: EmitUnaryExpr(context, outerPrec, kPrecedence_Postfix, "", #OP, callExpr); return
+#define CASE(NAME, OP) case IntrinsicOp::NAME: EmitUnaryExpr(context, outerPrec, kPrecedence_Prefix, #OP, "", callExpr); return
+            CASE(Neg, -);
+            CASE(Not, !);
+            CASE(BitNot, ~);
+#undef CASE
 
-            PREFIX(Neg, -);
-            PREFIX(Not, !);
-            PREFIX(BitNot, ~);
-            PREFIX(PreInc, ++);
-            PREFIX(PreDec, --);
-            POSTFIX(PostInc, ++);
-            POSTFIX(PostDec, --);
-#undef PREFIX
-#undef POSTFIX
+#define CASE(NAME, OP) case IntrinsicOp::NAME: EmitUnaryAssignExpr(context, outerPrec, kPrecedence_Prefix, #OP, "", callExpr); return
+            CASE(PreInc, ++);
+            CASE(PreDec, --);
+#undef CASE
+
+#define CASE(NAME, OP) case IntrinsicOp::NAME: EmitUnaryAssignExpr(context, outerPrec, kPrecedence_Postfix, "", #OP, callExpr); return
+            CASE(PostInc, ++);
+            CASE(PostDec, --);
+#undef CASE
 
             case IntrinsicOp::InnerProduct_Vector_Vector:
                 // HLSL allows `mul()` to be used as a synonym for `dot()`,
