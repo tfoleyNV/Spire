@@ -611,7 +611,7 @@ static void addExplicitParameterBindings_GLSL(
     auto count = resInfo->count;
     semanticInfo.kind = kind;
 
-    addExplicitParameterBinding(context, parameterInfo, semanticInfo, count);
+    addExplicitParameterBinding(context, parameterInfo, semanticInfo, int(count));
 }
 
 // Given a single parameter, collect whatever information we have on

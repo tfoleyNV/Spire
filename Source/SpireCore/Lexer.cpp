@@ -475,7 +475,7 @@ namespace Spire
             char const* end = token.Content.end();
 
             auto quote = *cursor++;
-            assert(quote == '\'' || quote == '\"');
+            assert(quote == '\'' || quote == '"');
 
             StringBuilder valueBuilder;
             for(;;)
@@ -945,7 +945,7 @@ namespace Spire
                 if(textEnd != textBegin)
                 {
                     StringBuilder valueBuilder;
-                    valueBuilder.Append(textBegin, textEnd - textBegin);
+                    valueBuilder.Append(textBegin, int(textEnd - textBegin));
                     token.Content = valueBuilder.ProduceString();
                 }
 
