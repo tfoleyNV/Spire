@@ -1451,12 +1451,20 @@ namespace Spire
             }
             virtual RefPtr<StatementSyntaxNode> VisitIfStatement(IfStatementSyntaxNode *stmt) override
             {
+                auto condition = stmt->Predicate;
+                condition = CheckTerm(condition);
+                condition = Coerce(ExpressionType::GetBool(), condition);
+
+                stmt->Predicate = condition;
+
+#if 0
                 if (stmt->Predicate != NULL)
                     stmt->Predicate = stmt->Predicate->Accept(this).As<ExpressionSyntaxNode>();
                 if (!stmt->Predicate->Type->Equals(ExpressionType::GetError())
                     && (!stmt->Predicate->Type->Equals(ExpressionType::GetInt()) &&
                         !stmt->Predicate->Type->Equals(ExpressionType::GetBool())))
                     getSink()->diagnose(stmt, Diagnostics::ifPredicateTypeError);
+#endif
 
                 if (stmt->PositiveStatement != NULL)
                     stmt->PositiveStatement->Accept(this);
