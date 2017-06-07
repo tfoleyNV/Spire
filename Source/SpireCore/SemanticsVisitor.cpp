@@ -3209,10 +3209,13 @@ namespace Spire
                 if (left->status != right->status)
                     return int(right->status) - int(left->status);
 
-                // If one candidate is 
-                if (left->conversionCostSum != right->conversionCostSum)
-                    return left->conversionCostSum - right->conversionCostSum;
-
+                // If both candidates are applicable, then we need to compare
+                // the costs of their type conversion sequences
+                if(left->status == OverloadCandidate::Status::Appicable)
+                {
+                    if (left->conversionCostSum != right->conversionCostSum)
+                        return left->conversionCostSum - right->conversionCostSum;
+                }
 
                 return 0;
             }
