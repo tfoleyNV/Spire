@@ -1081,6 +1081,22 @@ namespace Spire
             return this;
         }
 
+        // SubscriptDecl
+
+        RefPtr<SyntaxNode> SubscriptDecl::Accept(SyntaxVisitor * visitor)
+        {
+            visitor->visitSubscriptDecl(this);
+            return this;
+        }
+
+        // AccessorDecl
+
+        RefPtr<SyntaxNode> AccessorDecl::Accept(SyntaxVisitor * visitor)
+        {
+            visitor->visitAccessorDecl(this);
+            return this;
+        }
+
         // Substitutions
 
         RefPtr<Substitutions> Substitutions::SubstituteImpl(Substitutions* subst, int* ioDiff)

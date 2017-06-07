@@ -178,6 +178,26 @@ namespace Spire
                 return ConstructDeclRefExpr(item.declRef, bb, originalExpr);
             }
 
+            RefPtr<ExpressionSyntaxNode> createLookupResultExpr(
+                LookupResult const&             lookupResult,
+                RefPtr<ExpressionSyntaxNode>    baseExpr,
+                RefPtr<ExpressionSyntaxNode>    originalExpr)
+            {
+                if (lookupResult.isOverloaded())
+                {
+                    auto overloadedExpr = new OverloadedExpr();
+                    overloadedExpr->Position = originalExpr->Position;
+                    overloadedExpr->Type = ExpressionType::Overloaded;
+                    overloadedExpr->base = baseExpr;
+                    overloadedExpr->lookupResult2 = lookupResult;
+                    return overloadedExpr;
+                }
+                else
+                {
+                    return ConstructLookupResultExpr(lookupResult.item, baseExpr, originalExpr);
+                }
+            }
+
             RefPtr<ExpressionSyntaxNode> ResolveOverloadedExpr(RefPtr<OverloadedExpr> overloadedExpr, LookupMask mask)
             {
                 auto lookupResult = overloadedExpr->lookupResult2;
@@ -2179,12 +2199,6 @@ namespace Spire
                         subscriptExpr,
                         baseArrayType->BaseType);
                 }
-                else if (auto baseArrayLikeType = baseType->As<ArrayLikeType>())
-                {
-                    return CheckSimpleSubscriptExpr(
-                        subscriptExpr,
-                        baseArrayLikeType->elementType);
-                }
                 else if (auto vecType = baseType->As<VectorExpressionType>())
                 {
                     return CheckSimpleSubscriptExpr(
@@ -2203,12 +2217,49 @@ namespace Spire
                         subscriptExpr,
                         rowType);
                 }
-                else
+
+                // Default behavior is to look at all available `__subscript`
+                // declarations on the type and try to call one of them.
+
+                if (auto declRefType = baseType->AsDeclRefType())
                 {
-                    getSink()->diagnose(subscriptExpr, Diagnostics::subscriptNonArray);
+                    if (auto aggTypeDeclRef = declRefType->declRef.As<AggTypeDeclRef>())
+                    {
+                        // Checking of the type must be complete before we can reference its members safely
+                        EnsureDecl(aggTypeDeclRef.GetDecl(), DeclCheckState::Checked);
+
+                        // Note(tfoley): The name used for lookup here is a bit magical, since
+                        // it must match what the parser installed in subscript declarations.
+                        LookupResult lookupResult = LookUpLocal("operator[]", aggTypeDeclRef);
+                        if (!lookupResult.isValid())
+                        {
+                            goto fail;
+                        }
+
+                        RefPtr<ExpressionSyntaxNode> subscriptFuncExpr = createLookupResultExpr(
+                            lookupResult, subscriptExpr->BaseExpression, subscriptExpr);
+
+                        // Now that we know there is at least one subscript member,
+                        // we will construct a reference to it and try to call it
+
+                        RefPtr<InvokeExpressionSyntaxNode> subscriptCallExpr = new InvokeExpressionSyntaxNode();
+                        subscriptCallExpr->Position = subscriptExpr->Position;
+                        subscriptCallExpr->FunctionExpr = subscriptFuncExpr;
+
+                        // TODO(tfoley): This path can support multiple arguments easily
+                        subscriptCallExpr->Arguments.Add(subscriptExpr->IndexExpression);
+
+                        return CheckInvokeExprWithCheckedOperands(subscriptCallExpr.Ptr());
+                    }
+                }
+
+            fail:
+                {
+                    getSink()->diagnose(subscriptExpr, Diagnostics::subscriptNonArray, baseType);
                     return CreateErrorExpr(subscriptExpr);
                 }
             }
+
             bool MatchArguments(FunctionSyntaxNode * functionNode, List <RefPtr<ExpressionSyntaxNode>> &args)
             {
                 if (functionNode->GetParameters().Count() != args.Count())
@@ -2363,6 +2414,32 @@ namespace Spire
                 // TODO(tfoley): check body
                 decl->SetCheckState(DeclCheckState::Checked);
             }
+
+
+            virtual void visitSubscriptDecl(SubscriptDecl* decl) override
+            {
+                if (decl->IsChecked(DeclCheckState::Checked)) return;
+                decl->SetCheckState(DeclCheckState::CheckingHeader);
+
+                for (auto& paramDecl : decl->GetParameters())
+                {
+                    paramDecl->Type = CheckUsableType(paramDecl->Type);
+                }
+
+                decl->ReturnType = CheckUsableType(decl->ReturnType);
+
+                decl->SetCheckState(DeclCheckState::CheckedHeader);
+
+                decl->SetCheckState(DeclCheckState::Checked);
+            }
+
+            virtual void visitAccessorDecl(AccessorDecl* decl) override
+            {
+                // TODO: check the body!
+
+                decl->SetCheckState(DeclCheckState::Checked);
+            }
+
 
             //
 
@@ -2889,7 +2966,7 @@ namespace Spire
                 switch (candidate.flavor)
                 {
                 case OverloadCandidate::Flavor::Func:
-                    paramCounts = CountParameters(candidate.item.declRef.As<FuncDeclBaseRef>().GetParameters());
+                    paramCounts = CountParameters(candidate.item.declRef.As<CallableDeclRef>().GetParameters());
                     break;
 
                 case OverloadCandidate::Flavor::Generic:
@@ -3029,7 +3106,7 @@ namespace Spire
                 switch (candidate.flavor)
                 {
                 case OverloadCandidate::Flavor::Func:
-                    params = candidate.item.declRef.As<FuncDeclBaseRef>().GetParameters().ToArray();
+                    params = candidate.item.declRef.As<CallableDeclRef>().GetParameters().ToArray();
                     break;
 
                 case OverloadCandidate::Flavor::Generic:
@@ -3181,6 +3258,18 @@ namespace Spire
                     case OverloadCandidate::Flavor::Func:
                         context.appExpr->FunctionExpr = baseExpr;
                         context.appExpr->Type = candidate.resultType;
+
+                        // A call may yield an l-value, and we should take a look at the candidate to be sure
+                        if(auto subscriptDeclRef = candidate.item.declRef.As<SubscriptDeclRef>())
+                        {
+                            for(auto setter : subscriptDeclRef.GetDecl()->GetMembersOfType<SetterDecl>())
+                            {
+                                context.appExpr->Type.IsLeftValue = true;
+                            }
+                        }
+
+                        // TODO: there may be other cases that confer l-value-ness
+
                         return context.appExpr;
                         break;
 
@@ -3315,7 +3404,7 @@ namespace Spire
 
             void AddFuncOverloadCandidate(
                 LookupResultItem			item,
-                FuncDeclBaseRef				funcDeclRef,
+                CallableDeclRef             funcDeclRef,
                 OverloadResolveContext&		context)
             {
                 EnsureDecl(funcDeclRef.GetDecl());
@@ -3684,7 +3773,7 @@ namespace Spire
 
                 // Check what type of declaration we are dealing with, and then try
                 // to match it up with the arguments accordingly...
-                if (auto funcDeclRef = unspecializedInnerRef.As<FuncDeclBaseRef>())
+                if (auto funcDeclRef = unspecializedInnerRef.As<CallableDeclRef>())
                 {
                     auto& args = context.appExpr->Arguments;
                     auto params = funcDeclRef.GetParameters().ToArray();
@@ -3810,7 +3899,7 @@ namespace Spire
             {
                 auto declRef = item.declRef;
 
-                if (auto funcDeclRef = item.declRef.As<FuncDeclBaseRef>())
+                if (auto funcDeclRef = item.declRef.As<CallableDeclRef>())
                 {
                     AddFuncOverloadCandidate(item, funcDeclRef, context);
                 }
@@ -3949,7 +4038,7 @@ namespace Spire
 
             void formatDeclParams(StringBuilder& sb, DeclRef declRef)
             {
-                if (auto funcDeclRef = declRef.As<FuncDeclBaseRef>())
+                if (auto funcDeclRef = declRef.As<CallableDeclRef>())
                 {
 
                     // This is something callable, so we need to also print parameter types for overloading
@@ -4423,26 +4512,10 @@ namespace Spire
                 auto lookupResult = LookUp(expr->Variable, expr->scope);
                 if (lookupResult.isValid())
                 {
-                    // Found at least one declaration, but did we find many?
-                    if (lookupResult.isOverloaded())
-                    {
-                        auto overloadedExpr = new OverloadedExpr();
-                        overloadedExpr->Position = expr->Position;
-                        overloadedExpr->Type = ExpressionType::Overloaded;
-                        overloadedExpr->lookupResult2 = lookupResult;
-                        return overloadedExpr;
-                    }
-                    else
-                    {
-                        // Only a single decl, that's good
-                        return ConstructLookupResultExpr(lookupResult.item, nullptr, expr);
-#if 0
-                        auto declRef = lookupResult.declRef;
-                        expr->declRef = declRef;
-                        expr->Type = GetTypeForDeclRef(declRef);
-                        return expr;
-#endif
-                    }
+                    return createLookupResultExpr(
+                        lookupResult,
+                        nullptr,
+                        expr);
                 }
 
                 getSink()->diagnose(expr, Diagnostics::undefinedIdentifier2, expr->Variable);
@@ -4693,18 +4766,10 @@ namespace Spire
                             goto fail;
                         }
 
-                        if (lookupResult.isOverloaded())
-                        {
-                            auto overloadedExpr = new OverloadedExpr();
-                            overloadedExpr->Position = expr->Position;
-                            overloadedExpr->Type = ExpressionType::Overloaded;
-                            overloadedExpr->base = expr->BaseExpression;
-                            overloadedExpr->lookupResult2 = lookupResult;
-                            return overloadedExpr;
-                        }
-
-                        // default case: we have found something
-                        return ConstructLookupResultExpr(lookupResult.item, expr->BaseExpression, expr);
+                        return createLookupResultExpr(
+                            lookupResult,
+                            expr->BaseExpression,
+                            expr);
 #if 0
                         DeclRef memberDeclRef(lookupResult.decl, aggTypeDeclRef.substitutions);
                         return ConstructDeclRefExpr(memberDeclRef, expr->BaseExpression, expr);
@@ -4883,7 +4948,7 @@ namespace Spire
                 *outTypeResult = type;
                 return new TypeType(type);
             }
-            else if (auto funcDeclRef = declRef.As<FuncDeclBaseRef>())
+            else if (auto funcDeclRef = declRef.As<CallableDeclRef>())
             {
                 auto type = new FuncType();
                 type->declRef = funcDeclRef;

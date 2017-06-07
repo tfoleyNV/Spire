@@ -953,25 +953,19 @@ namespace Spire
         class PointerLikeType : public BuiltinGenericType
         {};
 
-        // Types that behave like arrays, in that they can be
-        // subscripted (explicitly) to access members defined
-        // in the element type.
-        class ArrayLikeType : public BuiltinGenericType
-        {};
-
         // Generic types used in existing Spire code
         // TODO(tfoley): check that these are actually working right...
         class PatchType : public PointerLikeType {};
-        class StorageBufferType : public ArrayLikeType {};
+        class StorageBufferType : public BuiltinGenericType {};
         class UniformBufferType : public PointerLikeType {};
-        class PackedBufferType : public ArrayLikeType {};
+        class PackedBufferType : public BuiltinGenericType {};
 
         // HLSL buffer-type resources
 
-        class HLSLBufferType : public ArrayLikeType {};
-        class HLSLRWBufferType : public ArrayLikeType {};
-        class HLSLStructuredBufferType : public ArrayLikeType {};
-        class HLSLRWStructuredBufferType : public ArrayLikeType {};
+        class HLSLBufferType : public BuiltinGenericType {};
+        class HLSLRWBufferType : public BuiltinGenericType {};
+        class HLSLStructuredBufferType : public BuiltinGenericType {};
+        class HLSLRWStructuredBufferType : public BuiltinGenericType {};
 
         class UntypedBufferResourceType : public DeclRefType {};
         class HLSLByteAddressBufferType : public UntypedBufferResourceType {};
@@ -980,8 +974,8 @@ namespace Spire
         class HLSLAppendStructuredBufferType : public BuiltinGenericType {};
         class HLSLConsumeStructuredBufferType : public BuiltinGenericType {};
 
-        class HLSLInputPatchType : public ArrayLikeType {};
-        class HLSLOutputPatchType : public ArrayLikeType {};
+        class HLSLInputPatchType : public BuiltinGenericType {};
+        class HLSLOutputPatchType : public BuiltinGenericType {};
 
         // HLSL geometry shader output stream types
 
@@ -1648,7 +1642,8 @@ namespace Spire
             SPIRE_DECLARE_DECL_REF(ParameterSyntaxNode);
         };
 
-        class FunctionDeclBase : public ContainerDecl
+        // Base class for things that have parameter lists and can thus be applied to arguments ("called")
+        class CallableDecl : public ContainerDecl
         {
         public:
             FilteredMemberList<ParameterSyntaxNode> GetParameters()
@@ -1656,33 +1651,43 @@ namespace Spire
                 return GetMembersOfType<ParameterSyntaxNode>();
             }
             TypeExp ReturnType;
-            RefPtr<StatementSyntaxNode> Body;
         };
 
-        struct FuncDeclBaseRef : ContainerDeclRef
+        struct CallableDeclRef : ContainerDeclRef
         {
-            SPIRE_DECLARE_DECL_REF(FunctionDeclBase);
+            SPIRE_DECLARE_DECL_REF(CallableDecl);
 
             RefPtr<ExpressionType> GetResultType() const
             {
                 return Substitute(GetDecl()->ReturnType.type.Ptr());
             }
 
-            // TODO: need to apply substitutions here!!!
             FilteredMemberRefList<ParamDeclRef> GetParameters()
             {
                 return GetMembersOfType<ParamDeclRef>();
             }
         };
 
-                // Function types are currently used for references to symbols that name
+        // Base class for callable things that may also have a body that is evaluated to produce their result
+        class FunctionDeclBase : public CallableDecl
+        {
+        public:
+            RefPtr<StatementSyntaxNode> Body;
+        };
+
+        struct FuncDeclBaseRef : CallableDeclRef
+        {
+            SPIRE_DECLARE_DECL_REF(FunctionDeclBase);
+        };
+
+        // Function types are currently used for references to symbols that name
         // either ordinary functions, or "component functions."
         // We do not directly store a representation of the type, and instead
         // use a reference to the symbol to stand in for its logical type
         class FuncType : public ExpressionType
         {
         public:
-            FuncDeclBaseRef declRef;
+            CallableDeclRef declRef;
 
             virtual String ToString() override;
         protected:
@@ -1702,6 +1707,35 @@ namespace Spire
         {
             SPIRE_DECLARE_DECL_REF(ConstructorDecl);
         };
+
+        // A subscript operation used to index instances of a type
+        class SubscriptDecl : public CallableDecl
+        {
+        public:
+            virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
+        };
+
+        struct SubscriptDeclRef : CallableDeclRef
+        {
+            SPIRE_DECLARE_DECL_REF(SubscriptDecl);
+        };
+
+        // An "accessor" for a subscript or property
+        class AccessorDecl : public FunctionDeclBase
+        {
+        public:
+            virtual RefPtr<SyntaxNode> Accept(SyntaxVisitor * visitor) override;
+        };
+
+        class GetterDecl : public AccessorDecl
+        {
+        };
+
+        class SetterDecl : public AccessorDecl
+        {
+        };
+
+        //
 
         class FunctionSyntaxNode : public FunctionDeclBase
         {
@@ -2684,6 +2718,10 @@ namespace Spire
 
             virtual void VisitConstructorDecl(ConstructorDecl* /*decl*/)
             {}
+
+            virtual void visitSubscriptDecl(SubscriptDecl* decl) = 0;
+
+            virtual void visitAccessorDecl(AccessorDecl* decl) = 0;
 
             virtual void VisitTraitDecl(TraitDecl* /*decl*/)
             {}

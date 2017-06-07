@@ -898,8 +898,8 @@ namespace Spire
         }
 
         static void parseParameterList(
-            Parser*                     parser,
-            RefPtr<FunctionDeclBase>    decl)
+            Parser*                 parser,
+            RefPtr<CallableDecl>    decl)
         {
             parser->ReadToken(TokenType::LParent);
 
@@ -969,7 +969,7 @@ namespace Spire
             {
                 return new StructField();
             }
-            else if (dynamic_cast<FunctionDeclBase*>(containerDecl))
+            else if (dynamic_cast<CallableDecl*>(containerDecl))
             {
                 return new ParameterSyntaxNode();
             }
@@ -1924,10 +1924,10 @@ namespace Spire
             {
                 AddMember(decl, ParseGenericParamDecl(parser, decl));
 
-                if (parser->LookAheadToken(TokenType::OpGreater))
-                    break;
+if( parser->LookAheadToken(TokenType::OpGreater) )
+break;
 
-                parser->ReadToken(TokenType::Comma);
+parser->ReadToken(TokenType::Comma);
             }
             parser->genericDepth--;
             parser->ReadToken(TokenType::OpGreater);
@@ -1973,13 +1973,13 @@ namespace Spire
             parser->ReadToken("__trait");
             decl->Name = parser->ReadToken(TokenType::Identifier);
 
-            if (AdvanceIf(parser, TokenType::Colon))
+            if( AdvanceIf(parser, TokenType::Colon) )
             {
                 do
                 {
                     auto base = parser->ParseTypeExp();
                     decl->bases.Add(base);
-                } while (AdvanceIf(parser, TokenType::Comma));
+                } while( AdvanceIf(parser, TokenType::Comma) );
             }
 
             parser->ReadToken(TokenType::LBrace);
@@ -1995,7 +1995,7 @@ namespace Spire
 
             parseParameterList(parser, decl);
 
-            if (AdvanceIf(parser, TokenType::Semicolon))
+            if( AdvanceIf(parser, TokenType::Semicolon) )
             {
                 // empty body
             }
@@ -2003,6 +2003,70 @@ namespace Spire
             {
                 decl->Body = parser->ParseBlockStatement();
             }
+            return decl;
+        }
+
+        static RefPtr<AccessorDecl> parseAccessorDecl(Parser* parser)
+        {
+            RefPtr<AccessorDecl> decl;
+            if( AdvanceIf(parser, "get") )
+            {
+                decl = new GetterDecl();
+            }
+            else if( AdvanceIf(parser, "set") )
+            {
+                decl = new SetterDecl();
+            }
+            else
+            {
+                Unexpected(parser);
+                return nullptr;
+            }
+
+            if( parser->tokenReader.PeekTokenType() == TokenType::LBrace )
+            {
+                decl->Body = parser->ParseBlockStatement();
+            }
+            else
+            {
+                parser->ReadToken(TokenType::Semicolon);
+            }
+
+            return decl;
+        }
+
+        static RefPtr<SubscriptDecl> ParseSubscriptDecl(Parser* parser)
+        {
+            RefPtr<SubscriptDecl> decl = new SubscriptDecl();
+            parser->FillPosition(decl.Ptr());
+            parser->ReadToken("__subscript");
+
+            // TODO: the use of this name here is a bit magical...
+            decl->Name.Content = "operator[]";
+
+            parseParameterList(parser, decl);
+
+            if( AdvanceIf(parser, TokenType::RightArrow) )
+            {
+                decl->ReturnType = parser->ParseTypeExp();
+            }
+
+            if( AdvanceIf(parser, TokenType::LBrace) )
+            {
+                // We want to parse nested "accessor" declarations
+                while( !AdvanceIfMatch(parser, TokenType::RBrace) )
+                {
+                    auto accessor = parseAccessorDecl(parser);
+                    AddMember(decl, accessor);
+                }
+            }
+            else
+            {
+                parser->ReadToken(TokenType::Semicolon);
+
+                // empty body should be treated like `{ get; }`
+            }
+
             return decl;
         }
 
@@ -2071,6 +2135,8 @@ namespace Spire
                 decl = ParseExtensionDecl(parser);
             else if (parser->LookAheadToken("__init"))
                 decl = ParseConstructorDecl(parser);
+            else if (parser->LookAheadToken("__subscript"))
+                decl = ParseSubscriptDecl(parser);
             else if (parser->LookAheadToken("__trait"))
                 decl = ParseTraitDecl(parser);
             else if(parser->LookAheadToken("__modifier"))
