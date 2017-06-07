@@ -3701,8 +3701,30 @@ namespace Spire
 
                     for (int aa = 0; aa < argCount; ++aa)
                     {
+#if 0
                         if (!TryUnifyArgAndParamTypes(constraints, args[aa], params[aa]))
                             return DeclRef(nullptr, nullptr);
+#else
+                        // The question here is whether failure to "unify" an argument
+                        // and parameter should lead to immediate failure.
+                        //
+                        // The case that is interesting is if we want to unify, say:
+                        // `vector<float,N>` and `vector<int,3>`
+                        //
+                        // It is clear that we should solve with `N = 3`, and then
+                        // a later step may find that the resulting types aren't
+                        // actually a match.
+                        //
+                        // A more refined approach to "unification" could of course
+                        // see that `int` can convert to `float` and use that fact.
+                        // (and indeed we already use something like this to unify
+                        // `float` and `vector<T,3>`)
+                        //
+                        // So the question is then whether a mismatch during the
+                        // unification step should be taken as an immediate failure...
+
+                        TryUnifyArgAndParamTypes(constraints, args[aa], params[aa]);
+#endif
                     }
                 }
                 else
