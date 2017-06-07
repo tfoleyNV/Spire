@@ -1549,11 +1549,16 @@ namespace Spire
                 // If this is an array variable, then make sure it is an okay array type...
                 ValidateArraySizeForVariable(varDecl);
 
+                varDecl->SetCheckState(DeclCheckState::CheckedHeader);
+
                 if (varDecl->Expr != NULL)
                 {
                     varDecl->Expr = varDecl->Expr->Accept(this).As<ExpressionSyntaxNode>();
                     varDecl->Expr = Coerce(varDecl->Type, varDecl->Expr);
                 }
+
+                varDecl->SetCheckState(DeclCheckState::Checked);
+
                 return varDecl;
             }
 
